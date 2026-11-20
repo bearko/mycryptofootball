@@ -32,7 +32,7 @@ function sadFigure(e: Engine, t: number, v: number): void {
 export const R = {
   // ------------------------------------------------------------------------------------------ interface
   hover(e: Engine, t: number): void {
-    rim(e, t, 0.2, turn([1.12, 1.2, 1.06]));
+    rim(e, t, 0.13, turn([1.12, 1.2, 1.06]));
   },
   tap(e: Engine, t: number): void {
     const p = turn([1, 1.05, 0.96]);
@@ -46,8 +46,8 @@ export const R = {
   deny(e: Engine, t: number): void {
     // "uh-uh": two muted low blats a semitone apart, on a damped drum
     for (const [at, v] of [[0, 0.7], [0.13, 0.6]] as const) {
-      brass(e, t + at, [lo(C), lo(C) + 1], 0.07, v, { bright: 0.42, verb: 0.03 });
-      tom(e, t + at, lo(C), 0.4, 0.45);
+      brass(e, t + at, [lo(C), lo(C) + 1], 0.07, v * 0.46, { bright: 0.8, verb: 0.03 });
+      tom(e, t + at, lo(C), 0.36, 0.45);
     }
   },
   toggle(e: Engine, t: number, on: boolean): void {
@@ -66,26 +66,26 @@ export const R = {
     tom(e, t + 0.03, lo(C), 0.32, 0.6);
   },
   transition(e: Engine, t: number): void {
-    roll(e, t, 0.26, 0.2, 0.8);
-    snare(e, t + 0.27, 0.62);
-    bass(e, t + 0.27, 0.6);
-    cymbal(e, t + 0.27, 0.6, 0.75);
+    roll(e, t, 0.26, 0.15, 0.6);
+    snare(e, t + 0.27, 0.6);
+    bass(e, t + 0.27, 0.5);
+    cymbal(e, t + 0.27, 0.5, 0.75);
   },
   pageTurn(e: Engine, t: number): void {
     swish(e, t, 0.62, true, 0.13);
     flick(e, t + 0.11, 0.3, 0.8);
   },
   typeTick(e: Engine, t: number): void {
-    blip(e, t, turn([hi(hi(C)), hi(hi(C)), hi(G), hi(hi(C)), hi(hi(E))]), 0.5);
+    blip(e, t, turn([hi(hi(C)), hi(hi(C)), hi(G), hi(hi(C)), hi(hi(E))]), 0.42);
   },
   countTick(e: Engine, t: number): void {
-    rim(e, t, 0.24, 1.3);
-    bell(e, t, hi(hi(turn([G, G, hi(C)]))), 0.36, 0.07);
+    rim(e, t, 0.16, 1.3);
+    bell(e, t, hi(hi(turn([G, G, hi(C)]))), 0.3, 0.07);
   },
   stamp(e: Engine, t: number): void {
-    bass(e, t, 1, true);
-    slap(e, t, 1, true);
-    snare(e, t, 0.6);
+    bass(e, t, 0.8, true);
+    slap(e, t, 0.8, true);
+    snare(e, t, 0.5);
     cymbal(e, t, 0.4, 0, true);
   },
   swap(e: Engine, t: number): void {
@@ -114,14 +114,14 @@ export const R = {
   },
   cardPick(e: Engine, t: number): void {
     flick(e, t, 0.4, 1.1);
-    flam(e, t, 0.56);
+    flam(e, t, 0.5);
     tom(e, t + 0.03, E, 0.3, 0.5);
   },
   cardConfirm(e: Engine, t: number): void {
-    bass(e, t, 0.85);
-    slap(e, t, 0.8, true);
-    snare(e, t, 0.42);
-    brass(e, t + 0.005, [C, G, hi(C)], 0.1, 0.62);
+    bass(e, t, 0.55);
+    slap(e, t, 0.6, true);
+    snare(e, t, 0.36);
+    brass(e, t + 0.005, [C, G, hi(C)], 0.1, 0.5);
   },
   cardFlip(e: Engine, t: number): void {
     swish(e, t, 0.6, true, 0.09);
@@ -130,10 +130,10 @@ export const R = {
   },
   clash(e: Engine, t: number, edge: 'good' | 'bad' | 'even'): void {
     // the hit is the same for everyone; only the tail says who read whom
-    slap(e, t, 1, true);
-    bass(e, t, 0.8);
-    snare(e, t, 0.9);
-    noise(e, { t, f: 1700, q: 0.7, dur: 0.07, peak: 0.3, a: 0.001 });
+    slap(e, t, 0.8, true);
+    bass(e, t, 0.7);
+    snare(e, t, 0.8);
+    noise(e, { t, f: 1700, q: 0.7, dur: 0.07, peak: 0.2, a: 0.001 });
     const at = t + 0.13;
     if (edge === 'good') {
       brass(e, at, [lo(G), C, G], 0.09, 0.7);
@@ -250,10 +250,10 @@ export const R = {
     bass(e, t + 0.24, 0.8);
     tom(e, t + 0.36, lo(G), 0.6, 0.6);
     tom(e, t + 0.42, C, 0.7, 0.6);
-    fanfare(e, t, 1);
+    fanfare(e, t, 1.2);
     const hit = t + 0.48;
-    bass(e, hit, 1, true);
-    snare(e, hit, 0.9);
+    bass(e, hit, 0.9, true);
+    snare(e, hit, 0.8);
     cymbal(e, hit, 1, 1.9);
     [hi(hi(C)), hi(hi(E)), hi(hi(G)), hi(hi(hi(C)))].forEach((n, i) => bell(e, hit + 0.06 * i, n, 0.5, 0.7));
     // the drumline signs off
@@ -298,45 +298,49 @@ export const R = {
   momentum(e: Engine, t: number, level: number): void {
     const l = Math.round(clamp(level, 1, 5));
     const note = [C, E, G, hi(C), hi(E)][l - 1]!;
-    tom(e, t, note > G ? note - 12 : note, 0.4 + l * 0.04, 0.6);
-    rim(e, t, 0.3, 0.9 + l * 0.06);
-    bell(e, t, hi(note), 0.42 + l * 0.06, 0.3 + l * 0.05);
-    if (l >= 4) brass(e, t, [note - 12, note - 5, note], 0.09, 0.4 + (l - 4) * 0.16);
+    tom(e, t, note > G ? note - 12 : note, 0.3 + l * 0.04, 0.6);
+    rim(e, t, 0.2 + l * 0.02, 0.9 + l * 0.06);
+    bell(e, t, hi(note), 0.36 + l * 0.05, 0.3 + l * 0.05);
+    if (l >= 4) brass(e, t, [note - 12, note - 5, note], 0.09, 0.34 + (l - 4) * 0.14);
     if (l === 5) {
-      cymbal(e, t, 0.4, 0.6);
+      cymbal(e, t, 0.34, 0.6);
       bell(e, t + 0.07, hi(hi(G)), 0.4, 0.4);
       bell(e, t + 0.14, hi(hi(hi(C))), 0.44, 0.5);
     }
   },
   specialReady(e: Engine, t: number): void {
-    swell(e, t, 0.3, 0.6);
+    swell(e, t, 0.3, 0.5);
     rim(e, t, 0.3, 1.2);
     rim(e, t + 0.1, 0.34, 1.3);
-    brass(e, t + 0.3, [G, hi(C)], 0.09, 0.5);
-    brass(e, t + 0.42, [hi(C), hi(E)], 0.24, 0.56, { verb: 0.25 });
-    bell(e, t + 0.3, hi(hi(G)), 0.5, 0.4);
-    bell(e, t + 0.42, hi(hi(hi(C))), 0.6, 0.7);
-    tom(e, t + 0.3, C, 0.4, 0.6);
+    brass(e, t + 0.3, [G, hi(C)], 0.09, 0.4);
+    brass(e, t + 0.42, [hi(C), hi(E)], 0.24, 0.44, { verb: 0.25 });
+    bell(e, t + 0.3, hi(hi(G)), 0.4, 0.4);
+    bell(e, t + 0.42, hi(hi(hi(C))), 0.46, 0.7);
+    tom(e, t + 0.3, C, 0.36, 0.6);
   },
   specialCutin(e: Engine, t: number, mine: boolean): void {
     duckMusic(e, 0.75, mine ? 2400 : 1500);
-    swell(e, t, 0.2, 0.9);
-    const hit = t + 0.2;
+    // a stick click right now, the breath of a reversed cymbal, then the hit
+    rim(e, t, 0.5, 0.9);
+    snare(e, t, 0.3, true);
+    swell(e, t, 0.16, 0.9);
+    const hit = t + 0.16;
     bass(e, hit, 1, true);
     snare(e, hit, 0.8);
     cymbal(e, hit, 0.9, 1.5);
     if (mine) {
       // the sampled jingle carries the tune; without it the brass plays the hit
-      if (!sample(e, hit, 'special', 0.38)) {
+      roll(e, hit + 0.04, 0.45, 0.45, 0.08);
+      if (!sample(e, hit, 'special', 0.52)) {
         brass(e, hit, [lo(C), lo(G), C, G, hi(C)], 0.7, 0.95, { vib: true, verb: 0.25 });
         brass(e, hit + 0.3, [hi(E)], 0.4, 0.6, { verb: 0.25 });
       }
     } else {
       // the other bench: a low minor hit that drops onto the flat sixth
-      brass(e, hit, [lo(C), lo(G), Eb], 0.2, 0.9, { bright: 0.75 });
-      brass(e, hit + 0.26, [lo(lo(Ab)), lo(Eb), lo(Ab), C], 0.6, 0.95, { bright: 0.7, verb: 0.25 });
-      bass(e, hit + 0.26, 0.9, true);
-      roll(e, hit + 0.3, 0.5, 0.5, 0.1);
+      brass(e, hit, [lo(C), lo(G), Eb], 0.2, 0.8, { bright: 0.75 });
+      brass(e, hit + 0.26, [lo(lo(Ab)), lo(Eb), lo(Ab), C], 0.6, 0.8, { bright: 0.7, verb: 0.25 });
+      bass(e, hit + 0.26, 0.8, true);
+      roll(e, hit + 0.3, 0.5, 0.4, 0.08);
     }
   },
   quarter(e: Engine, t: number): void {
@@ -350,16 +354,16 @@ export const R = {
     // the drumline marches the teams off: four beats at 150 bpm
     const b = 0.2;
     const at = t + 0.95;
-    bass(e, at, 0.8);
-    snare(e, at + b, 0.6);
+    bass(e, at, 0.7);
+    snare(e, at + b, 0.55);
     snare(e, at + b * 1.5, 0.4, true);
-    bass(e, at + b * 2, 0.7);
-    tom(e, at + b * 2.5, lo(G), 0.5, 0.6);
-    tom(e, at + b * 3, C, 0.55, 0.6);
-    tom(e, at + b * 3.5, E, 0.6, 0.6);
-    flam(e, at + b * 4 - 0.03, 0.85);
-    bass(e, at + b * 4, 0.9, true);
-    cymbal(e, at + b * 4, 0.7, 1.1);
+    bass(e, at + b * 2, 0.6);
+    tom(e, at + b * 2.5, lo(G), 0.45, 0.6);
+    tom(e, at + b * 3, C, 0.5, 0.6);
+    tom(e, at + b * 3.5, E, 0.55, 0.6);
+    flam(e, at + b * 4 - 0.03, 0.7);
+    bass(e, at + b * 4, 0.7, true);
+    cymbal(e, at + b * 4, 0.6, 1.1);
   },
   win(e: Engine, t: number): void {
     duckMusic(e, 0.8, 3500);
@@ -367,7 +371,7 @@ export const R = {
     const hit = t + 0.4;
     bass(e, hit, 1, true);
     cymbal(e, hit, 1, 2);
-    if (!sample(e, hit, 'win', 0.4)) fanfare(e, hit, 1);
+    if (!sample(e, hit, 'win', 0.52)) fanfare(e, hit, 1.1);
   },
   lose(e: Engine, t: number): void {
     duckMusic(e, 0.8, 4000);
@@ -406,26 +410,26 @@ export const R = {
     tom(e, t + 0.07, lo(G), 0.5, 0.6);
     tom(e, t + 0.14, C, 0.56, 0.6);
     const hit = t + 0.21;
-    snare(e, hit, 0.6);
-    bass(e, hit, 0.7);
-    brass(e, hit, [C, E, G], 0.26, 0.72, { verb: 0.2 });
+    snare(e, hit, 0.5);
+    bass(e, hit, 0.55);
+    brass(e, hit, [C, E, G], 0.26, 0.66, { verb: 0.2 });
     bell(e, hit, hi(hi(G)), 0.5, 0.5);
   },
   captain(e: Engine, t: number): void {
     roll(e, t, 0.34, 0.2, 0.75);
     const hit = t + 0.35;
-    bass(e, hit, 0.85, true);
-    brass(e, hit, [lo(F), C, F, A], 0.28, 0.78);
-    brass(e, hit + 0.34, [lo(C), C, E, G, hi(C)], 0.75, 0.86, { vib: true, verb: 0.25 });
-    bass(e, hit + 0.34, 0.9, true);
-    cymbal(e, hit + 0.34, 0.75, 1.4);
+    bass(e, hit, 0.7, true);
+    brass(e, hit, [lo(F), C, F, A], 0.28, 0.7);
+    brass(e, hit + 0.34, [lo(C), C, E, G, hi(C)], 0.75, 0.8, { vib: true, verb: 0.25 });
+    bass(e, hit + 0.34, 0.75, true);
+    cymbal(e, hit + 0.34, 0.7, 1.4);
   },
   practice(e: Engine, t: number): void {
     whistle(e, t, 0.12, 0.8);
     rim(e, t + 0.26, 0.6, 1.1);
     rim(e, t + 0.42, 0.6, 1.1);
-    snare(e, t + 0.58, 0.66);
-    bass(e, t + 0.58, 0.62);
+    snare(e, t + 0.58, 0.6);
+    bass(e, t + 0.58, 0.5);
   },
   event(e: Engine, t: number): void {
     swish(e, t, 0.4, true, 0.08);

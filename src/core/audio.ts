@@ -7,7 +7,7 @@
 
 import catalog from '../generated/catalog.json';
 import { crowdGroan, crowdMood, crowdOoh, crowdRoar, crowdStart, crowdStop, crowdTension } from './audio/crowd';
-import { clamp, createEngine, duckMusic, sample, samples, tapOf, type Engine } from './audio/engine';
+import { clamp, createEngine, duckMusic, sample, samples, sounding, tapOf, type Engine } from './audio/engine';
 import { R } from './audio/sounds';
 import { commit, prefs, save } from './save';
 
@@ -23,7 +23,9 @@ const CROWD_BASE = 0.8;
 /** Cross-fade between tracks, in seconds. */
 const FADE = 0.6;
 /** How many voices may be sounding before a sound of each priority (0 = ticks, 1 = normal, 2 = big moments) is dropped. */
-const LIMIT = [24, 44, 72] as const;
+const LIMIT = [20, 36, 60] as const;
+/** The same for voices that are scheduled but have not started yet (a fanfare books a couple of seconds ahead). */
+const BOOKED = [90, 130, 190] as const;
 
 const hasWindow = typeof window !== 'undefined' && typeof document !== 'undefined';
 
@@ -307,8 +309,19 @@ export function unlockAudio(): void {
   try {
     const first = !unlocked;
     unlocked = true;
-    if (first) syncMusic();
-    else if (want) {
+    if (first) {
+      // Phones only let an <audio> element start inside a gesture: touch every track now (silently),
+      // so that a later playBgm() from a timer or a screen change is allowed to start it.
+      for (const key of Object.keys(BGM)) {
+        if (key === want) continue;
+        const tr = trackFor(key);
+        if (!tr) continue;
+        void tr.el.play().then(() => {
+          if (tr.target === 0) tr.el.pause();
+        }, () => undefined);
+      }
+      syncMusic();
+    } else if (want) {
       const tr = tracks.get(want);
       if (tr && tr.el.paused) start(tr);
     }
@@ -362,13 +375,13 @@ function play<A extends unknown[]>(prio: 0 | 1 | 2, gapMs: number, fn: (e: Engin
       if (e.live) {
         if (asleep || muted()) return;
         const now = performance.now();
-        if (now - last < gapMs || e.voices > LIMIT[prio]) return;
+        if (now - last < gapMs || e.voices > BOOKED[prio] || sounding(e) > LIMIT[prio]) return;
         last = now;
         const ctx = e.ctx as AudioContext;
         // a phone call or a tab switch can leave the context suspended: any sound asked for brings it back
         if (ctx.state !== 'running') void ctx.resume().catch(() => undefined);
       }
-      fn(e, e.ctx.currentTime + (e.live ? 0.004 : 0.01), ...a);
+      fn(e, e.ctx.currentTime + (e.live ? 0.004 : 0), ...a);
     } catch {
       /* this one sound is lost */
     }
@@ -440,37 +453,27 @@ export const sfx = {
   event: play(1, 100, R.event),
 } satisfies Record<string, (...a: never[]) => void>;
 
+/** The stadium's state changes are not sounds to drop: they must take hold even while the game is muted or hidden. */
+const steady = <A extends unknown[]>(fn: (e: Engine, ...a: A) => void) => (...a: A): void => {
+  try {
+    if (eng) fn(eng, ...a);
+  } catch {
+    /* ignore */
+  }
+};
+
 export const crowd = {
   /** fade the ambience bed in */
-  start: play(2, 0, (e) => crowdStart(e)),
+  start: steady(crowdStart),
   /** fade it out (also ends the stomp loop) */
-  stop: (): void => {
-    // not through play(): stopping must work while muted or hidden
-    try {
-      if (eng) crowdStop(eng);
-    } catch {
-      /* ignore */
-    }
-  },
+  stop: steady(crowdStop),
   /** 0..1: how loud and bright the stand is */
-  setMood: (v: number): void => {
-    try {
-      if (eng) crowdMood(eng, v);
-    } catch {
-      /* ignore */
-    }
-  },
+  setMood: steady(crowdMood),
   roar: play(2, 150, crowdRoar),
   ooh: play(1, 200, crowdOoh),
   groan: play(1, 200, crowdGroan),
-  /** the stomp-stomp-clap loop */
-  tension: (on: boolean): void => {
-    try {
-      if (eng && (!on || !(eng.live && (asleep || muted())))) crowdTension(eng, on);
-    } catch {
-      /* ignore */
-    }
-  },
+  /** the stomp-stomp-clap loop (about 100 bpm); switching it off lets the bar in progress finish */
+  tension: steady(crowdTension),
 };
 
 // ------------------------------------------------------------------------------------------------ deprecated
@@ -501,20 +504,23 @@ export function se(key: string, volume = 0.7): void {
 // ------------------------------------------------------------------------------------------------ lab hooks
 
 /** Dev only (lab/audio.html): the state of the live engine and a post-limiter analyser for meters. */
-export function audioDebug(): { unlocked: boolean; state: string; voices: number; tap: AnalyserNode | null } {
+export function audioDebug(): { unlocked: boolean; state: string; voices: number; booked: number; tap: AnalyserNode | null } {
   try {
     return {
       unlocked,
       state: live ? (live.ctx as AudioContext).state : 'none',
-      voices: live ? live.voices : 0,
+      voices: live ? sounding(live) : 0,
+      booked: live ? live.voices : 0,
       tap: live ? tapOf(live) : null,
     };
   } catch {
-    return { unlocked, state: 'none', voices: 0, tap: null };
+    return { unlocked, state: 'none', voices: 0, booked: 0, tap: null };
   }
 }
 
 const bgmBuffers = new Map<string, AudioBuffer>();
+/** A fresh compressor fades its gain in over about 0.2 s; an offline render lets that pass before the sound starts. */
+const WARM_UP = 0.3;
 
 /**
  * Dev only: renders whatever `fn` plays (through the same buses and limiter as the live engine) into a buffer,
@@ -525,7 +531,7 @@ export async function renderOffline(seconds: number, fn: () => void, opts: { bgm
   if (!hasWindow || typeof OfflineAudioContext === 'undefined') return null;
   try {
     const sr = opts.sampleRate ?? 48000;
-    const ctx = new OfflineAudioContext(2, Math.ceil(sr * seconds), sr);
+    const ctx = new OfflineAudioContext(2, Math.ceil(sr * (WARM_UP + seconds)) + 256, sr);
     const e = createEngine(ctx, false, opts.bypass);
     setBuses(e, false);
     await loadSamples(ctx);
@@ -540,14 +546,27 @@ export async function renderOffline(seconds: number, fn: () => void, opts: { bgm
       src.connect(e.musicIn);
       src.start(0, Math.min(30, buf.duration / 3));
     }
-    const prev = eng;
-    eng = e;
-    try {
-      fn();
-    } finally {
-      eng = prev;
-    }
-    return await ctx.startRendering();
+    // `fn` runs when the render reaches the end of the warm-up; only what follows it is handed back
+    let lead = 0;
+    const scheduled = ctx.suspend(WARM_UP).then(() => {
+      lead = Math.round(ctx.currentTime * sr);
+      const prev = eng;
+      eng = e;
+      try {
+        fn();
+      } catch {
+        /* render what was scheduled before it failed */
+      } finally {
+        eng = prev;
+      }
+      return ctx.resume();
+    });
+    const full = await ctx.startRendering();
+    await scheduled;
+    const length = Math.min(full.length - lead, Math.ceil(sr * seconds));
+    const out = new AudioBuffer({ numberOfChannels: full.numberOfChannels, length, sampleRate: sr });
+    for (let ch = 0; ch < full.numberOfChannels; ch += 1) out.copyToChannel(full.getChannelData(ch).subarray(lead, lead + length), ch);
+    return out;
   } catch {
     return null;
   }

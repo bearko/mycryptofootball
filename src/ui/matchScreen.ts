@@ -18,7 +18,7 @@ import {
 } from '../game/match';
 import { opponentSheet } from '../game/teams';
 import { SCHEDULE, clubSheet, finishMatch, plan } from '../game/season';
-import { cardBack, cardName, playCard, specialText } from './cardView';
+import { cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
 import { route } from './nav';
@@ -223,7 +223,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     /** A "look first" special: the hero's moment, then the opponent's card is (maybe) turned over. */
     const runPeek = async (sp: SpecialCard): Promise<void> => {
       const ok = usePeek(st, 0, sp);
+      root.classList.add('cine');
       await cutIn(sp, 0, ok ? 1 : 0.2, ok ? '見抜いた！' : '読めない…');
+      root.classList.remove('cine');
       peeked = { ok };
       drawBug(snap());
       selected = null;
@@ -249,10 +251,10 @@ export function matchScreen(): [HTMLElement, () => void] {
       sfx.cardPick();
       vibrate(8);
       stadium.preview(pick, side, 0);
-      if (pick.special) booth.say(`${hero(pick.special.owner).name}の「${pick.special.name}」！ ${specialText(pick.special)}`, 'sparkle');
+      if (pick.special) booth.say(`${hero(pick.special.owner).name}の「${pick.special.name}」！ ${KIND[pick.special.kind].text}`, 'sparkle');
       else {
         const info = onOffense ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
-        booth.say(`${info.name}。${info.text}。${info.good}に強く、${info.bad}に弱い`, 'idle');
+        booth.say(`${info.name}。${info.text}`, 'idle');
       }
       drawHand();
     };
@@ -272,6 +274,7 @@ export function matchScreen(): [HTMLElement, () => void] {
           selected: selected === c, blocked: block ? BLOCK_TEXT[block] : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
           mom: st.mom[0], index: i, key: true, deal: firstDeal, onpick: () => choose(c),
         });
+        if (block) el.classList.add('spine');
         if (c.special && !block) {
           nowReady.add(c.special.key);
           if (!readyKeys.has(c.special.key)) el.classList.add('ready');
@@ -291,7 +294,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         h('div.hand-cards', els),
         historyEl(),
         h('div.hand-go',
-          button(selected ? 'これでいく！' : 'カードをえらぶ', confirm, { cls: selected ? 'big go' : 'big off', sound: 'confirm', key: 'Enter' }),
+          button(selected ? 'これでいく！' : 'カードをえらぶ', confirm, { cls: selected ? 'big go' : 'big off', sound: 'confirm' }),
           button('おまかせ', () => {
             if (busy) return;
             busy = true;
@@ -299,6 +302,11 @@ export function matchScreen(): [HTMLElement, () => void] {
               : selected ?? (peeked.ok ? cards.find((c) => c.type === bestAgainst(theirs, onOffense)) : null) ?? cards[0]!;
             void playOut(onOffense ? mine : theirs, onOffense ? theirs : mine);
           }, { cls: 'mini alt', key: 'A' })));
+      // a crowded hand gives the cards the room: the log steps aside
+      const log = hand.querySelector<HTMLElement>('.hand-log')!;
+      const row = hand.querySelector<HTMLElement>('.hand-cards')!;
+      log.hidden = false;
+      if (row.scrollWidth > row.clientWidth + 2 || log.clientWidth < 110) log.hidden = true;
     };
 
     keys = (e) => {
@@ -403,6 +411,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     const theirSide = h('div.face.theirs', h('span.label.hot', away.short), theirBack);
     const face = h('div.faceoff', mineSide, theirSide);
     stage.append(face);
+    root.classList.add('cine');
     sfx.cardConfirm();
     await pause(520);
     if (!alive) return;
@@ -432,6 +441,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (off.special) await cutIn(off.special, res.off, res.offPotency);
     if (def.special) await cutIn(def.special, (1 - res.off) as 0 | 1, res.defPotency);
     if (!alive) return;
+    root.classList.remove('cine');
 
     // ---- the play itself: sound, shake and the phone's buzz follow the picture
     booth.say(off.special ? `${hero(off.special.owner).name}が行く！` : isRun(off.type as OffType) ? 'ボールを持って、走る！' : '下がって、投げる！', 'idle');
@@ -507,7 +517,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       h('div.telop-band'),
       big ? h('div.telop-hero', sprite(res.td ? res.carrier : res.defender)) : null,
       h('b', kinetic(head)),
-      yardsText && !res.td && !res.turnover ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
+      yardsText && !res.td && !res.turnover && (res.firstDown || res.yards < 0) ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
     stage.append(telop);
     booth.say(res.lines[res.lines.length - 1] ?? head, res.td ? (mineOff ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
 

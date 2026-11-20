@@ -24,10 +24,10 @@ export function rim(e: Engine, t: number, v: number, pitch = 1): void {
 export function snare(e: Engine, t: number, v: number, ghost = false): void {
   const p = vary(25);
   const len = ghost ? 0.6 : 1;
-  tone(e, { t, f: 335 * p, f2: 245 * p, glide: 0.04, dur: 0.085 * len, peak: 0.42 * v, type: 'triangle', a: 0.001 });
-  if (!ghost) tone(e, { t, f: 540 * p, f2: 410 * p, glide: 0.03, dur: 0.045, peak: 0.16 * v, a: 0.001 });
-  noise(e, { t, f: 2300, type: 'highpass', q: 0.7, dur: 0.13 * len, peak: 0.36 * v, a: 0.001, verb: ghost ? 0 : 0.06 });
-  noise(e, { t, f: 5000, q: 0.9, dur: 0.08 * len, peak: 0.24 * v, a: 0.001 });
+  tone(e, { t, f: 335 * p, f2: 245 * p, glide: 0.04, dur: 0.085 * len, peak: 0.32 * v, type: 'triangle', a: 0.001 });
+  if (!ghost) tone(e, { t, f: 540 * p, f2: 410 * p, glide: 0.03, dur: 0.045, peak: 0.12 * v, a: 0.001 });
+  noise(e, { t, f: 2300, type: 'highpass', q: 0.7, dur: 0.13 * len, peak: 0.27 * v, a: 0.001, verb: ghost ? 0 : 0.06 });
+  noise(e, { t, f: 5000, q: 0.9, dur: 0.08 * len, peak: 0.18 * v, a: 0.001 });
 }
 
 /** Grace note, then the stroke. */
@@ -70,17 +70,20 @@ export function roll(e: Engine, t: number, dur: number, v0: number, v1: number, 
 /** Tenor toms, tuned to the key. `semi` is semitones from middle C (the drums live between about -12 and +7). */
 export function tom(e: Engine, t: number, semi: number, v: number, len = 1): void {
   const f = hz(semi) * vary(12);
-  tone(e, { t, f: f * 1.55, f2: f, glide: 0.035, dur: 0.2 * len, peak: 0.4 * v, a: 0.0015 });
-  tone(e, { t, f: f * 2.1, f2: f * 1.9, dur: 0.07 * len, peak: 0.11 * v, type: 'triangle', a: 0.001 });
+  tone(e, { t, f: f * 1.55, f2: f, glide: 0.035, dur: 0.2 * len, peak: 0.34 * v, a: 0.0015 });
+  // the octave partial is what carries the pitch on a phone speaker
+  tone(e, { t, f: f * 3.1, f2: f * 2, glide: 0.03, dur: 0.14 * len, peak: 0.2 * v, a: 0.001 });
+  tone(e, { t, f: f * 3.2, f2: f * 3, dur: 0.05 * len, peak: 0.08 * v, type: 'triangle', a: 0.001 });
   noise(e, { t, f: 2800, q: 0.9, dur: 0.014, peak: 0.2 * v, a: 0.0005 });
 }
 
 /** Bass drum. The upper layer and the beater click are what a phone speaker actually reproduces. */
 export function bass(e: Engine, t: number, v: number, big = false): void {
   const p = vary(15);
-  tone(e, { t, f: 128 * p, f2: 47, glide: 0.075, dur: big ? 0.46 : 0.3, peak: 0.6 * v, a: 0.002 });
-  tone(e, { t, f: 205 * p, f2: 96, glide: 0.05, dur: big ? 0.16 : 0.11, peak: 0.24 * v, type: 'triangle', a: 0.0015 });
-  noise(e, { t, f: 2600, type: 'lowpass', q: 0.5, dur: 0.02, peak: 0.3 * v, a: 0.0005 });
+  tone(e, { t, f: 128 * p, f2: 47, glide: 0.075, dur: big ? 0.46 : 0.3, peak: 0.44 * v, a: 0.002 });
+  tone(e, { t, f: 205 * p, f2: 96, glide: 0.05, dur: big ? 0.16 : 0.11, peak: 0.22 * v, type: 'triangle', a: 0.0015 });
+  tone(e, { t, f: 420 * p, f2: 210, glide: 0.03, dur: 0.07, peak: 0.17 * v, a: 0.001 });
+  noise(e, { t, f: 1700, q: 0.7, dur: 0.024, peak: 0.3 * v, a: 0.0005 });
 }
 
 /** Crash cymbal; `choke` grabs it almost at once (the cancel sound). */
@@ -174,7 +177,7 @@ export function brass(e: Engine, t: number, semis: number[], dur: number, v: num
       vib?.connect(osc.detune);
       osc.connect(mix);
       // the chain is torn down when the last oscillator ends
-      track(e, osc, i === semis.length - 1 && side === 1 ? amp : undefined);
+      track(e, osc, t, i === semis.length - 1 && side === 1 ? amp : undefined);
       osc.start(t);
       osc.stop(stop);
     }
@@ -223,8 +226,8 @@ export function whistle(e: Engine, t: number, dur: number, v: number): void {
   env.gain.setTargetAtTime(0, end - 0.02, 0.014);
   car.connect(trem).connect(env).connect(e.sfx);
   send(e, env, 0.22);
-  track(e, car, env);
-  track(e, lfo);
+  track(e, car, t, env);
+  track(e, lfo, t);
   car.start(t);
   lfo.start(t);
   car.stop(end + 0.12);
@@ -251,9 +254,10 @@ export function swish(e: Engine, t: number, v: number, up = true, dur = 0.11): v
 
 /** Paper landing on the table; `hard` makes it a slam. */
 export function slap(e: Engine, t: number, v: number, hard = false): void {
-  tone(e, { t, f: hard ? 150 : 185, f2: hard ? 72 : 120, glide: 0.04, dur: hard ? 0.11 : 0.055, peak: (hard ? 0.5 : 0.3) * v, a: 0.001 });
-  noise(e, { t, f: hard ? 2600 : 1900, type: 'lowpass', q: 0.6, dur: hard ? 0.05 : 0.028, peak: (hard ? 0.4 : 0.26) * v, a: 0.0006 });
-  if (hard) noise(e, { t, f: 3400, type: 'highpass', q: 0.6, dur: 0.018, peak: 0.26 * v, a: 0.0005 });
+  tone(e, { t, f: hard ? 150 : 185, f2: hard ? 72 : 120, glide: 0.04, dur: hard ? 0.11 : 0.055, peak: (hard ? 0.3 : 0.2) * v, a: 0.001 });
+  tone(e, { t, f: hard ? 520 : 610, f2: 300, glide: 0.025, dur: 0.04, peak: 0.12 * v, type: 'triangle', a: 0.0008 });
+  noise(e, { t, f: hard ? 1500 : 1900, q: 0.6, dur: hard ? 0.05 : 0.028, peak: (hard ? 0.36 : 0.24) * v, a: 0.0006 });
+  if (hard) noise(e, { t, f: 3400, type: 'highpass', q: 0.6, dur: 0.018, peak: 0.2 * v, a: 0.0005 });
 }
 
 /** One chalk stroke: band-passed noise broken up by stick-slip. */
@@ -284,11 +288,11 @@ export function blip(e: Engine, t: number, semi: number, v: number): void {
 export function thud(e: Engine, t: number, power: number): void {
   const p = clamp(power, 0, 1);
   const v = 0.3 + 0.7 * p;
-  tone(e, { t, f: (165 - 45 * p) * vary(40), f2: 60 - 14 * p, glide: 0.06, dur: 0.1 + 0.2 * p, peak: 0.55 * v, a: 0.002 });
-  tone(e, { t, f: 260 - 40 * p, f2: 120, glide: 0.04, dur: 0.07 + 0.05 * p, peak: 0.2 * v, type: 'triangle', a: 0.001 });
-  // shoulder pads: a dry crunch
-  noise(e, { t, f: 850 + 500 * p, q: 0.8, dur: 0.05 + 0.07 * p, peak: 0.34 * v, a: 0.001, src: 'pink', rate: 1.6 });
-  noise(e, { t, f: 2700, type: 'lowpass', q: 0.5, dur: 0.03 + 0.03 * p, peak: 0.22 * v, a: 0.0006 });
+  tone(e, { t, f: (165 - 45 * p) * vary(40), f2: 60 - 14 * p, glide: 0.06, dur: 0.1 + 0.2 * p, peak: 0.3 * v, a: 0.002 });
+  tone(e, { t, f: 330 - 40 * p, f2: 140, glide: 0.045, dur: 0.08 + 0.06 * p, peak: 0.2 * v, type: 'triangle', a: 0.001 });
+  // shoulder pads: a dry crunch (this is the part a phone speaker plays)
+  noise(e, { t, f: 850 + 500 * p, q: 0.8, dur: 0.06 + 0.08 * p, peak: 0.6 * v, a: 0.001, src: 'pink', rate: 1.6 });
+  noise(e, { t, f: 1900, q: 0.6, dur: 0.03 + 0.03 * p, peak: 0.2 * v, a: 0.0006 });
   if (p > 0.45) {
     // helmets: two hard plastic knocks, never quite together
     const k = (p - 0.45) / 0.55;
@@ -296,7 +300,12 @@ export function thud(e: Engine, t: number, power: number): void {
     tone(e, { t: t + rnd(0.012, 0.024), f: 1720 * vary(60), dur: 0.022, peak: 0.12 * k, type: 'triangle', a: 0.0006 });
     noise(e, { t, f: 3600, type: 'highpass', q: 0.6, dur: 0.02, peak: 0.2 * k, a: 0.0005 });
   }
-  if (p > 0.8) tone(e, { t: t + 0.01, f: 82, f2: 38, dur: 0.42, peak: 0.34 * ((p - 0.8) / 0.2), a: 0.004, verb: 0.1 });
+  if (p > 0.8) {
+    // the ground shakes
+    const k = (p - 0.8) / 0.2;
+    tone(e, { t: t + 0.01, f: 82, f2: 38, dur: 0.42, peak: 0.2 * k, a: 0.004 });
+    noise(e, { t: t + 0.01, f: 420, type: 'lowpass', q: 0.6, dur: 0.3, peak: 0.2 * k, a: 0.01, src: 'pink', verb: 0.2 });
+  }
 }
 
 /** A ball through the night air. `flutter` adds the spin of a long spiral. */

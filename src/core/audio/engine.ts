@@ -34,6 +34,8 @@ export interface Engine {
   metal: AudioBuffer;
   /** scheduled, not yet finished one-shot sources */
   voices: number;
+  /** their start times (a sound scheduled for later is not sounding yet) */
+  starts: number[];
   duckDepth: number;
   duckEnd: number;
   /** lets the music player mirror a duck when the element is not routed through the graph */
@@ -53,8 +55,9 @@ export const vary = (cents: number): number => 2 ** (rnd(-cents, cents) / 1200);
 /** The limiter's ceiling: the soft clipper never lets a sample past this. */
 export const CEILING = 0.9;
 const KNEE = 0.68;
-// The compressor adds a fixed make-up gain (about +3.9 dB with these settings); TRIM takes it back out.
-const TRIM = 1;
+// The compressor applies a fixed make-up gain that depends on its settings (measured: x1.209 with the ones below);
+// TRIM takes it back out, so a quiet sound leaves the limiter exactly as loud as it went in.
+const TRIM = 1 / 1.209;
 
 function softClip(): Float32Array<ArrayBuffer> {
   const n = 4097;
@@ -211,6 +214,7 @@ export function createEngine(ctx: BaseAudioContext, live: boolean, bypass = fals
     pink: pinkBuffer(ctx, 5),
     metal: metalBuffer(ctx, 2),
     voices: 0,
+    starts: [],
     duckDepth: 0,
     duckEnd: 0,
     onDuck: null,
@@ -228,17 +232,31 @@ export function tapOf(e: Engine): AnalyserNode {
   return e.tap;
 }
 
-/** Counts a one-shot source as a voice until it ends, then unhooks the end of its chain. */
-export function track(e: Engine, src: AudioScheduledSourceNode, tail?: AudioNode): void {
+/** Counts a one-shot source (starting at `t`) as a voice until it ends, then unhooks the end of its chain. */
+export function track(e: Engine, src: AudioScheduledSourceNode, t: number, tail?: AudioNode): void {
   e.voices += 1;
+  e.starts.push(t);
   src.onended = (): void => {
     e.voices -= 1;
+    const i = e.starts.indexOf(t);
+    if (i >= 0) {
+      e.starts[i] = e.starts[e.starts.length - 1]!;
+      e.starts.pop();
+    }
     try {
       tail?.disconnect();
     } catch {
       /* already gone */
     }
   };
+}
+
+/** How many voices are sounding right now (scheduled ones that have not started yet do not count). */
+export function sounding(e: Engine): number {
+  const now = e.ctx.currentTime + 0.03;
+  let n = 0;
+  for (const t of e.starts) if (t <= now) n += 1;
+  return n;
 }
 
 /** Connects a node to the reverb send at the given level. */
@@ -284,7 +302,7 @@ export function tone(e: Engine, o: Tone): void {
   g.gain.exponentialRampToValueAtTime(0.0001, o.t + o.dur);
   osc.connect(g).connect(o.to ?? e.sfx);
   if (o.verb) send(e, g, o.verb);
-  track(e, osc, g);
+  track(e, osc, o.t, g);
   osc.start(o.t);
   osc.stop(o.t + o.dur + 0.01);
 }
@@ -340,7 +358,7 @@ export function noise(e: Engine, o: Noise): void {
   }
   src.connect(f).connect(g).connect(o.to ?? e.sfx);
   if (o.verb) send(e, g, o.verb);
-  track(e, src, g);
+  track(e, src, o.t, g);
   src.start(o.t, Math.random() * (buf.duration - 0.05));
   src.stop(o.t + o.dur + 0.01);
 }
@@ -354,7 +372,7 @@ export function sample(e: Engine, t: number, key: string, volume: number, to?: A
   g.gain.value = volume;
   src.buffer = buf;
   src.connect(g).connect(to ?? e.sfx);
-  track(e, src, g);
+  track(e, src, t, g);
   src.start(t);
   return true;
 }

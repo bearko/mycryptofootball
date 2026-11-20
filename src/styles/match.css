@@ -74,9 +74,12 @@
 @keyframes bob { to { margin-top: -5.9rem; } }
 
 /* ---------- the announcer ---------- */
-.booth { position: absolute; left: max(0.8rem, env(safe-area-inset-left)); bottom: 2.6rem; z-index: 7; max-width: 46%; transition: bottom 0.4s var(--spring); pointer-events: none; }
+.booth { position: absolute; left: max(0.8rem, env(safe-area-inset-left)); bottom: 2.6rem; z-index: 7; max-width: 40%; transition: bottom 0.4s var(--spring); pointer-events: none; }
 .booth .bubble { pointer-events: auto; margin-bottom: 1.6rem; }
 .hand.in + .booth { bottom: 16.4rem; }
+.match.cine .booth { opacity: 0; transition: opacity 0.15s; }
+.hand-log[hidden] { display: none; }
+.hand-go .btn.off .btn-face { font-size: var(--fs-s); }
 .booth .speech-who { width: 3.4rem; height: 6.4rem; }
 
 /* ---------- centre stage: clash, cut-in, telop ---------- */
@@ -148,16 +151,23 @@
 /* ---------- the hand ---------- */
 .hand { position: absolute; left: 0; right: 0; bottom: 2.2rem; z-index: 6; height: 14.2rem; display: flex; gap: 0.9rem; align-items: stretch; padding: 1.2rem max(0.8rem, env(safe-area-inset-right)) 0.6rem max(0.8rem, env(safe-area-inset-left)); background: linear-gradient(transparent, rgba(6, 8, 26, 0.86) 22%, rgba(6, 8, 26, 0.96)); transform: translateY(125%); transition: transform 0.42s cubic-bezier(0.2, 1.2, 0.3, 1); }
 .hand.in { transform: none; }
-.hand-side { position: relative; width: 6.4rem; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; font-size: var(--fs-xs); color: var(--ink); clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); overflow: hidden; }
+.hand-side { position: relative; width: 5.6rem; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; font-size: var(--fs-xs); color: var(--ink); clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); overflow: hidden; }
 .hand-side b { font-family: var(--display); font-weight: 400; font-size: var(--fs-xl); }
 .hand-side.off { background: var(--yellow); }
 .hand-side.def { background: var(--cyan); }
 .hand-side i { font-style: normal; font-size: var(--fs-xs); letter-spacing: 0.2em; animation: march 0.8s steps(4) infinite; }
 .hand-side.def i { animation: throb 0.8s ease-in-out infinite; }
 @keyframes march { from { transform: translateX(-0.5rem); opacity: 0.3; } to { transform: translateX(0.5rem); opacity: 1; } }
-.hand-cards { flex: 0 1 auto; min-width: 0; display: flex; gap: 0.7rem; overflow-x: auto; overflow-y: visible; padding: 1.4rem 0.5rem 0; margin-top: -1.4rem; scrollbar-width: none; }
+.hand-cards { flex: 0 1 auto; min-width: 0; display: flex; gap: 0.6rem; overflow-x: auto; overflow-y: visible; padding: 1.4rem 0.5rem 0; margin-top: -1.4rem; scrollbar-width: none; }
 .hand-cards::-webkit-scrollbar { display: none; }
-.hand-cards .card { height: 12.2rem; }
+.hand-cards .card { height: 12.2rem; width: 9.4rem; }
+/* a special play that cannot be called right now folds down to its spine */
+.hand-cards .card.spine { width: 3.6rem; filter: none; }
+.card.spine .card-in { background: linear-gradient(180deg, #2a2760, #0e0b33); box-shadow: 0.2rem 0.2rem 0 var(--ink); border-color: var(--ink); }
+.card.spine .foil, .card.spine .sp-name, .card.spine .sp-tag, .card.spine .sp-foot, .card.spine .card-key, .card.spine .card-glare { display: none; }
+.card.spine .sp-hero { flex: none; height: 3.6rem; margin-top: 0.3rem; filter: grayscale(0.8) brightness(0.8); }
+.card.spine .sp-hero::before { display: none; }
+.card.spine .card-why { position: static; transform: none; background: none; writing-mode: vertical-rl; flex: 1; display: flex; align-items: center; justify-content: flex-start; padding: 0.4rem 0; font-family: var(--body); font-size: var(--fs-xs); color: var(--dim); letter-spacing: 0.05em; margin: 0 auto; }
 .card.ready .card-in { animation: ready 0.9s ease-out 0.5s 2; }
 @keyframes ready { 0% { box-shadow: 0 0 0 0 var(--yellow), 0.3rem 0.3rem 0 var(--ink); } 100% { box-shadow: 0 0 0 1.6rem rgba(255, 225, 74, 0), 0.3rem 0.3rem 0 var(--ink); } }
 .hand-log { flex: 1 1 0; min-width: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 0.2rem; font-size: var(--fs-xs); line-height: 1.5; padding-left: 0.7rem; border-left: 0.2rem dashed var(--line); }
@@ -170,8 +180,8 @@
 .hand-log b { font-weight: 400; color: var(--cyan); margin-left: auto; flex: none; }
 .hand-log li.good b { color: var(--lime); }
 .hand-log li:nth-child(n + 3) { opacity: 0.55; }
-.hand-go { width: 13rem; flex: none; display: flex; flex-direction: column; gap: 0.7rem; justify-content: center; align-items: stretch; }
-.hand-go .btn-face { padding: 0 0.8rem; }
+.hand-go { width: 11.6rem; flex: none; display: flex; flex-direction: column; gap: 0.7rem; justify-content: center; align-items: stretch; }
+.hand-go .btn-face { padding: 0 0.6rem; font-size: var(--fs-m); }
 .match > .ticker { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; }
 
 /* ---------- pop-ups of the match ---------- */

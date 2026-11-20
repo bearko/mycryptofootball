@@ -35,7 +35,7 @@ function state(e: Engine): State {
   return e.crowdState as State;
 }
 
-const bedLevel = (mood: number): number => 0.07 + 0.3 * mood ** 1.4;
+const bedLevel = (mood: number): number => 0.06 + 0.2 * mood ** 1.4;
 
 function build(e: Engine): Bed {
   const { ctx } = e;
@@ -151,20 +151,20 @@ export function crowdRoar(e: Engine, t: number, power = 0.7): void {
   const to = e.crowdIn;
   noise(e, {
     t, to, src: 'pink', rate: rnd(0.9, 1.2), f: 620, sweep: [[0.15, 900], [1, 700]], q: 0.9,
-    a: 0.15, hold: 0.25 + 0.5 * p, dur: 1.4 + 1.6 * p, peak: 0.2 + 0.3 * p, verb: 0.12,
+    a: 0.15, hold: 0.25 + 0.5 * p, dur: 1.4 + 1.6 * p, peak: 0.3 + 0.6 * p, verb: 0.12,
   });
   noise(e, {
     t, to, f: 1450, sweep: [[0.2, 2100], [1, 1500]], q: 1.1,
-    a: 0.2, hold: 0.2 + 0.4 * p, dur: 1.2 + 1.4 * p, peak: 0.1 + 0.2 * p,
+    a: 0.2, hold: 0.2 + 0.4 * p, dur: 1.2 + 1.4 * p, peak: 0.16 + 0.4 * p,
   });
-  noise(e, { t, to, f: 3400, type: 'highpass', q: 0.5, a: 0.25, hold: 0.1 + 0.3 * p, dur: 1 + 1.2 * p, peak: 0.02 + 0.05 * p });
+  noise(e, { t, to, f: 3400, type: 'highpass', q: 0.5, a: 0.25, hold: 0.1 + 0.3 * p, dur: 1 + 1.2 * p, peak: 0.03 + 0.09 * p });
   if (p > 0.55) {
     // a few fans whistling through their fingers
     const n = p > 0.85 ? 3 : 2;
     for (let i = 0; i < n; i += 1) {
       const f = rnd(1850, 2500);
       const at = t + rnd(0.15, 0.9 + p);
-      tone(e, { t: at, to, f, f2: f * rnd(1.15, 1.35), dur: rnd(0.16, 0.3), hold: 0.08, peak: 0.022, a: 0.03, verb: 0.3 });
+      tone(e, { t: at, to, f, f2: f * rnd(1.15, 1.35), dur: rnd(0.16, 0.3), hold: 0.08, peak: 0.035, a: 0.03, verb: 0.3 });
     }
   }
   lift(e, t, 1.2 * p, 0.5 + p);
@@ -172,32 +172,33 @@ export function crowdRoar(e: Engine, t: number, power = 0.7): void {
 
 export function crowdOoh(e: Engine, t: number): void {
   const to = e.crowdIn;
-  noise(e, { t, to, src: 'pink', f: 430, sweep: [[0.35, 640], [1, 400]], q: 2.4, a: 0.16, hold: 0.1, dur: 0.95, peak: 0.42, verb: 0.1 });
-  noise(e, { t, to, f: 850, sweep: [[0.35, 1150], [1, 800]], q: 2.5, a: 0.16, hold: 0.1, dur: 0.9, peak: 0.16 });
+  noise(e, { t, to, src: 'pink', f: 430, sweep: [[0.35, 640], [1, 400]], q: 2.4, a: 0.16, hold: 0.1, dur: 0.95, peak: 0.95, verb: 0.1 });
+  noise(e, { t, to, f: 850, sweep: [[0.35, 1150], [1, 800]], q: 2.5, a: 0.16, hold: 0.1, dur: 0.9, peak: 0.4 });
   lift(e, t, 0.35, 0.4);
 }
 
 export function crowdGroan(e: Engine, t: number): void {
   const to = e.crowdIn;
-  noise(e, { t, to, src: 'pink', rate: 0.85, f: 620, sweep: [[1, 330]], q: 2.2, a: 0.14, hold: 0.15, dur: 1.3, peak: 0.36, verb: 0.1 });
-  noise(e, { t, to, f: 1000, sweep: [[1, 640]], q: 2.5, a: 0.14, hold: 0.1, dur: 1.1, peak: 0.1 });
+  noise(e, { t, to, src: 'pink', rate: 0.85, f: 620, sweep: [[1, 330]], q: 2.2, a: 0.14, hold: 0.15, dur: 1.3, peak: 0.8, verb: 0.1 });
+  noise(e, { t, to, f: 1000, sweep: [[1, 640]], q: 2.5, a: 0.14, hold: 0.1, dur: 1.1, peak: 0.24 });
 }
 
 function stomp(e: Engine, t: number, v: number): void {
   const to = e.crowdIn;
-  tone(e, { t, to, f: 98, f2: 46, glide: 0.06, dur: 0.2, peak: 0.46 * v, a: 0.003 });
-  noise(e, { t, to, src: 'pink', f: 420, type: 'lowpass', q: 0.6, dur: 0.1, peak: 0.5 * v, a: 0.002 });
+  tone(e, { t, to, f: 98, f2: 46, glide: 0.06, dur: 0.2, peak: 0.36 * v, a: 0.003 });
+  noise(e, { t, to, src: 'pink', f: 420, type: 'lowpass', q: 0.6, dur: 0.1, peak: 0.4 * v, a: 0.002 });
   // late feet, and the bleachers rattling
   noise(e, { t: t + rnd(0.012, 0.03), to, src: 'pink', f: 520, type: 'lowpass', q: 0.6, dur: 0.08, peak: 0.26 * v, a: 0.002 });
-  noise(e, { t, to, f: 950, q: 0.7, dur: 0.05, peak: 0.1 * v, a: 0.001 });
+  noise(e, { t, to, f: 950, q: 0.7, dur: 0.06, peak: 0.45 * v, a: 0.001 });
+  tone(e, { t, to, f: 310, f2: 150, glide: 0.04, dur: 0.08, peak: 0.16 * v, type: 'triangle', a: 0.002 });
 }
 
 function clap(e: Engine, t: number, v: number): void {
   const to = e.crowdIn;
   for (let i = 0; i < 4; i += 1) {
-    noise(e, { t: t + (i ? rnd(0.004, 0.028) : 0), to, f: rnd(1100, 1900), q: 1.3, dur: rnd(0.06, 0.1), peak: 0.17 * v, a: 0.001 });
+    noise(e, { t: t + (i ? rnd(0.004, 0.028) : 0), to, f: rnd(1100, 1900), q: 1.3, dur: rnd(0.07, 0.12), peak: 0.8 * v, a: 0.001 });
   }
-  noise(e, { t, to, f: 1500, q: 0.8, dur: 0.17, peak: 0.06 * v, a: 0.004, verb: 0.2 });
+  noise(e, { t, to, f: 1500, q: 0.8, dur: 0.2, peak: 0.34 * v, a: 0.004, verb: 0.25 });
 }
 
 function cycle(e: Engine, st: State, t: number): void {

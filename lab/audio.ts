@@ -761,7 +761,7 @@ function meter(): void {
     const d = audioDebug();
     status.replaceChildren(
       d.unlocked ? h('b', '音は有効') : h('b.off', 'どこかを押すと音が出ます'),
-      ` ／ context: ${d.state} ／ 発音数: ${d.voices}`);
+      ` ／ context: ${d.state} ／ 発音数: ${d.voices}（予約 ${d.booked}）`);
     const { width: w, height: ht } = canvas;
     g.fillStyle = '#06081a';
     g.fillRect(0, 0, w, ht);

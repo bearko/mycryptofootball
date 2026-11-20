@@ -3,7 +3,7 @@
 
 import { hero } from '../../game/heroes';
 import { FIELD, type TeamSheet } from '../../game/match';
-import { TAU, clamp, css, hash, lerp, luma, mix, rgbOf, scale, seeded, type RGB } from './math';
+import { TAU, css, hash, lerp, luma, mix, rgbOf, scale, seeded, type RGB } from './math';
 
 export const WIDTH = 24;
 export const END = 5;
@@ -301,7 +301,8 @@ export function bakeCrowd(teams: [TeamSheet, TeamSheet], frame: number, hot: boo
       let shirt: RGB;
       if (r2 < fan) shirt = scale(cols[side], 0.5 + 0.38 * r3);
       else shirt = NEUTRAL[Math.floor(r3 * NEUTRAL.length)]!;
-      shirt = scale(shirt, lf);
+      // calmer than the players in front of it
+      shirt = mix(scale(shirt, lf * 0.82), [16, 24, 52], 0.16);
       const skin = scale(SKIN[Math.floor(hash(id + 3.1) * SKIN.length)]!, lf * 0.92);
       const turn = Math.floor(hash(id + 5.5) * 3);
       const up = turn === frame % 3;
@@ -571,4 +572,3 @@ export function loadFonts(texts: string[]): Promise<unknown> {
   ]).catch(() => undefined);
 }
 
-export { clamp };

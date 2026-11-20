@@ -12,7 +12,7 @@
 .end-results li.win { border-bottom-color: var(--lime); }
 .end-results b { font-weight: 400; font-size: var(--fs-xl); line-height: 1.1; background: none; }
 .end-team { display: flex; gap: 0.3rem; }
-.end-hero { position: relative; display: flex; flex-direction: column; align-items: center; width: 7.4rem; font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); animation: fade-up 0.5s backwards; animation-delay: calc(1.6s + var(--i) * 70ms); }
+.end-hero { position: relative; display: flex; flex-direction: column; align-items: center; width: 7.8rem; font-size: 0.92rem; white-space: nowrap; line-height: 1.2; color: var(--dim); animation: fade-up 0.5s backwards; animation-delay: calc(1.6s + var(--i) * 70ms); }
 .end-hero .portrait { width: 6.4rem; }
 .end-hero.on { color: var(--yellow); }
 .end-hero .label { position: absolute; top: -0.3rem; left: 0; font-size: 0.8rem; padding: 0 0.8rem 0 0.5rem; }

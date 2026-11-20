@@ -17,7 +17,7 @@ export interface Key {
   t: number;
   x: number;
   z: number;
-  /** arrive at full speed instead of easing to a stop (only looked at on the last key) */
+  /** arrive at full speed instead of easing into the key */
   hard?: boolean;
 }
 
@@ -39,6 +39,7 @@ export type Cue = { t: number } & (
   | { c: 'handoff' }
   | { c: 'throw'; long: boolean }
   | { c: 'jump'; who: Ref; h: number; dur: number }
+  /** dir: +1 toward the goal the offense attacks */
   | { c: 'dive'; who: Ref; dir: number }
   | { c: 'catch'; who: Ref; long: boolean }
   | { c: 'swat'; x: number; y: number; z: number }
@@ -156,7 +157,9 @@ const slope = (keys: Key[], j: number, x: boolean): number => {
   if (j === 0) return 0;
   const a = keys[j - 1]!;
   const d0 = ((v - (x ? a.x : a.z)) / Math.max(1e-3, k.t - a.t));
-  if (j === n - 1) return k.hard ? d0 : 0;
+  // a "hard" key is passed at full speed: the body carries on a little before it settles
+  if (k.hard) return d0;
+  if (j === n - 1) return 0;
   const c = keys[j + 1]!;
   const d1 = (((x ? c.x : c.z) - v) / Math.max(1e-3, c.t - k.t));
   if (d0 * d1 <= 0) return 0;
@@ -250,6 +253,18 @@ export function buildScript(
     uv.set(p, [called.def[pos][0], called.def[pos][1]]);
   };
   const ref = (p: Plan): Ref => ({ team: p.team, id: p.id });
+  /** when a plan first gets past drive position u (looked up on the finished path) */
+  const cross = (p: Plan, u: number, t0: number, t1: number): number => {
+    const tmp = { x: 0, z: 0 };
+    const target = X(u);
+    for (let t = t0; t < t1; t += 0.02) {
+      evalKeys(p.keys, t, tmp);
+      if ((tmp.x - target) * dir >= 0) return t;
+    }
+    return t1;
+  };
+  /** how far a chasing defender can have got by time t */
+  const reach = (p: Plan, t: number): number => U(p) + Math.max(0, t - s - 0.2) / PACE * 0.92;
 
   const cues: Cue[] = [];
   const ball: BallSeg[] = [];
@@ -350,7 +365,7 @@ export function buildScript(
         go(rb, tEnd, hitU, lerp(12.8, lane, 0.85), true);
       }
     }
-    const tAt = (u: number): number => tA + clamp((u - fromU) / Math.max(0.5, hitU - fromU), 0, 1) * (tEnd - tA);
+    const tAt = (u: number): number => cross(rb, u, tA, tEnd);
     ball.push({ t0: 0, t1: tHand - (inside ? 0 : 0.14), kind: 'held', team: o, id: qb.id });
     if (!inside) {
       // a short pitch
@@ -372,10 +387,9 @@ export function buildScript(
     const lz = V(rb);
     if (sp.td) {
       tTD = tAt(FIELD + 0.4);
-      const du = Math.min(FIELD - 1.2, Math.max(U(defender), FIELD - 6));
-      go(defender, Math.max(s + 0.3, tTD - 0.5), du - 2, lerp(V(defender), lz, 0.6));
-      go(defender, tTD, FIELD - 0.8, lz + (lz < 12 ? 1.6 : -1.6), true);
-      cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
+      const du = Math.min(FIELD - 0.8, reach(defender, tTD));
+      go(defender, tTD, du, lz + (lz < 12 ? 1.6 : -1.6), true);
+      if (du > FIELD - 3.5) cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
       cues.push({ t: tTD, c: 'td', who: ref(rb) });
       cues.push({ t: tEnd + 0.1, c: 'celebrate', team: o });
       ball.push({ t0: tHand + (inside ? 0 : 0.04), t1: 99, kind: 'held', team: o, id: rb.id });
@@ -392,7 +406,7 @@ export function buildScript(
         ball.push({ t0: tHand + (inside ? 0 : 0.04), t1: tEnd, kind: 'held', team: o, id: rb.id });
         ball.push({ t0: tEnd, t1: tEnd + 0.5, kind: 'air', from: [X(hitU), 1.4, lz], to: [X(lu), 0.25, lv], h: 2.4, spiral: false });
         ball.push({ t0: tEnd + 0.5, t1: 99, kind: 'held', team: d, id: defender.id });
-        cues.push({ t: tEnd + 0.42, c: 'dive', who: ref(defender), dir: -1 });
+        cues.push({ t: tEnd + 0.42, c: 'dive', who: ref(defender), dir: 1 });
         cues.push({ t: tEnd + 0.5, c: 'steal', who: ref(defender) });
         cues.push({ t: tEnd + 1.05, c: 'celebrate', team: d });
         star = ref(defender);
@@ -519,9 +533,10 @@ export function buildScript(
           tEnd = tCatch + clamp((hitU - spotU) * (PACE + 0.006), 0.3, 2.5);
           go(recv, tEnd, hitU, rvEnd, !sp.td);
           if (sp.td) {
-            tTD = tCatch + clamp((FIELD + 0.4 - spotU) / Math.max(0.5, hitU - spotU), 0, 1) * (tEnd - tCatch);
-            go(defender, tTD, FIELD - 0.8, rvEnd - inward * 1.6, true);
-            cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
+            tTD = cross(recv, FIELD + 0.4, tCatch, tEnd);
+            const du = Math.min(FIELD - 0.8, spotU + 1.7 + (tTD - tCatch) / PACE * 0.9);
+            go(defender, tTD, du, rvEnd - inward * 1.6, true);
+            if (du > FIELD - 3.5) cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
           } else {
             go(defender, tEnd, hitU + 0.85, rvEnd, true);
           }
