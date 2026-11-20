@@ -1,0 +1,28 @@
+{
+  "name": "mycryptofootball",
+  "version": "0.1.0",
+  "description": "My Crypto Heroes のヒーローが部員のアメリカンフットボール部を率いて、弱小校から優勝を目指す育成カードゲーム（非公式二次創作）",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "sync-assets": "node scripts/sync-assets.mjs",
+    "predev": "node scripts/sync-assets.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/sync-assets.mjs",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "pretest": "node scripts/sync-assets.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "balance": "BALANCE=1 npm test -- tests/balance.test.ts --reporter=verbose"
+  },
+  "devDependencies": {
+    "@fontsource/dela-gothic-one": "^5.3.0",
+    "@fontsource/dotgothic16": "^5.3.1",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
