@@ -3,6 +3,7 @@
 
 import { applyVolumes, sfx } from '../core/audio';
 import { h } from '../core/dom';
+import { canFullscreen, goFullscreen, installWay, onInstallChange, promptInstall } from '../core/install';
 import { commit, prefs, save } from '../core/save';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
@@ -12,7 +13,7 @@ import {
 } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
-import { TALENT_COLOR, button, closeModal, modal, portrait, radar, trustGauge } from './kit';
+import { TALENT_COLOR, button, cheerAt, closeModal, modal, portrait, radar, trustGauge } from './kit';
 
 /** Where a member plays: "司令塔 / セーフティ", or "控え". */
 export function positions(s: Season, id: number): string {
@@ -134,7 +135,7 @@ export function settingsModal(): void {
   });
   const row = (name: string, note: string, control: HTMLElement): HTMLElement => h('div.set-row', h('span', name, h('small', note)), control);
   const draw = (): void => {
-    body.replaceChildren(
+    const rows: (HTMLElement | null)[] = [
       row('音楽', '', slider(p.bgm, (v) => { p.bgm = v; }, () => undefined)),
       row('効果音', '歓声もふくむ', slider(p.se, (v) => { p.se = v; }, () => sfx.cardConfirm())),
       row('演出', 'ゆれ・光・スロー', seg(p.motion, [[true, 'フル'], [false, 'ひかえめ']], (v) => { p.motion = v; })),
@@ -142,8 +143,77 @@ export function settingsModal(): void {
       row('文字', '', seg(p.text, [[1, '標準'], [1.15, '大きめ']], (v) => { p.text = v; })),
       row('色の補助', '色に形と記号を足す', seg(p.colorSafe, [[false, 'OFF'], [true, 'ON']], (v) => { p.colorSafe = v; })),
       row('振動', '対応するスマホのみ', seg(p.haptics, [[true, 'ON'], [false, 'OFF']], (v) => { p.haptics = v; })),
-    );
+      installWay() === 'none' ? null : row('全画面', 'アプリとして入れる', h('div.seg', h('button', { type: 'button', onclick: installModal }, '入れ方を見る'))),
+    ];
+    body.replaceChildren(...rows.filter((r): r is HTMLElement => !!r));
   };
   draw();
   modal(h('div', body, h('div.modal-actions', button('とじる', closeModal, { sound: 'back' }))), { title: '設定' });
+}
+
+/**
+ * "Play it as an app": how to put the game on the home screen so it opens full-screen.
+ * The content follows what this browser can do (its own install dialog, or step-by-step directions).
+ */
+export function installModal(): void {
+  const body = h('div.install');
+  let off: () => void = () => undefined;
+  const close = (): void => {
+    off();
+    closeModal();
+  };
+  const step = (n: number, text: string | (string | Node)[]): HTMLElement => h('li', h('i', String(n)), h('span', text));
+  const draw = (): void => {
+    const way = installWay();
+    const actions: (HTMLElement | null)[] = [];
+    let guide: HTMLElement;
+    if (way === 'none') {
+      guide = h('p.install-lead', 'アプリとして開いています。このまま全画面で遊べます。');
+    } else if (way === 'prompt') {
+      guide = h('p.install-lead', 'ホーム画面に置くと、ブラウザの枠がない全画面で遊べます。データはこの端末に残ります。');
+      const go = button('アプリとして入れる', async () => {
+        const ok = await promptInstall();
+        if (ok) {
+          cheerAt(go);
+          sfx.learn();
+          body.replaceChildren(h('p.install-lead', '追加しました！ ホーム画面の「MC Football」から開くと全画面になります。'),
+            h('div.modal-actions', button('OK', close)));
+        } else draw();
+      }, { cls: 'big go' });
+      actions.push(go);
+    } else if (way === 'ios') {
+      guide = h('ol.install-steps',
+        step(1, ['画面の下（または上）にある ', h('b', '共有ボタン'), '（□から↑が出ている形）を押す']),
+        step(2, [h('b', '「ホーム画面に追加」'), ' をえらぶ']),
+        step(3, ['ホーム画面にできた ', h('b', 'MC Football'), ' から開くと、全画面で遊べます']));
+    } else {
+      guide = h('ol.install-steps',
+        step(1, ['ブラウザの右上の ', h('b', '「︙」'), '（メニュー）を押す']),
+        step(2, [h('b', '「ホーム画面に追加」'), ' か ', h('b', '「アプリをインストール」'), ' をえらぶ']),
+        step(3, ['ホーム画面にできた ', h('b', 'MC Football'), ' から開くと、全画面で遊べます']));
+    }
+    if (way !== 'none' && canFullscreen()) {
+      actions.push(button('いまだけ全画面にする', async () => {
+        await goFullscreen();
+        close();
+      }, { cls: 'alt' }));
+    }
+    actions.push(button(way === 'none' ? 'とじる' : 'あとで', close, { cls: 'alt mini', sound: 'back' }));
+    body.replaceChildren(
+      h('div.install-top', h('img.install-icon', { src: 'icon-192.png', alt: '' }), guide),
+      h('div.modal-actions', actions));
+  };
+  draw();
+  off = onInstallChange(draw);
+  modal(body, { title: '全画面で遊ぼう' });
+}
+
+let installOffered = false;
+/** Once per visit, on phones and tablets that are still inside the browser: offer the app right at the start. */
+export function offerInstallOnce(): void {
+  if (installOffered) return;
+  installOffered = true;
+  if (installWay() === 'none') return;
+  if (!window.matchMedia('(pointer: coarse)').matches) return;
+  installModal();
 }

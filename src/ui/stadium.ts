@@ -10,9 +10,9 @@
 import { KIND, type DefType, type OffType } from '../game/cards';
 import { FIELD, type MatchState, type Pick, type PlayResult, type TeamSheet } from '../game/match';
 import {
-  ART, ART_PAD, CROWD_ROWS, END, FX0, FX1, FZ0, FZ1, RIBBON_H, RIBBON_PPY, WIDTH,
-  bakeCrowd, bakeField, bakeRibbon, bakeSprites, heroArt, ledColor, loadFonts, tinted,
-  type HeroArt, type Ribbon, type Sprites, type Tex,
+  ART, ART_PAD, BANDS, CHALK, CROWD_ROWS, END, FX0, FX1, FZ0, FZ1, RIBBON_H, RIBBON_PPY, SURROUND, WIDTH,
+  bakeCrowd, bakeField, bakeRibbon, bakeSprites, heroArt, ledColor, loadFonts, tinted, zoneColor,
+  type FieldArt, type HeroArt, type Ribbon, type Sprites, type Tex,
 } from './stadium/assets';
 import {
   buildScript, evalKeys, formation, lineUp, randomSpec, specOf, worldX,
@@ -53,6 +53,8 @@ export interface StadiumStats {
   cpuAvg: number;
   cpuWorst: number;
   particles: number;
+  /** current resolution scale (see setQuality) */
+  quality: number;
 }
 
 // ------------------------------------------------------------------ the world
@@ -263,7 +265,7 @@ export class Stadium {
   private H = 0;
   private dpr = 1;
   // textures
-  private fieldTex: Tex;
+  private field: FieldArt;
   private crowdCalm: Tex[] = [];
   private crowdHot: Tex[] = [];
   private ribbons: Record<'main' | 'td' | 'turnover' | 'win', Ribbon>;
@@ -273,6 +275,7 @@ export class Stadium {
   private bowl = buildBowl();
   private stars: number[] = [];
   private col: [RGB, RGB];
+  private zoneCss: [string, string];
   // time
   private last = 0;
   /** real seconds since creation */
@@ -315,6 +318,8 @@ export class Stadium {
   private camSide = 1;
   private camSnap = true;
   private camFrom = 0;
+  /** the runner has broken free in this play */
+  private broke = false;
   private sEx = new Spring(25); private sEy = new Spring(15); private sEz = new Spring(46);
   private sTx = new Spring(25); private sTy = new Spring(1); private sTz = new Spring(11);
   private sFov = new Spring(0.56);
@@ -349,6 +354,11 @@ export class Stadium {
   private attractWait = 0;
   private attractN = 0;
   private rnd = seeded(20260);
+  // resolution scale (see setQuality)
+  private quality = 1;
+  private qualityAuto = true;
+  private frameEma = 16;
+  private slowFor = 0;
   // stats
   private statDt: number[] = [];
   private statCpu: number[] = [];
@@ -356,15 +366,16 @@ export class Stadium {
   constructor(private canvas: HTMLCanvasElement, private teams: [TeamSheet, TeamSheet]) {
     this.ctx = canvas.getContext('2d', { alpha: false }) as CanvasRenderingContext2D;
     this.col = [rgbOf(teams[0].color), rgbOf(teams[1].color)];
+    this.zoneCss = [css(zoneColor(teams[0].color)), css(zoneColor(teams[1].color))];
     for (const t of teams) for (const p of t.players) heroArt(p.id);
-    this.fieldTex = bakeField(teams);
+    this.field = bakeField(teams);
     this.sprites = bakeSprites(teams);
     this.ribbons = this.bakeRibbons();
     this.bakeCrowds();
     // textures use web fonts: bake again once they can be drawn
     void loadFonts(this.fontTexts()).then(() => {
       if (this.dead) return;
-      this.fieldTex = bakeField(this.teams);
+      this.field = bakeField(this.teams);
       this.ribbons = this.bakeRibbons();
     });
     const sr = seeded(9);
@@ -437,7 +448,7 @@ export class Stadium {
     const now = this.clock;
     const colors = [css(mix(this.col[team], [255, 255, 255], 0.25)), '#fff4d6', css(mix(this.col[team], [255, 255, 255], 0.6))];
     if (kind === 'turnover') {
-      if (this.motion) this.flash = Math.max(this.flash, 0.55);
+      if (this.motion) this.flash = Math.max(this.flash, 0.35);
       this.flashStorm = Math.max(this.flashStorm, 1.2);
       this.excBoost = Math.max(this.excBoost, 0.6);
       this.ribbonMode = 'turnover';
@@ -446,7 +457,7 @@ export class Stadium {
     }
     const long = kind === 'win';
     const span = long ? 9 : 3.2;
-    if (this.motion) this.flash = Math.max(this.flash, 0.7);
+    if (this.motion) this.flash = Math.max(this.flash, 0.4);
     this.flashStorm = Math.max(this.flashStorm, span);
     this.excBoost = 1;
     this.confettiTeam = team;
@@ -519,13 +530,28 @@ export class Stadium {
     }
   }
 
+  /**
+   * Resolution scale on top of the device pixel ratio. 'auto' (default) starts at 1 and steps down
+   * when the device cannot hold its frame rate; a number (0.5..1) fixes it.
+   */
+  setQuality(q: 'auto' | number): void {
+    this.qualityAuto = q === 'auto';
+    const v = q === 'auto' ? 1 : clamp(q, 0.5, 1);
+    this.slowFor = 0;
+    if (v !== this.quality) {
+      this.quality = v;
+      this.W = -1;
+      this.resize();
+    }
+  }
+
   /** Frame times over the last few seconds (for the lab page). */
   stats(): StadiumStats {
     const avg = (a: number[]): number => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
     const max = (a: number[]): number => (a.length ? Math.max(...a) : 0);
     return {
       frames: this.statDt.length, avg: avg(this.statDt), worst: max(this.statDt),
-      cpuAvg: avg(this.statCpu), cpuWorst: max(this.statCpu), particles: this.fx.count,
+      cpuAvg: avg(this.statCpu), cpuWorst: max(this.statCpu), particles: this.fx.count, quality: this.quality,
     };
   }
 
@@ -554,15 +580,18 @@ export class Stadium {
     const ca = ledColor(a.color);
     const cb = ledColor(b.color);
     const gold = '#ffd98a';
+    // the message repeats a whole number of times around the bowl, so it has no seam
+    const last = this.bowl[this.bowl.length - 1]!;
+    const per = (last.s0 + last.len) * RIBBON_PPY;
     return {
-      main: bakeRibbon([
+      main: bakeRibbon(per, [
         { text: a.name, color: ca }, { text: 'GO! マイクリ', color: '#f2f5ff' }, { text: b.name, color: cb },
         { text: 'MY CRYPTO FOOTBALL', color: gold }, { text: 'ナイスプレー！', color: '#9fe8c8' }, { text: `${a.short} vs ${b.short}`, color: '#f2f5ff' },
         { text: 'ファイト！', color: '#ffb0a0' },
       ]),
-      td: bakeRibbon([{ text: 'TOUCHDOWN!!', color: gold }, { text: 'タッチダウン！！', color: '#ffffff' }], '#1a1206'),
-      turnover: bakeRibbon([{ text: 'TURNOVER!', color: '#ff9c8a' }, { text: '攻守交代！', color: '#ffffff' }], '#1a0a0a'),
-      win: bakeRibbon([{ text: 'VICTORY!!', color: gold }, { text: '勝利！ おめでとう！', color: '#ffffff' }], '#101a2c'),
+      td: bakeRibbon(per, [{ text: 'TOUCHDOWN!!', color: gold }, { text: 'タッチダウン！！', color: '#ffffff' }], '#1a1206'),
+      turnover: bakeRibbon(per, [{ text: 'TURNOVER!', color: '#ff9c8a' }, { text: '攻守交代！', color: '#ffffff' }], '#1a0a0a'),
+      win: bakeRibbon(per, [{ text: 'VICTORY!!', color: gold }, { text: '勝利！ おめでとう！', color: '#ffffff' }], '#101a2c'),
     };
   }
 
@@ -582,6 +611,7 @@ export class Stadium {
     let dpr = Math.min(2, window.devicePixelRatio || 1);
     const maxPx = 2.5e6;
     if (r.width * r.height * dpr * dpr > maxPx) dpr = Math.sqrt(maxPx / (r.width * r.height));
+    dpr *= this.quality;
     const w = Math.round(r.width * dpr);
     const h = Math.round(r.height * dpr);
     if (w === this.W && h === this.H) return;
@@ -681,6 +711,7 @@ export class Stadium {
     this.hooks = hooks;
     this.endFired = false;
     this.speedLines = 0;
+    this.broke = false;
     this.ballTrail.length = 0;
     if (!cinematic) this.pickShot(script);
     clearTimeout(this.watchdog);
@@ -688,7 +719,7 @@ export class Stadium {
       this.resolve = resolve;
       // the picture is driven by animation frames; if they stop (hidden tab), the play still ends
       const ms = (script.dur / sp) * 1000;
-      this.watchdog = window.setTimeout(() => this.endPlay(true), ms * 1.5 + 2600);
+      this.watchdog = window.setTimeout(() => this.endPlay(true), ms * 1.2 + 2000);
     });
   }
 
@@ -869,7 +900,7 @@ export class Stadium {
         this.flashStorm = Math.max(this.flashStorm, 1.4);
         if (fancy) {
           this.slow(0.28, 0.5);
-          this.flash = Math.max(this.flash, 0.4);
+          this.flash = Math.max(this.flash, 0.3);
           this.trauma = Math.max(this.trauma, 0.4);
         }
         if (!this.cinematic && this.motion && !this.playFast) this.setCam('whip', this.camVar, false);
@@ -881,6 +912,7 @@ export class Stadium {
         if (fancy) {
           this.speedLines = 1;
           this.punch = -0.8;
+          this.broke = true;
         }
         this.safe(() => hooks?.onBreak?.());
         break;
@@ -896,7 +928,7 @@ export class Stadium {
         }
         if (fancy) {
           this.slow(0.32, 0.6);
-          this.flash = Math.max(this.flash, 0.5);
+          this.flash = Math.max(this.flash, 0.38);
           this.trauma = Math.max(this.trauma, 0.35);
           this.setCam('orbit', this.camVar, false);
         }
@@ -1042,10 +1074,12 @@ export class Stadium {
       }
       burst(this.fx, f.x, f.y, f.z, 46, 15, f.color, 1.25);
       burst(this.fx, f.x, f.y, f.z, 14, 7, '#ffffff', 0.8);
-      const g = this.fx.spawn(GLINT, f.x, f.y, f.z);
-      g.max = 0.35;
-      g.size = 150;
-      g.alpha = 0.8;
+      if (this.motion) {
+        const g = this.fx.spawn(GLINT, f.x, f.y, f.z);
+        g.max = 0.3;
+        g.size = 90;
+        g.alpha = 0.6;
+      }
     }
     if (this.fireworks.length && this.fireworks.every((f) => f.done)) this.fireworks.length = 0;
     // confetti falls where the camera is looking
@@ -1100,6 +1134,18 @@ export class Stadium {
       // never leave a caller waiting for a play that cannot be drawn
       this.endPlay(true);
     }
+    // a device that cannot keep up gets a smaller picture, scaled up by the browser
+    if (this.qualityAuto && raw > 0 && raw < 250 && document.visibilityState !== 'hidden') {
+      this.frameEma += (raw - this.frameEma) * 0.06;
+      this.slowFor = this.frameEma > 21.5 ? this.slowFor + raw : Math.max(0, this.slowFor - raw * 2);
+      if (this.slowFor > 2500 && this.quality > 0.56) {
+        this.quality = Math.max(0.55, this.quality - 0.15);
+        this.slowFor = 0;
+        this.frameEma = 16;
+        this.W = -1;
+        this.resize();
+      }
+    }
     if (raw > 0 && raw < 1000) {
       this.statDt.push(raw);
       this.statCpu.push(performance.now() - t0);
@@ -1147,7 +1193,7 @@ export class Stadium {
     // mood
     this.exc = damp(this.exc, this.excTo, 1.6, dt);
     this.excBoost = Math.max(0, this.excBoost - dt * 0.28);
-    this.flash = Math.max(0, this.flash - dt * 2.6);
+    this.flash = Math.max(0, this.flash - dt * 3.2);
     this.flashStorm = Math.max(0, this.flashStorm - dt);
     this.trauma = Math.max(0, this.trauma - dt * 2.1);
     this.punch = damp(this.punch, 0, 5.5, dt);
@@ -1289,8 +1335,7 @@ export class Stadium {
     const type: OffType = sc.spec.type;
     let mode: CamMode;
     if (type === 'inside') mode = (['track', 'sky', 'low'] as const)[n % 3]!;
-    // the low sideline camera needs room: only when the run goes along the far side
-    else if (type === 'outside') mode = sc.endZ < 12 && n % 3 !== 0 ? 'low' : 'track';
+    else if (type === 'outside') mode = 'track';
     else if (type === 'short') mode = (['qb', 'track', 'sky'] as const)[n % 3]!;
     else mode = n % 4 === 3 ? 'track' : 'qb';
     // a sack is best seen from the side: from behind, the quarterback would be thrown into the lens
@@ -1343,6 +1388,10 @@ export class Stadium {
         tx = fx + dir * (pre ? 4 : 3); ty = 1.3 + this.by * 0.25; tz = lerp(12, fz, 0.5);
         fov = (this.camVar ? 0.5 : 0.47) + (this.ballAir ? 0.06 : 0);
         om = 4.6;
+        if (this.broke) {
+          // out in the open: swing ahead of the runner and let him come
+          ex = fx + dir * 7; tx = fx - dir * 0.5; fov += 0.03; om = 3.2;
+        }
         break;
       }
       case 'low': {
@@ -1405,7 +1454,7 @@ export class Stadium {
         } else if (k === 1) {
           ex = 6 + st * 3.4; ey = 2.3; ez = AZ1 - 1.6; tx = ex + 13; ty = 4.2; tz = 4; fov = 0.74;
         } else if (k === 2) {
-          ex = AX0 + 2.5; ey = 3 + st * 1.25; ez = MID_Z + 1.5; tx = MID_X; ty = 3; tz = MID_Z; fov = 0.7;
+          ex = AX0 + 2.5; ey = 3 + st * 1.25; ez = MID_Z; tx = MID_X; ty = 3; tz = MID_Z; fov = 0.7;
         } else if (k === 3) {
           ex = fx - 6 + st * 0.6; ey = 9.5; ez = 40.5; tx = fx + 2; ty = 1.4; tz = lerp(12, fz, 0.5); fov = 0.5;
         } else {
@@ -1563,11 +1612,24 @@ export class Stadium {
     // team areas on the far side
     this.fillPoly([6, 0, -4.6, 21, 0, -4.6, 21, 0, -2.4, 6, 0, -2.4], css(mix(scale(this.col[0], 0.55), [12, 40, 36], 0.45)));
     this.fillPoly([29, 0, -4.6, 44, 0, -4.6, 44, 0, -2.4, 29, 0, -2.4], css(mix(scale(this.col[1], 0.55), [12, 40, 36], 0.45)));
-    this.fillPoly([FX0, 0, FZ0, FX1, 0, FZ0, FX1, 0, FZ1, FX0, 0, FZ1], '#1a6b45');
+    this.fillPoly([FX0, 0, FZ0, FX1, 0, FZ0, FX1, 0, FZ1, FX0, 0, FZ1], SURROUND);
+    // the turf in layers: flat mowed bands, a soft overlay that may fit loosely, sharp paint, crisp lines
+    for (let i = 0; i < FIELD / 5; i += 1) {
+      this.fillPoly([i * 5, 0, 0, i * 5 + 5.05, 0, 0, i * 5 + 5.05, 0, WIDTH, i * 5, 0, WIDTH], BANDS[i % 2]!);
+    }
+    this.fillPoly([-END, 0, 0, 0, 0, 0, 0, 0, WIDTH, -END, 0, WIDTH], this.zoneCss[0]);
+    this.fillPoly([FIELD, 0, 0, FIELD + END, 0, 0, FIELD + END, 0, WIDTH, FIELD, 0, WIDTH], this.zoneCss[1]);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'low';
-    this.texQuad(this.fieldTex, 0, 0, this.fieldTex.width, this.fieldTex.height, FIELD_QUAD, 6, 2, 1.4 * px, 7);
+    const ov = this.field.overlay;
+    this.tqPad = 0.2;
+    this.texQuad(ov, 0, 0, ov.width, ov.height, FIELD_QUAD, 6, 2, 6 * px, 6);
+    this.tqPad = 0.75;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawPooling();
+    for (const d of this.field.decals) this.texQuad(d.tex, 0, 0, d.tex.width, d.tex.height, d.quad, 1, 1, 2.6 * px, 4);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawMarkings();
 
     this.drawLines();
     if (this.chalk) this.drawChalk(1);
@@ -1597,13 +1659,22 @@ export class Stadium {
     if (ballFree && cam.project(this.bx, this.by, this.bz)) ballDepth = cam.sd;
     else ballDrawn = true;
     if (ballFree) this.drawBallShadow();
+    // the two goals stand in the same depth order as the heroes
+    const g0 = cam.project(-END - 0.6, 0, MID_Z) ? cam.sd : -1;
+    const g1 = cam.project(FIELD + END + 0.6, 0, MID_Z) ? cam.sd : -1;
+    let goals = (g0 > 0 ? 1 : 0) | (g1 > 0 ? 2 : 0);
+    this.drawPylons();
     for (const ac of order) {
+      if ((goals & 1) && g0 > ac.sd) { this.drawGoal(-END - 0.6); goals &= ~1; }
+      if ((goals & 2) && g1 > ac.sd) { this.drawGoal(FIELD + END + 0.6); goals &= ~2; }
       if (!ballDrawn && ballDepth > ac.sd) {
         this.drawBall();
         ballDrawn = true;
       }
       this.drawActor(ac);
     }
+    if (goals & 1) this.drawGoal(-END - 0.6);
+    if (goals & 2) this.drawGoal(FIELD + END + 0.6);
     if (!ballDrawn) this.drawBall();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -1632,7 +1703,7 @@ export class Stadium {
     }
     if (this.flash > 0.01 && this.motion) {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = `rgba(235,240,255,${Math.min(0.8, this.flash)})`;
+      ctx.fillStyle = `rgba(235,240,255,${Math.min(0.45, this.flash)})`;
       ctx.fillRect(0, 0, W, H);
       ctx.globalCompositeOperation = 'source-over';
     }
@@ -1667,6 +1738,8 @@ export class Stadium {
   private tqSx = 0; private tqSy = 0; private tqSw = 1; private tqSh = 1;
   private tqP: ArrayLike<number> = FIELD_QUAD;
   private tqTol = 1.5; private tqMax = 6;
+  /** how far (pixels) a piece reaches over its neighbours; keep it small for translucent textures */
+  private tqPad = 0.75;
   private qx = 0; private qy = 0; private qd = 0;
 
   private tqProj(u: number, v: number): void {
@@ -1763,8 +1836,8 @@ export class Stadium {
     const ox = (ax + bx + cx + dx) / 4 - exx / 2 - eyx / 2;
     const oy = (ay + by + cy + dy) / 4 - exy / 2 - eyy / 2;
     // overlap the neighbours by a fraction of a pixel so no seams show
-    const padx = Math.min(rw * 0.5, (0.75 * rw) / lx);
-    const pady = Math.min(rh * 0.5, (0.75 * rh) / ly);
+    const padx = Math.min(rw * 0.5, (this.tqPad * rw) / lx);
+    const pady = Math.min(rh * 0.5, (this.tqPad * rh) / ly);
     const sx0 = Math.max(this.tqSx, rx - padx);
     const sy0 = Math.max(this.tqSy, ry - pady);
     const sx1 = Math.min(this.tqSx + this.tqSw, rx + rw + padx);
@@ -1854,13 +1927,13 @@ export class Stadium {
       const cw = crowd.width;
       const rh = (crowd.height / CROWD_ROWS) * ROWS_PER_STEP;
       for (let k = 0; k < STEPS; k += 1) {
-        this.texQuad(crowd, p.u0 * cw, k * rh, (p.u1 - p.u0) * cw, rh, p.steps[k]!, p.main ? 6 : 2, 1, 2.2 * px, p.main ? 5 : 4);
+        this.texQuad(crowd, p.u0 * cw, k * rh, (p.u1 - p.u0) * cw, rh, p.steps[k]!, p.main ? 3 : 1, 1, 2.4 * px, p.main ? 5 : 4);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       // the wall under the seats carries the LED ribbon
       this.fillPoly(QUAD_ORDER(p.wall), '#05070f');
       const sx = (scroll + p.s0 * RIBBON_PPY) % rib.period;
-      this.texQuad(rib.tex, sx, 0, p.len * RIBBON_PPY, RIBBON_H, p.wall, p.main ? 6 : 1, 1, 2 * px, 4);
+      this.texQuad(rib.tex, sx, 0, p.len * RIBBON_PPY, RIBBON_H, p.wall, p.main ? 3 : 1, 1, 2 * px, 5);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (blink) {
         ctx.globalCompositeOperation = 'lighter';
@@ -1869,6 +1942,45 @@ export class Stadium {
       }
     }
     ctx.imageSmoothingEnabled = true;
+  }
+
+  /** Floodlight pooling: the turf is brightest in the middle and falls off toward the ends and the sidelines. */
+  private drawPooling(): void {
+    const ctx = this.ctx;
+    const cam = this.cam;
+    const shade = (x0: number, z0: number, x1: number, z1: number, ax: number, az: number, bx: number, bz: number, a: number): void => {
+      // gradient from (ax,az) at full strength to (bx,bz) at nothing
+      if (!cam.project(ax, 0, az)) return;
+      const sx = cam.sx; const sy = cam.sy;
+      if (!cam.project(bx, 0, bz)) return;
+      const g = ctx.createLinearGradient(sx, sy, cam.sx, cam.sy);
+      g.addColorStop(0, `rgba(4,10,34,${a})`);
+      g.addColorStop(1, 'rgba(4,10,34,0)');
+      this.fillPoly([x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1], g);
+    };
+    const cx = clamp(this.focusX, 8, FIELD - 8);
+    shade(FX0, FZ0, 16, FZ1, FX0, MID_Z, 16, MID_Z, 0.42);
+    shade(FIELD - 16, FZ0, FX1, FZ1, FX1, MID_Z, FIELD - 16, MID_Z, 0.42);
+    shade(FX0, FZ0, FX1, 6, cx, FZ0, cx, 6, 0.22);
+    shade(FX0, WIDTH - 6, FX1, FZ1, cx, FZ1, cx, WIDTH - 6, 0.26);
+  }
+
+  /** The long chalk lines: border, goal lines and a line every five yards. */
+  private drawMarkings(): void {
+    const B = 0.5;
+    const y = 0.01;
+    const strip = (x0: number, z0: number, x1: number, z1: number, style: string): void => {
+      this.fillPoly([x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1], style);
+    };
+    strip(-END - B, -B, FIELD + END + B, 0, CHALK);
+    strip(-END - B, WIDTH, FIELD + END + B, WIDTH + B, CHALK);
+    strip(-END - B, 0, -END, WIDTH, CHALK);
+    strip(FIELD + END, 0, FIELD + END + B, WIDTH, CHALK);
+    for (let yd = 0; yd <= FIELD; yd += 5) {
+      const goal = yd === 0 || yd === FIELD;
+      const w = goal ? 0.17 : 0.085;
+      strip(yd - w, 0, yd + w, WIDTH, goal ? CHALK : 'rgba(246,249,242,0.74)');
+    }
   }
 
   /** Where the play starts (cool blue) and the line to gain (yellow), glowing on the turf. */
@@ -1991,6 +2103,59 @@ export class Stadium {
     return true;
   }
 
+  /** A goal at the back of an end zone: a post, a crossbar and two uprights. */
+  private drawGoal(x: number): void {
+    const ctx = this.ctx;
+    const cam = this.cam;
+    const px = this.dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.lineCap = 'round';
+    const seg = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, w: number): void => {
+      if (!cam.project(x0, y0, z0)) return;
+      const ax = cam.sx; const ay = cam.sy; const as = cam.ss;
+      if (!cam.project(x1, y1, z1)) return;
+      const lw = Math.max(1.5 * px, ((as + cam.ss) / 2) * w);
+      ctx.strokeStyle = 'rgba(20,16,6,0.55)';
+      ctx.lineWidth = lw + 2 * px;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(cam.sx, cam.sy);
+      ctx.stroke();
+      ctx.strokeStyle = '#e3c462';
+      ctx.lineWidth = lw;
+      ctx.stroke();
+    };
+    const bar = 3.4;
+    const half = 3.2;
+    // the post leans in over the end line, like a gooseneck
+    const bx = x < 0 ? x + 0.5 : x - 0.5;
+    seg(x, 0, MID_Z, x, bar - 0.6, MID_Z, 0.26);
+    seg(x, bar - 0.6, MID_Z, bx, bar, MID_Z, 0.26);
+    seg(bx, bar, MID_Z - half, bx, bar, MID_Z + half, 0.2);
+    seg(bx, bar, MID_Z - half, bx, bar + 6.5, MID_Z - half, 0.17);
+    seg(bx, bar, MID_Z + half, bx, bar + 6.5, MID_Z + half, 0.17);
+  }
+
+  /** Small orange markers at the corners of the end zones. */
+  private drawPylons(): void {
+    const ctx = this.ctx;
+    const cam = this.cam;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const x of [-END, 0, FIELD, FIELD + END]) {
+      for (const z of [-0.1, WIDTH + 0.1]) {
+        if (!cam.project(x, 0, z) || cam.sd < 1.5) continue;
+        const w = Math.max(2, cam.ss * 0.26);
+        const h = cam.ss * 0.75;
+        ctx.fillStyle = 'rgba(4,10,24,0.4)';
+        ctx.fillRect(cam.sx - w * 0.8, cam.sy - w * 0.25, w * 1.6, w * 0.5);
+        ctx.fillStyle = '#e8853a';
+        ctx.fillRect(cam.sx - w / 2, cam.sy - h, w, h);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(cam.sx - w / 2, cam.sy - h, w * 0.35, h);
+      }
+    }
+  }
+
   private drawActor(ac: Actor): void {
     const ctx = this.ctx;
     const art = ac.art;
@@ -2094,8 +2259,9 @@ export class Stadium {
     if (ac.sd < 11 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
       const sc = this.script;
       const star = sc && sc.star.team === ac.team && sc.star.id === ac.id;
-      if (!star) alpha = lerp(0.22, 1, sat((ac.sd - 4.5) / 6.5));
+      if (!star) alpha = sat((ac.sd - 5) / 7) ** 1.4;
     }
+    if (alpha < 0.02) return;
     ctx.globalAlpha = alpha;
     ctx.setTransform(cs * mx, sn * mx, -sn * my, cs * my, tx, ty);
     if (!art.ready || !art.lit) {
@@ -2314,13 +2480,13 @@ export class Stadium {
         ctx.closePath();
         ctx.fill();
       }
-      const size = clamp(ss * 30, H * 0.12, H * 0.9) * flick;
-      ctx.globalAlpha = 0.9;
+      const size = clamp(ss * 30, H * 0.12, H * 0.5) * flick;
+      ctx.globalAlpha = 0.85;
       ctx.drawImage(sp.glow, lx - size / 2, ly - size / 2, size, size);
       // anamorphic streak and a ghost across the lens
-      const sw = size * 2.6;
-      ctx.globalAlpha = 0.55 * flick;
-      ctx.drawImage(sp.streak, lx - sw / 2, ly - size * 0.09, sw, size * 0.18);
+      const sw = size * 2.2;
+      ctx.globalAlpha = 0.4 * flick;
+      ctx.drawImage(sp.streak, lx - sw / 2, ly - size * 0.06, sw, size * 0.12);
       if (lx > 0 && lx < W && ly > 0 && ly < H) {
         const cx = W / 2; const cy = H / 2;
         ctx.globalAlpha = 0.055;
@@ -2342,27 +2508,37 @@ export class Stadium {
     ctx.globalAlpha = 1;
   }
 
+  /** Focus lines that race in from the edges toward whoever has the ball. Drawn additively. */
   private drawSpeedLines(): void {
     const ctx = this.ctx;
+    const cam = this.cam;
     const W = this.W;
     const H = this.H;
     const a = this.speedLines;
-    const t = this.clock;
+    let cx = W / 2;
+    let cy = H / 2;
+    if (cam.project(this.bx, this.by + 0.5, this.bz)) {
+      cx = clamp(cam.sx, W * 0.15, W * 0.85);
+      cy = clamp(cam.sy, H * 0.2, H * 0.8);
+    }
+    const tick = Math.floor(this.clock * 16);
+    const far = Math.hypot(W, H);
     ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < 16; i += 1) {
-      const y = H * (0.08 + 0.84 * hash(i * 7.3 + Math.floor(t * 9 + i) * 3.1));
-      // keep the middle of the picture clear
-      const mid = Math.abs(y / H - 0.5);
-      if (mid < 0.13) continue;
-      const len = W * (0.18 + 0.3 * hash(i * 3.3 + Math.floor(t * 9 + i)));
-      const ph = (t * 3 + hash(i) * 5) % 1;
-      const x = W * (1.2 - ph * 1.6);
-      ctx.globalAlpha = a * (0.1 + 0.22 * mid) * Math.sin(ph * Math.PI);
-      const th = Math.max(1, H * 0.004 * (0.5 + hash(i * 1.7)));
+    for (let i = 0; i < 26; i += 1) {
+      const h1 = hash(i * 7.3 + tick * 3.1);
+      const h2 = hash(i * 3.7 + tick * 5.9);
+      const ang = (i / 26) * TAU + h1 * 0.2;
+      // fewer lines above and below: the run is mostly sideways
+      if (Math.abs(Math.sin(ang)) > 0.86 && h2 < 0.6) continue;
+      const r0 = Math.min(W, H) * (0.34 + 0.22 * h2);
+      const wdt = 0.006 + 0.012 * h1;
+      const c0 = Math.cos(ang);
+      const s0 = Math.sin(ang);
+      ctx.globalAlpha = a * (0.1 + 0.16 * h2);
       ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + len, y - th);
-      ctx.lineTo(x + len, y + th);
+      ctx.moveTo(cx + c0 * r0, cy + s0 * r0 * 0.8);
+      ctx.lineTo(cx + Math.cos(ang - wdt) * far, cy + Math.sin(ang - wdt) * far);
+      ctx.lineTo(cx + Math.cos(ang + wdt) * far, cy + Math.sin(ang + wdt) * far);
       ctx.closePath();
       ctx.fill();
     }
@@ -2423,7 +2599,7 @@ export class Stadium {
           const spot: [number, number] = [X(los + depth), rv];
           if (long) path([a, [X(los + depth * 0.55), f.off[p][1] + inward * 0.3], spot], { delay: 0.05 + i * 0.08, width: 0.32 });
           else path([a, [X(los + depth * 0.62), f.off[p][1]], spot], { delay: 0.05 + i * 0.08, width: 0.32 });
-          path([drop, spot], { dashed: true, delay: 0.3 + i * 0.1, width: 0.22, alpha: 0.8, arc: long ? 4.2 : 1.4, arrow: false });
+          path([drop, spot], { dashed: true, delay: 0.3 + i * 0.1, width: 0.15, alpha: 0.75, arc: long ? 2.8 : 1.1, arrow: false });
         });
       }
     } else {
@@ -2539,7 +2715,7 @@ export class Stadium {
         ctx.lineWidth = w * 1.9;
         ctx.stroke();
       }
-      ctx.strokeStyle = css(col, ln.alpha * pulse * k);
+      ctx.strokeStyle = css(col, ln.alpha * pulse * (over && ln.dashed ? 0.2 : k));
       ctx.lineWidth = w;
       ctx.stroke();
       if (!ln.dashed && !over) {

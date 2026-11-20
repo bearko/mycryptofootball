@@ -129,8 +129,9 @@ export function formation(los: number, call?: DefType): { off: Record<OffPos, UV
   if (call === 'zone') { def.CB1 = [los + 5.8, 4.5]; def.CB2 = [los + 5.8, 19.5]; def.LB = [los + 6.6, 12]; }
   if (call === 'deep') { def.CB1 = [los + 9, 4.5]; def.CB2 = [los + 9, 19.5]; def.S = [los + 15, 12]; }
   if (call === 'blitz') { def.LB = [los + 2.4, 12]; def.S = [los + 7, 12]; def.CB1 = [los + 3.2, 4.5]; def.CB2 = [los + 3.2, 19.5]; }
-  // nobody lines up behind the back of the end zone
+  // nobody lines up behind the back of an end zone
   for (const p of DEF_POS) def[p][0] = Math.min(def[p][0], FIELD + 3.6);
+  for (const p of OFF_POS) off[p][0] = Math.max(off[p][0], -3.8);
   return { off, def };
 }
 
@@ -239,7 +240,7 @@ export function buildScript(
   const b = (pos: DefPos): Plan => find(d, D.lineup.def[pos]);
   const go = (p: Plan, t: number, u: number, v: number, hard = false): void => {
     const last = p.keys[p.keys.length - 1]!;
-    const key: Key = { t: Math.max(t, last.t + 0.02), x: X(u), z: clamp(v, -0.8, WIDTH + 0.8) };
+    const key: Key = { t: Math.max(t, last.t + 0.02), x: X(clamp(u, -4.3, FIELD + 4.3)), z: clamp(v, -0.8, WIDTH + 0.8) };
     if (hard) key.hard = true;
     p.keys.push(key);
     uv.set(p, [u, v]);
@@ -322,6 +323,11 @@ export function buildScript(
   let spotU = end;
   let spotV = 12;
   const moved = new Set<Plan>();
+  /** the earliest the tackler can be at a spot without flying there */
+  const needT = (u: number, v: number): number => {
+    const from = called.def[defender.pos as DefPos] ?? [los + 5, 12];
+    return s + 0.18 + Math.hypot(from[0] - u, from[1] - v) / 15;
+  };
 
   if (isRun(type)) {
     const inside = type === 'inside';
@@ -349,6 +355,7 @@ export function buildScript(
         fromU = los - 5.4;
         tEnd = s + 0.8;
       }
+      if (!sp.td) tEnd = Math.max(tEnd, needT(hitU + 0.85, lane));
       go(rb, tEnd, hitU, lane, !sp.td);
     } else {
       go(rb, tHand, los - 7.7, lerp(12.8, lane, 0.3));
@@ -357,11 +364,12 @@ export function buildScript(
         tA = s + 0.95;
         go(rb, tA, fromU, lane);
         tEnd = tA + clamp((hitU - fromU) * PACE, 0.3, 2.9);
+        if (!sp.td) tEnd = Math.max(tEnd, needT(hitU + 0.85, lane));
         go(rb, tEnd, hitU, lane + (lane < 12 ? 0.9 : -0.9), !sp.td);
       } else {
         tA = tHand;
         fromU = los - 7.7;
-        tEnd = s + 0.98;
+        tEnd = Math.max(s + 0.98, needT(hitU + 0.85, lane));
         go(rb, tEnd, hitU, lerp(12.8, lane, 0.85), true);
       }
     }
@@ -395,7 +403,7 @@ export function buildScript(
       ball.push({ t0: tHand + (inside ? 0 : 0.04), t1: 99, kind: 'held', team: o, id: rb.id });
       endT = Math.max(tTD + 1.5, tEnd + 0.9);
     } else {
-      go(defender, Math.max(s + 0.22, tEnd - 0.5), lerp(U(defender), hitU + 2.6, 0.6), lerp(V(defender), lz, 0.7));
+      go(defender, s + 0.22 + (tEnd - s - 0.22) * 0.62, lerp(U(defender), hitU + 2.6, 0.6), lerp(V(defender), lz, 0.7));
       go(defender, tEnd, hitU + 0.85, lz, true);
       if (fumble) {
         const lu = hitU + 1.7;
@@ -484,12 +492,12 @@ export function buildScript(
     moved.add(defender);
 
     if (sack) {
-      const tSack = s + (long ? 1.1 : 0.92);
+      const tSack = Math.max(s + (long ? 1.1 : 0.92), needT(dropU + 0.75, 12.3));
       go(qb, tDrop, dropU, 12);
       go(qb, tSack, dropU - 0.2, 12.1);
       go(qb, tSack + 0.32, end, 12.2);
       go(recv, tCatch, spotU, rv);
-      go(defender, s + 0.34, lerp(U(defender), dropU, 0.45), lerp(V(defender), 12.6, 0.5));
+      go(defender, s + (tSack - s) * 0.42, lerp(U(defender), dropU, 0.45), lerp(V(defender), 12.6, 0.5));
       go(defender, tSack, dropU + 0.75, 12.3, true);
       go(defender, tSack + 0.32, end + 0.8, 12.4);
       ball.push({ t0: 0, t1: 99, kind: 'held', team: o, id: qb.id });

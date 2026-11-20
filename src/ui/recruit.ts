@@ -310,6 +310,14 @@ export function recruitScreen(): HTMLElement {
     mark();
   };
 
+  /** A slanted slab of news that crosses the stage and leaves. */
+  const telop = (text: string): void => {
+    stage.querySelector('.rc-telop')?.remove();
+    const el = h('div.rc-telop', { 'aria-hidden': 'true' }, kinetic(text));
+    stage.append(el);
+    setTimeout(() => el.remove(), 1900);
+  };
+
   // ---------------------------------------------------------------- signing
 
   /** The captain's moment: armband, fanfare, sparks. `big` for the very first signing. */
@@ -363,6 +371,8 @@ export function recruitScreen(): HTMLElement {
         sfx.recruit();
         if (full()) {
           vibrate([15, 30, 15]);
+          telop(`${ROSTER_SIZE}人そろった！`);
+          sfx.learn();
           const c = center(startBtn);
           ring(c.x, c.y, '#ffe14a', 2.2);
           glitter(c.x, c.y, '#ffe14a', 14);

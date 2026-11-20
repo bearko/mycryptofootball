@@ -22,8 +22,10 @@ export function makeCanvas(w: number, h: number): Tex {
 
 // ------------------------------------------------------------------ turf
 
-/** texels per yard of the baked turf */
-export const PPY = 26;
+/** texels per yard of the soft turf overlay (grass flecks, wear, light) */
+export const PPY = 20;
+/** texels per yard of the sharp paint (numbers, names, emblem) */
+const DPY = 30;
 export const FIELD_PAD = 1.5;
 export const FX0 = -END - FIELD_PAD;
 export const FX1 = FIELD + END + FIELD_PAD;
@@ -31,6 +33,10 @@ export const FZ0 = -FIELD_PAD;
 export const FZ1 = WIDTH + FIELD_PAD;
 
 const NAVY: RGB = [10, 18, 40];
+export const CHALK = 'rgba(246,249,242,0.92)';
+/** the two greens of the mowed bands */
+export const BANDS = ['#22895a', '#1b7048'] as const;
+export const SURROUND = '#134a36';
 
 /** The colour a team's end zone is painted in: its colour, calmed down for the night picture. */
 export function zoneColor(color: string): RGB {
@@ -38,35 +44,44 @@ export function zoneColor(color: string): RGB {
   return mix(scale(c, 0.78), NAVY, 0.28);
 }
 
-export function bakeField(teams: [TeamSheet, TeamSheet]): Tex {
+/** A piece of paint on the turf: a texture and the world quad it lies on (top-left, top-right, bottom-left, bottom-right). */
+export interface Decal { tex: Tex; quad: Float64Array }
+
+export interface FieldArt {
+  /** translucent and faint (flecks, sheen, wear, hash marks): drawn over flat bands with a loose fit */
+  overlay: Tex;
+  decals: Decal[];
+}
+
+function decal(x0: number, z0: number, x1: number, z1: number, paint: (g: CanvasRenderingContext2D, w: number, h: number) => void): Decal {
+  const c = makeCanvas((x1 - x0) * DPY, (z1 - z0) * DPY);
+  const g = c.getContext('2d')!;
+  paint(g, c.width, c.height);
+  return { tex: c, quad: Float64Array.from([x0, 0.005, z0, x1, 0.005, z0, x0, 0.005, z1, x1, 0.005, z1]) };
+}
+
+/**
+ * The turf is drawn in layers so that sharp things stay sharp at any camera angle:
+ * flat bands and long lines as polygons (by the renderer), this soft overlay, and small sharp decals.
+ */
+export function bakeField(teams: [TeamSheet, TeamSheet]): FieldArt {
   const c = makeCanvas((FX1 - FX0) * PPY, (FZ1 - FZ0) * PPY);
   const g = c.getContext('2d')!;
   const X = (x: number): number => (x - FX0) * PPY;
   const Z = (z: number): number => (z - FZ0) * PPY;
   const rnd = seeded(77);
 
-  // surround
-  g.fillStyle = '#134a36';
-  g.fillRect(0, 0, c.width, c.height);
-
-  // mowed bands
+  // each band has a soft sheen, as if mowed in alternating directions
   for (let i = 0; i < FIELD / 5; i += 1) {
-    g.fillStyle = i % 2 ? '#1c7448' : '#218352';
-    g.fillRect(X(i * 5), Z(0), 5 * PPY + 1, WIDTH * PPY);
-    // each band has a soft sheen, as if mowed in alternating directions
     const sheen = g.createLinearGradient(X(i * 5), 0, X(i * 5 + 5), 0);
     sheen.addColorStop(i % 2 ? 0 : 1, 'rgba(255,255,255,0.05)');
     sheen.addColorStop(i % 2 ? 1 : 0, 'rgba(0,0,0,0.06)');
     g.fillStyle = sheen;
-    g.fillRect(X(i * 5), Z(0), 5 * PPY + 1, WIDTH * PPY);
+    g.fillRect(X(i * 5), Z(0), 5 * PPY, WIDTH * PPY);
   }
-
-  // end zones in the colour of the team that defends them
-  const zone = (x0: number, team: TeamSheet, flip: boolean): void => {
+  // tone-on-tone diagonal stripes in the end zones
+  const stripes = (x0: number, team: TeamSheet): void => {
     const col = zoneColor(team.color);
-    g.fillStyle = css(col);
-    g.fillRect(X(x0), Z(0), END * PPY, WIDTH * PPY);
-    // diagonal tone-on-tone stripes
     g.save();
     g.beginPath();
     g.rect(X(x0), Z(0), END * PPY, WIDTH * PPY);
@@ -80,38 +95,16 @@ export function bakeField(teams: [TeamSheet, TeamSheet]): Tex {
       g.stroke();
     }
     g.restore();
-    // the team's short name, read from the field
-    g.save();
-    g.translate(X(x0 + END / 2), Z(WIDTH / 2));
-    g.rotate(flip ? Math.PI / 2 : -Math.PI / 2);
-    const size = PPY * 3.1;
-    g.font = `${Math.round(size)}px ${DISPLAY_FONT}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    const light = luma(col) > 0.55;
-    const chars = [...team.short];
-    const step = Math.min(PPY * 5.2, (WIDTH * PPY * 0.8) / Math.max(1, chars.length));
-    chars.forEach((ch, i) => {
-      const x = (i - (chars.length - 1) / 2) * step;
-      g.lineJoin = 'round';
-      g.lineWidth = PPY * 0.34;
-      g.strokeStyle = light ? 'rgba(255,255,255,0.75)' : 'rgba(8,14,34,0.55)';
-      g.strokeText(ch, x, PPY * 0.1);
-      g.fillStyle = light ? 'rgba(20,32,70,0.92)' : 'rgba(246,248,255,0.94)';
-      g.fillText(ch, x, PPY * 0.1);
-    });
-    g.restore();
   };
-  zone(-END, teams[0], false);
-  zone(FIELD, teams[1], true);
-
+  stripes(-END, teams[0]);
+  stripes(FIELD, teams[1]);
   // blades of grass: thousands of faint flecks
-  for (let i = 0; i < 16000; i += 1) {
+  for (let i = 0; i < 14000; i += 1) {
     const x = rnd() * c.width;
     const y = rnd() * c.height;
-    const l = 2 + rnd() * 5;
-    g.fillStyle = rnd() < 0.5 ? `rgba(255,255,210,${0.02 + rnd() * 0.045})` : `rgba(0,20,10,${0.03 + rnd() * 0.06})`;
-    g.fillRect(x, y, 1.2, l);
+    const l = 1.5 + rnd() * 4;
+    g.fillStyle = rnd() < 0.5 ? `rgba(255,255,210,${0.025 + rnd() * 0.05})` : `rgba(0,20,10,${0.04 + rnd() * 0.07})`;
+    g.fillRect(x, y, 1, l);
   }
   // a little wear between the hash marks
   for (let i = 0; i < 26; i += 1) {
@@ -119,125 +112,119 @@ export function bakeField(teams: [TeamSheet, TeamSheet]): Tex {
     const y = Z(8 + rnd() * 8);
     const r = PPY * (1 + rnd() * 2.2);
     const w = g.createRadialGradient(x, y, 0, x, y, r);
-    w.addColorStop(0, 'rgba(60,70,30,0.10)');
+    w.addColorStop(0, 'rgba(60,70,30,0.12)');
     w.addColorStop(1, 'rgba(60,70,30,0)');
     g.fillStyle = w;
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-
-  // centre-field emblem: an original mark (ring, hexagon, two chevrons and a coin)
-  {
-    const cx = X(FIELD / 2);
-    const cy = Z(WIDTH / 2);
-    const R = PPY * 4.3;
-    const tint = mix(rgbOf(teams[0].color), [255, 255, 255], 0.35);
-    g.save();
-    g.translate(cx, cy);
-    g.fillStyle = 'rgba(8,30,24,0.28)';
-    g.beginPath();
-    g.arc(0, 0, R, 0, TAU);
-    g.fill();
-    g.lineJoin = 'miter';
-    g.strokeStyle = 'rgba(244,248,240,0.82)';
-    g.lineWidth = PPY * 0.3;
-    g.beginPath();
-    g.arc(0, 0, R, 0, TAU);
-    g.stroke();
-    g.lineWidth = PPY * 0.16;
-    g.beginPath();
-    g.arc(0, 0, R * 0.88, 0, TAU);
-    g.stroke();
-    // hexagon
-    g.fillStyle = css(tint, 0.26);
-    g.beginPath();
-    for (let i = 0; i < 6; i += 1) {
-      const a = (i / 6) * TAU;
-      g.lineTo(Math.cos(a) * R * 0.74, Math.sin(a) * R * 0.74);
-    }
-    g.closePath();
-    g.fill();
-    g.lineWidth = PPY * 0.2;
-    g.stroke();
-    // chevrons pointing at the two goals
-    g.fillStyle = 'rgba(244,248,240,0.88)';
-    for (const s of [-1, 1]) {
-      g.beginPath();
-      g.moveTo(s * R * 0.58, 0);
-      g.lineTo(s * R * 0.2, -R * 0.4);
-      g.lineTo(s * R * 0.2, -R * 0.2);
-      g.lineTo(s * R * 0.38, 0);
-      g.lineTo(s * R * 0.2, R * 0.2);
-      g.lineTo(s * R * 0.2, R * 0.4);
-      g.closePath();
-      g.fill();
-    }
-    // coin
-    g.beginPath();
-    g.arc(0, 0, R * 0.15, 0, TAU);
-    g.fill();
-    g.fillStyle = css(scale(tint, 0.6), 0.9);
-    g.beginPath();
-    g.arc(0, 0, R * 0.075, 0, TAU);
-    g.fill();
-    g.restore();
-  }
-
-  // chalk
-  const chalk = 'rgba(246,249,242,0.92)';
-  g.fillStyle = chalk;
-  // the wide border
-  const B = 0.5;
-  g.fillRect(X(-END - B), Z(-B), (FIELD + END * 2 + B * 2) * PPY, B * PPY);
-  g.fillRect(X(-END - B), Z(WIDTH), (FIELD + END * 2 + B * 2) * PPY, B * PPY);
-  g.fillRect(X(-END - B), Z(-B), B * PPY, (WIDTH + B * 2) * PPY);
-  g.fillRect(X(FIELD + END), Z(-B), B * PPY, (WIDTH + B * 2) * PPY);
-  for (let yd = 0; yd <= FIELD; yd += 5) {
-    const goal = yd === 0 || yd === FIELD;
-    const w = goal ? 0.34 : 0.15;
-    g.globalAlpha = goal ? 1 : 0.8;
-    g.fillRect(X(yd - w / 2), Z(0), w * PPY, WIDTH * PPY);
-  }
-  g.globalAlpha = 0.72;
+  // hash marks every yard
+  g.fillStyle = 'rgba(246,249,242,0.7)';
   for (let yd = 1; yd < FIELD; yd += 1) {
     if (yd % 5 === 0) continue;
-    for (const z of [0.15, 8.2, 15.1, 23.15]) g.fillRect(X(yd - 0.05), Z(z), 0.1 * PPY, 0.7 * PPY);
+    for (const z of [0.15, 8.2, 15.1, 23.15]) g.fillRect(X(yd - 0.06), Z(z), 0.12 * PPY, 0.7 * PPY);
   }
-  g.globalAlpha = 1;
+  const decals: Decal[] = [];
 
-  // yard numbers, split around their line
-  g.textBaseline = 'middle';
-  g.fillStyle = 'rgba(246,249,242,0.86)';
-  const numSize = PPY * 2.7;
-  g.font = `${Math.round(numSize)}px ${DISPLAY_FONT}`;
+  // the team's short name in its end zone, read from the field
+  const name = (x0: number, team: TeamSheet, flip: boolean): Decal => decal(x0 + 0.4, 1.5, x0 + END - 0.4, WIDTH - 1.5, (d, w, h) => {
+    const col = zoneColor(team.color);
+    d.translate(w / 2, h / 2);
+    d.rotate(flip ? Math.PI / 2 : -Math.PI / 2);
+    d.font = `${Math.round(DPY * 3.1)}px ${DISPLAY_FONT}`;
+    d.textAlign = 'center';
+    d.textBaseline = 'middle';
+    const light = luma(col) > 0.55;
+    const chars = [...team.short];
+    const step = Math.min(DPY * 5.2, (h * 0.86) / Math.max(1, chars.length));
+    chars.forEach((ch, i) => {
+      const x = (i - (chars.length - 1) / 2) * step;
+      d.lineJoin = 'round';
+      d.lineWidth = DPY * 0.34;
+      d.strokeStyle = light ? 'rgba(255,255,255,0.75)' : 'rgba(8,14,34,0.55)';
+      d.strokeText(ch, x, DPY * 0.1);
+      d.fillStyle = light ? 'rgba(20,32,70,0.92)' : 'rgba(246,248,255,0.94)';
+      d.fillText(ch, x, DPY * 0.1);
+    });
+  });
+  decals.push(name(-END, teams[0], false), name(FIELD, teams[1], true));
+
+  // centre-field emblem: an original mark (ring, hexagon, two chevrons and a coin)
+  const ER = 4.3;
+  decals.push(decal(FIELD / 2 - ER - 0.3, WIDTH / 2 - ER - 0.3, FIELD / 2 + ER + 0.3, WIDTH / 2 + ER + 0.3, (d, w, h) => {
+    const R = DPY * ER;
+    const tint = mix(rgbOf(teams[0].color), [255, 255, 255], 0.35);
+    d.translate(w / 2, h / 2);
+    d.fillStyle = 'rgba(8,30,24,0.28)';
+    d.beginPath();
+    d.arc(0, 0, R, 0, TAU);
+    d.fill();
+    d.strokeStyle = 'rgba(244,248,240,0.82)';
+    d.lineWidth = DPY * 0.3;
+    d.beginPath();
+    d.arc(0, 0, R, 0, TAU);
+    d.stroke();
+    d.lineWidth = DPY * 0.16;
+    d.beginPath();
+    d.arc(0, 0, R * 0.88, 0, TAU);
+    d.stroke();
+    d.fillStyle = css(tint, 0.26);
+    d.beginPath();
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * TAU;
+      d.lineTo(Math.cos(a) * R * 0.74, Math.sin(a) * R * 0.74);
+    }
+    d.closePath();
+    d.fill();
+    d.lineWidth = DPY * 0.2;
+    d.stroke();
+    // chevrons pointing at the two goals
+    d.fillStyle = 'rgba(244,248,240,0.88)';
+    for (const sgn of [-1, 1]) {
+      d.beginPath();
+      d.moveTo(sgn * R * 0.58, 0);
+      d.lineTo(sgn * R * 0.2, -R * 0.4);
+      d.lineTo(sgn * R * 0.2, -R * 0.2);
+      d.lineTo(sgn * R * 0.38, 0);
+      d.lineTo(sgn * R * 0.2, R * 0.2);
+      d.lineTo(sgn * R * 0.2, R * 0.4);
+      d.closePath();
+      d.fill();
+    }
+    d.beginPath();
+    d.arc(0, 0, R * 0.15, 0, TAU);
+    d.fill();
+    d.fillStyle = css(scale(tint, 0.6), 0.9);
+    d.beginPath();
+    d.arc(0, 0, R * 0.075, 0, TAU);
+    d.fill();
+  }));
+
+  // yard numbers, split around their line, with a small arrow toward the nearer goal
   for (let yd = 10; yd < FIELD; yd += 10) {
     const label = String(Math.min(yd, FIELD - yd));
     for (const z of [4.9, 19.1]) {
-      g.textAlign = 'right';
-      g.fillText(label[0]!, X(yd - 0.32), Z(z));
-      g.textAlign = 'left';
-      g.fillText(label[1] ?? '', X(yd + 0.32), Z(z));
-      // a small arrow toward the nearer goal
-      if (yd !== FIELD / 2) {
-        const s = yd < FIELD / 2 ? -1 : 1;
-        const ax = X(yd + s * 2.75);
-        g.beginPath();
-        g.moveTo(ax + s * PPY * 0.55, Z(z - 0.75));
-        g.lineTo(ax, Z(z - 1.05));
-        g.lineTo(ax, Z(z - 0.45));
-        g.closePath();
-        g.fill();
-      }
+      decals.push(decal(yd - 3.6, z - 1.7, yd + 3.6, z + 1.7, (d, w, h) => {
+        d.textBaseline = 'middle';
+        d.fillStyle = 'rgba(246,249,242,0.88)';
+        d.font = `${Math.round(DPY * 2.7)}px ${DISPLAY_FONT}`;
+        d.textAlign = 'right';
+        d.fillText(label[0]!, w / 2 - 0.32 * DPY, h / 2);
+        d.textAlign = 'left';
+        d.fillText(label[1] ?? '', w / 2 + 0.32 * DPY, h / 2);
+        if (yd !== FIELD / 2) {
+          const sgn = yd < FIELD / 2 ? -1 : 1;
+          const ax = w / 2 + sgn * 2.8 * DPY;
+          d.beginPath();
+          d.moveTo(ax + sgn * DPY * 0.55, h / 2 - 0.75 * DPY);
+          d.lineTo(ax, h / 2 - 1.05 * DPY);
+          d.lineTo(ax, h / 2 - 0.45 * DPY);
+          d.closePath();
+          d.fill();
+        }
+      }));
     }
   }
-
-  // floodlight pooling: bright in the middle, falling off toward the corners
-  const pool = g.createRadialGradient(c.width / 2, c.height / 2, c.height * 0.2, c.width / 2, c.height / 2, c.width * 0.62);
-  pool.addColorStop(0, 'rgba(255,255,230,0.07)');
-  pool.addColorStop(0.45, 'rgba(0,0,0,0)');
-  pool.addColorStop(1, 'rgba(4,10,34,0.42)');
-  g.fillStyle = pool;
-  g.fillRect(0, 0, c.width, c.height);
-  return c;
+  return { overlay: c, decals };
 }
 
 // ------------------------------------------------------------------ crowd
@@ -344,14 +331,15 @@ export const RIBBON_PPY = 7;
 /** the longest stretch of wall drawn in one piece, in yards */
 export const RIBBON_MAX_YD = 70;
 
-export function bakeRibbon(parts: { text: string; color: string }[], bg = '#05070f'): Ribbon {
+/** `around`: texels all the way around the bowl; the message is spaced to repeat a whole number of times in it. */
+export function bakeRibbon(around: number, parts: { text: string; color: string }[], bg = '#05070f'): Ribbon {
   const probe = makeCanvas(4, 4).getContext('2d')!;
   probe.font = `16px ${PIXEL_FONT}`;
-  const gap = 34;
   const widths = parts.map((p) => Math.ceil(probe.measureText(p.text).width));
-  let period = widths.reduce((a, b) => a + b + gap, 0);
-  period = Math.max(period, 120);
-  const total = period + RIBBON_MAX_YD * RIBBON_PPY + 4;
+  const natural = Math.max(120, widths.reduce((a, b) => a + b + 34, 0));
+  const period = around / Math.max(1, Math.floor(around / natural));
+  const gap = 34 + (period - natural) / parts.length;
+  const total = Math.ceil(period + RIBBON_MAX_YD * RIBBON_PPY + 4);
   const c = makeCanvas(total, RIBBON_H);
   const g = c.getContext('2d')!;
   g.fillStyle = bg;
@@ -363,9 +351,9 @@ export function bakeRibbon(parts: { text: string; color: string }[], bg = '#0507
     let x = x0 + gap / 2;
     parts.forEach((p, i) => {
       g.fillStyle = p.color;
-      g.fillText(p.text, x, RIBBON_H / 2 + 1);
+      g.fillText(p.text, Math.round(x), RIBBON_H / 2 + 1);
       // a separator diamond
-      const dx = x + widths[i]! + gap / 2;
+      const dx = Math.round(x + widths[i]! + gap / 2);
       g.fillStyle = 'rgba(255,255,255,0.5)';
       g.fillRect(dx - 2, RIBBON_H / 2 - 1, 3, 3);
       x += widths[i]! + gap;

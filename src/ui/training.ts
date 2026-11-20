@@ -176,7 +176,7 @@ export function trainingScreen(): HTMLElement {
             const hit = !!main && main === t.best;
             const weak = !!main && main === t.worst;
             return h('i.pc-gain', { class: hit ? 'is-hit' : weak ? 'is-weak' : '', title: `${hero(m.id).name}${hit ? '（得意）' : weak ? '（苦手）' : ''}` },
-              sprite(m.id), h('b', hit ? '◎' : '', gainText(m, card)));
+              sprite(m.id), h('b', hit ? '◎' : weak ? '△' : '', gainText(m, card)));
           })
           : [h('i.pc-none', 'マンツーマン中')]));
       });
@@ -257,7 +257,7 @@ export function trainingScreen(): HTMLElement {
             h('span.solo-heart', `♥ 信頼 +${SOLO_TRUST}`), h('span.dim', `（グループ練習は +${GROUP_TRUST}）`),
             gauge(m.trust / TRUST_MAX, { cls: 'trust', marks: [TRUST_LEARN / TRUST_MAX] }),
             h('span', learned(m) ? '★ 特別作戦は習得ずみ' : need <= SOLO_TRUST ? `あと${need}で特別作戦。今週とどく！` : `あと${need}で特別作戦`)))),
-      can ? h('div.solo-grid', SOLO_KEYS.map((key, i) => {
+      can ? h('div.solo-grid', h('i.solo-clip'), SOLO_KEYS.map((key, i) => {
         const p = PRACTICE[key];
         const hit = p.main === t.best;
         return h('button.solo-pick', {
@@ -596,7 +596,7 @@ export function trainingScreen(): HTMLElement {
       h('div.tfield-words', h('span', 'PRACTICE '), h('span', 'PRACTICE '))),
     h('header.head.pad',
       h('h2', '練習'),
-      h('p', `第${week + 1}週：グループごとに練習カードを1枚えらぶ。`, h('br'), 'ヒーローをタップすると、マンツーマンで特訓'),
+      h('p', `第${week + 1}週：グループごとにカードを1枚。`, h('br'), 'ヒーローをタップでマンツーマン'),
       soloBox),
     h('div.lanes.pad', lanes.map((l) => l.el)),
     h('footer.foot.pad', coach.el, h('div.row', button('もどる', route, { cls: 'alt big', sound: 'back' }), button('練習する', run, { cls: 'go big', sound: 'confirm' }))));

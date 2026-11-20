@@ -19,9 +19,9 @@
 .lu-half > .label { position: absolute; left: -0.3rem; top: -0.5rem; z-index: 4; filter: drop-shadow(0.16rem 0.16rem 0 var(--ink)); }
 .lu-half.def > .label { left: 0.4rem; }
 .lu-field { position: relative; min-height: 0; background: repeating-linear-gradient(0deg, transparent 0 19.6%, rgba(255, 251, 232, 0.06) 19.6% 20%); }
-.lu-dir { position: absolute; font-size: var(--fs-xs); line-height: 1.15; color: rgba(255, 251, 232, 0.8); white-space: nowrap; pointer-events: none; letter-spacing: 0.1em; animation: lu-dir 1.6s ease-in-out infinite; }
-.off .lu-dir { left: 50%; top: -0.1rem; margin-left: -2.4rem; }
-.def .lu-dir { left: 50%; bottom: -0.25rem; margin-left: -2.4rem; padding: 0 0.4rem; animation-name: lu-dir-down; }
+.lu-dir { position: absolute; z-index: 1; font-size: var(--fs-xs); line-height: 1.15; color: rgba(255, 251, 232, 0.85); white-space: nowrap; pointer-events: none; letter-spacing: 0.1em; padding: 0 0.5rem; background: #1a4e42; animation: lu-dir 1.6s ease-in-out infinite; }
+.off .lu-dir { left: 24%; top: 0.3rem; }
+.def .lu-dir { left: 50%; bottom: 0.05rem; margin-left: -2.9rem; background: #11362f; animation-name: lu-dir-down; }
 @keyframes lu-dir { 50% { transform: translateY(-0.2rem); } }
 @keyframes lu-dir-down { 50% { transform: translateY(0.2rem); } }
 
@@ -37,8 +37,8 @@
 .lu-chalk .draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .lu-chalk.drawn .draw { stroke-dashoffset: 0; }
 .lu-chalk.drawing .draw { animation: lu-draw 0.5s ease-out forwards; }
-.lu-chalk.drawing .draw:nth-child(4n + 2), .lu-chalk.drawing .draw:nth-child(4n + 3) { animation-delay: 0.12s; }
-.lu-chalk.drawing .draw:nth-child(4n), .lu-chalk.drawing .draw:nth-child(4n + 1) { animation-delay: 0.24s; }
+.lu-chalk.drawing .draw:nth-child(4n + 3), .lu-chalk.drawing .draw:nth-child(4n + 4) { animation-delay: 0.12s; }
+.lu-chalk.drawing .draw:nth-child(4n + 5), .lu-chalk.drawing .draw:nth-child(4n + 6) { animation-delay: 0.24s; }
 .lu-chalk.drawing .head { animation-duration: 0.18s; animation-delay: 0.6s !important; }
 @keyframes lu-draw { to { stroke-dashoffset: 0; } }
 
@@ -146,7 +146,7 @@
 .lu-w { display: grid; grid-template-columns: auto 4.2rem minmax(0, 1fr); align-items: center; gap: 0.25rem; white-space: nowrap; }
 .lu-w .ticon { color: var(--ink); background: var(--tc); border-radius: 50%; padding: 0.1rem; border: 0.1rem solid var(--ink); }
 .lu-w .ticon svg { width: 1.1em; height: 1.1em; }
-.lu-w i { height: 0.7rem; width: calc(var(--w) * 100%); background: var(--ink); transform: skewX(-18deg); transform-origin: 0 0; animation: lu-w 0.4s var(--spring) backwards; }
+.lu-w i { height: 0.8rem; width: calc(var(--w) * 100%); background: var(--tc); border: 0.14rem solid var(--ink); transform: skewX(-18deg); transform-origin: 0 0; animation: lu-w 0.4s var(--spring) backwards; }
 @keyframes lu-w { from { width: 0; } }
 .lu-note .lu-grade, .lu-note .lu-star { position: static; transform: none; display: inline-grid; flex: none; animation: none; }
 .lu-note .lu-star { display: inline-flex; }

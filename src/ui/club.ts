@@ -298,7 +298,7 @@ export function clubScreen(): HTMLElement {
           h('span.poster-when', weeks > 0 ? ['あと', h('b', String(weeks)), '週'] : h('b', '今日！'))),
         h('div.poster-vs', h('i', 'VS'), h('h3', opp.name)),
         h('p.poster-style', opp.style),
-        h('ul.poster-aces', { class: stars.length > 3 ? 'is-many' : '' }, stars.map((a, i) => h('li', { style: { '--i': String(i) } },
+        h('ul.poster-aces', { class: stars.length > 3 ? 'is-many' : stars.length === 3 ? 'is-some' : '' }, stars.map((a, i) => h('li', { style: { '--i': String(i) } },
           h('span.ace-face', sprite(a.id)),
           h('span.ace-text', h('b', `「${a.play}」`), h('i', a.tag))))),
         h('span.poster-note', { class: next.cup ? 'is-cup' : '' }, next.cup ? '負けたら終わり' : '負けても大会へ進める')));
@@ -341,6 +341,7 @@ export function clubScreen(): HTMLElement {
     h('div.club-main.pad',
       h('div.room-stage',
         h('div.room-props', { 'aria-hidden': 'true' },
+          h('i.room-bunting'),
           h('div.room-lockers', [0, 1, 2, 3].map((i) => h('i', { class: i === 2 ? 'is-ajar' : '' }, h('u'))), h('b.room-helmet')),
           h('div.room-window',
             h('div.room-sky', h('i.room-sun'), h('i.sky-cloud.c1'), h('i.sky-cloud.c2'), h('i.sky-cloud.c3'), h('i.sky-bird.b1'), h('i.sky-bird.b2'), h('i.room-town')),
@@ -350,8 +351,19 @@ export function clubScreen(): HTMLElement {
           h('i.room-light'), h('i.room-motes')),
         warn,
         squad),
+      h('div.room-basket', { 'aria-hidden': 'true' }, h('i.fball'), h('i.fball'), h('i.fball')),
       poster),
     h('footer.foot.pad', coach.el, h('div.row', button('編成', () => show(lineupScreen(rerender)), 'alt big'), act)));
+
+  // a poster with many aces (or large text) is scaled to fit between the road and the buttons
+  if (poster && typeof ResizeObserver !== 'undefined') {
+    const paper = poster.firstElementChild as HTMLElement;
+    new ResizeObserver(() => {
+      const room = (poster!.parentElement?.clientHeight ?? 0) - poster!.offsetTop - 4;
+      const need = paper.offsetHeight;
+      if (room > 0 && need > 0) paper.style.setProperty('--fit', String(Math.min(1, room / need)));
+    }).observe(poster.parentElement ?? poster);
+  }
 
   el.addEventListener('shown', () => {
     lastWeek = s.week;

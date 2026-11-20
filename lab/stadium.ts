@@ -11,6 +11,7 @@
 //   exc=0..1          crowd excitement
 //   safe=none|choose|play|auto   which interface insets to simulate (auto: choose while idle, play during a play)
 //   ui=0              hide the control strip
+//   q=auto|0.5..1     resolution scale (default 1 here, so screenshots are sharp; the game uses auto)
 //   seed=, home=, away= (0..3), pos=, poss=   set up the match
 
 import '@fontsource/dela-gothic-one/japanese-400.css';
@@ -50,6 +51,7 @@ const log: string[] = [];
 
 if (q.get('ui') === '0') document.body.classList.add('bare');
 stadium.setMotion(motion);
+stadium.setQuality(q.get('q') === 'auto' ? 'auto' : num('q', 1));
 stadium.setExcitement(num('exc', 0.25));
 
 // ------------------------------------------------------------------ simulated interface insets
@@ -253,6 +255,7 @@ btn('試合に戻る', () => {
 btn(motion ? '動き：フル' : '動き：ひかえめ', (b) => {
   motion = !motion;
   stadium.setMotion(motion);
+stadium.setQuality(q.get('q') === 'auto' ? 'auto' : num('q', 1));
   b.textContent = motion ? '動き：フル' : '動き：ひかえめ';
 });
 btn(`UIの重なり：${safe}`, (b) => {
@@ -281,7 +284,7 @@ const info = el('info');
 const tag = el('tag');
 function tick(): void {
   const s = stadium.stats();
-  info.textContent = `${(1000 / Math.max(1, s.avg)).toFixed(0)} fps  frame ${s.avg.toFixed(1)} ms (worst ${s.worst.toFixed(1)})  draw ${s.cpuAvg.toFixed(2)} ms (worst ${s.cpuWorst.toFixed(2)})  particles ${s.particles}\n${log.join(' > ')}`;
+  info.textContent = `${(1000 / Math.max(1, s.avg)).toFixed(0)} fps  frame ${s.avg.toFixed(1)} ms (worst ${s.worst.toFixed(1)})  draw ${s.cpuAvg.toFixed(2)} ms (worst ${s.cpuWorst.toFixed(2)})  particles ${s.particles}  quality ${s.quality.toFixed(2)}\n${log.join(' > ')}`;
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

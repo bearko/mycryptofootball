@@ -27,8 +27,8 @@ const RANK: Record<Grade, number> = { D: 0, C: 1, B: 2, A: 3, S: 4 };
 const UNIT_LABEL: Record<Unit, string> = { off: '攻撃', def: '守備' };
 
 /** Where each position stands on its board, in % of the field (the offense looks up, the defense looks down). */
-const OFF_AT: Record<OffPos, [number, number]> = { WR1: [11, 23], OL1: [37, 22], OL2: [63, 22], WR2: [89, 23], QB: [50, 52], RB: [70, 81] };
-const DEF_AT: Record<DefPos, [number, number]> = { S: [50, 16], LB: [50, 46], CB1: [11, 55], CB2: [89, 55], DL1: [36, 76], DL2: [64, 76] };
+const OFF_AT: Record<OffPos, [number, number]> = { WR1: [11, 22], OL1: [37, 21], OL2: [63, 21], WR2: [89, 22], QB: [50, 52.5], RB: [70, 83.5] };
+const DEF_AT: Record<DefPos, [number, number]> = { S: [50, 15], LB: [50, 46], CB1: [11, 55], CB2: [89, 55], DL1: [36, 77], DL2: [64, 77] };
 
 const METERS: { key: keyof Sum; label: string; unit: Unit }[] = [
   { key: 'runOff', label: 'ラン', unit: 'off' },
@@ -193,9 +193,10 @@ export function lineupScreen(back: () => void): HTMLElement {
     const head = Math.max(6, W * 0.022);
     const P = (at: [number, number]): [number, number] => [at[0] * u, at[1] * v];
     const parts: string[] = [];
+    let los = '';
     if (unit === 'off') {
-      const top = 1.5 * v;
-      parts.push(`<path class="los" d="M${2 * u},${6.5 * v} H${98 * u}"/>`);
+      const top = 0.8 * v;
+      los = `<path class="los" d="M${2 * u},${4.5 * v} H${98 * u}"/>`;
       const [qx, qy] = P(OFF_AT.QB);
       const [rx, ry] = P(OFF_AT.RB);
       // the runner's lane: off the quarterback's hip and up through the gap outside the line
@@ -212,8 +213,8 @@ export function lineupScreen(back: () => void): HTMLElement {
         parts.push(arrow('pass', `M${qx},${qy} Q${cx},${cy} ${tx},${ty}`, cx, cy, tx, ty, head * 0.8));
       }
     } else {
-      const bottom = 99 * v;
-      parts.push(`<path class="los" d="M${2 * u},${94.5 * v} H${98 * u}"/>`);
+      const bottom = 99.6 * v;
+      los = `<path class="los" d="M${2 * u},${96.5 * v} H${98 * u}"/>`;
       const [sx, sy] = P(DEF_AT.S);
       const [lx, ly] = P(DEF_AT.LB);
       for (const dir of [-1, 1]) {
@@ -234,7 +235,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     }
     box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true">
       <filter id="lu-rough-${unit}" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="${unit === 'off' ? 3 : 8}" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="${(W * 0.006).toFixed(2)}"/></filter>
-      <g filter="url(#lu-rough-${unit})">${parts.join('')}</g></svg>`;
+      ${los}<g filter="url(#lu-rough-${unit})">${parts.join('')}</g></svg>`;
     box.classList.toggle('drawn', !animate);
     if (animate) kick(box, 'drawing');
   };

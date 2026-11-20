@@ -330,33 +330,46 @@ export function unlockAudio(): void {
   }
 }
 
-// A hidden page makes no sound: fade, then suspend the context and pause the music; undo it all on return.
-if (hasWindow) {
-  document.addEventListener('visibilitychange', () => {
-    try {
-      asleep = document.hidden;
-      if (sleepTimer) clearTimeout(sleepTimer);
-      sleepTimer = null;
-      const ctx = live ? (live.ctx as AudioContext) : null;
-      if (asleep) {
-        if (live && ctx) {
-          live.fade.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
-          sleepTimer = setTimeout(() => void ctx.suspend().catch(() => undefined), 200);
-        }
-        for (const tr of tracks.values()) tr.el.pause();
-      } else if (unlocked) {
-        if (live && ctx) {
-          void ctx.resume().catch(() => undefined);
-          live.fade.gain.cancelScheduledValues(ctx.currentTime);
-          live.fade.gain.setTargetAtTime(1, ctx.currentTime, 0.08);
-        }
-        const tr = want ? tracks.get(want) : undefined;
-        if (tr) start(tr);
+// A page nobody is looking at makes no sound. Leaving the browser, switching apps, locking the phone or putting an
+// installed app in the background all end up here: the music elements are paused at once (a phone would otherwise
+// keep playing them like a music player), the context is suspended, and everything comes back on return.
+function setAsleep(sleep: boolean): void {
+  try {
+    if (sleep === asleep) return;
+    asleep = sleep;
+    if (sleepTimer) clearTimeout(sleepTimer);
+    sleepTimer = null;
+    const ctx = live ? (live.ctx as AudioContext) : null;
+    if (asleep) {
+      for (const tr of tracks.values()) tr.el.pause();
+      if (live && ctx) {
+        live.fade.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+        // timers are throttled in the background, so do not rely on one alone
+        sleepTimer = setTimeout(() => void ctx.suspend().catch(() => undefined), 120);
+        if (document.visibilityState === 'hidden') void ctx.suspend().catch(() => undefined);
       }
-    } catch {
-      /* ignore */
+    } else if (unlocked) {
+      if (live && ctx) {
+        void ctx.resume().catch(() => undefined);
+        live.fade.gain.cancelScheduledValues(ctx.currentTime);
+        live.fade.gain.setTargetAtTime(1, ctx.currentTime, 0.08);
+      }
+      const tr = want ? tracks.get(want) : undefined;
+      if (tr) start(tr);
     }
-  });
+  } catch {
+    /* ignore */
+  }
+}
+if (hasWindow) {
+  const check = (): void => setAsleep(document.visibilityState === 'hidden');
+  document.addEventListener('visibilitychange', check);
+  // some browsers skip visibilitychange when the page is frozen, unloaded or put in the back/forward cache
+  window.addEventListener('pagehide', () => setAsleep(true));
+  window.addEventListener('pageshow', check);
+  document.addEventListener('freeze', () => setAsleep(true));
+  document.addEventListener('resume', check);
+  window.addEventListener('focus', check);
 }
 
 // ------------------------------------------------------------------------------------------------ effects

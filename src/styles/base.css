@@ -149,6 +149,7 @@ img { -webkit-user-drag: none; }
 @media (hover: hover) { .btn.alt:hover .btn-face { color: var(--ink); } }
 .btn.cyan .btn-face { background: var(--cyan); }
 .btn.hot .btn-face { background: var(--orange); color: var(--chalk); }
+.btn[hidden] { display: none; }
 .btn.off { filter: drop-shadow(0.3rem 0.3rem 0 var(--ink)) grayscale(1) brightness(0.55); }
 .btn.go .btn-face { background: repeating-linear-gradient(-60deg, var(--yellow) 0 1.2rem, #ffc928 1.2rem 2.4rem); background-size: 200% 100%; animation: stripes 1s linear infinite; }
 .btn.go { animation: throb 0.9s ease-in-out infinite; }
@@ -301,6 +302,18 @@ img { -webkit-user-drag: none; }
 .member-play b { font-family: var(--display); font-weight: 400; color: var(--yellow); display: block; }
 .member-play i { font-style: normal; color: var(--cyan); font-size: var(--fs-xs); }
 .member-play .label:empty { display: none; }
+
+/* "play it as an app" */
+.install-top { display: grid; grid-template-columns: auto 1fr; gap: 1.6rem; align-items: center; }
+.install-icon { width: 8rem; height: 8rem; border-radius: 1.6rem; box-shadow: var(--shadow); animation: hero-jump 0.7s var(--spring) infinite alternate; }
+.install-lead { font-size: var(--fs-m); line-height: 1.5; }
+.install-steps { display: grid; gap: 0.6rem; font-size: var(--fs-s); line-height: 1.4; }
+.install-steps li { display: grid; grid-template-columns: auto 1fr; gap: 0.9rem; align-items: center; animation: slide-r 0.35s var(--spring) backwards; }
+.install-steps li:nth-child(2) { animation-delay: 80ms; }
+.install-steps li:nth-child(3) { animation-delay: 160ms; }
+.install-steps i { font-style: normal; font-family: var(--display); width: 2.6rem; line-height: 2.6rem; text-align: center; background: var(--yellow); color: var(--ink); transform: skewX(-9deg); }
+.install-steps b { font-weight: 400; color: var(--yellow); }
+@keyframes hero-jump { from { transform: translateY(0.3rem) scale(1.04, 0.96); } to { transform: translateY(-0.5rem) scale(0.98, 1.03) rotate(-4deg); } }
 
 /* settings */
 .settings { display: grid; gap: 0.7rem; }

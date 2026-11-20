@@ -12,7 +12,8 @@ import { TEAM_COLOR, TEAM_NAME, TEAM_SHORT, newSeason } from '../game/season';
 import { kinetic, typewriter } from './fx';
 import { button, closeModal, modal, ticker } from './kit';
 import { route } from './nav';
-import { helpModal, settingsModal } from './shared';
+import { installWay, onInstallChange } from '../core/install';
+import { helpModal, installModal, offerInstallOnce, settingsModal } from './shared';
 import { Stadium } from './stadium';
 
 /** A club made of the first six recruits, for scenes that need a team before a season exists. */
@@ -55,6 +56,14 @@ export function titleScreen(): [HTMLElement, () => void] {
     button('あそびかた', helpModal, { cls: 'alt' }),
     button('設定', settingsModal, { cls: 'alt' }),
   ].filter((b): b is HTMLButtonElement => !!b);
+  // the way to full-screen play: shown while the game still runs inside the browser
+  const app = button('アプリとして入れる', installModal, { cls: 'cyan' });
+  const syncApp = (): void => {
+    app.hidden = installWay() === 'none';
+  };
+  syncApp();
+  const offInstall = onInstallChange(syncApp);
+  menu.push(app);
   menu.forEach((b, i) => b.style.setProperty('--i', String(i)));
 
   const root = h('div.screen.title',
@@ -73,6 +82,11 @@ export function titleScreen(): [HTMLElement, () => void] {
   root.addEventListener('shown', () => {
     sfx.whistle('long');
     typewriter(lead, '弱小アメフト部の監督になって、作戦カードで地区大会の頂点へ。', { cps: 30, onTick: () => sfx.typeTick() });
+    // phones still inside the browser are shown how to get the full screen, first thing
+    setTimeout(offerInstallOnce, 1700);
   }, { once: true });
-  return [root, () => stadium.destroy()];
+  return [root, () => {
+    offInstall();
+    stadium.destroy();
+  }];
 }
