@@ -13,6 +13,8 @@ const buffers = new Map<string, AudioBuffer>();
 let bgm: HTMLAudioElement | null = null;
 let bgmKey = '';
 let unlocked = false;
+/** the page is in the background: nothing may sound */
+let asleep = false;
 
 function ac(): AudioContext | null {
   if (ctx) return ctx;
@@ -47,7 +49,7 @@ export function unlockAudio(): void {
   const c = ac();
   if (c && c.state === 'suspended') void c.resume();
   for (const k of Object.keys(SE)) void load(k);
-  if (bgm && bgmKey && !save().mute) void bgm.play().catch(() => undefined);
+  if (bgm && bgmKey && !save().mute && !asleep) void bgm.play().catch(() => undefined);
 }
 
 export function playBgm(key: string, volume = 0.35): void {
@@ -66,7 +68,7 @@ export function playBgm(key: string, volume = 0.35): void {
     bgm = new Audio(url);
     bgm.loop = true;
     bgm.volume = volume;
-    if (unlocked && !save().mute) void bgm.play().catch(() => undefined);
+    if (unlocked && !save().mute && !asleep) void bgm.play().catch(() => undefined);
   } catch {
     bgm = null;
   }
@@ -157,7 +159,36 @@ export function toggleMute(): boolean {
   if (master) master.gain.value = s.mute ? 0 : 0.8;
   if (bgm) {
     if (s.mute) bgm.pause();
-    else if (unlocked) void bgm.play().catch(() => undefined);
+    else if (unlocked && !asleep) void bgm.play().catch(() => undefined);
   }
   return s.mute;
+}
+
+// A page nobody is looking at makes no sound. Leaving the browser, switching apps or locking the phone all end up
+// here: the music element is paused at once (a phone would otherwise keep playing it like a music player),
+// the audio context is suspended, and both come back on return.
+function setAsleep(sleep: boolean): void {
+  if (sleep === asleep) return;
+  asleep = sleep;
+  try {
+    if (asleep) {
+      bgm?.pause();
+      if (ctx && ctx.state === 'running') void ctx.suspend().catch(() => undefined);
+    } else if (unlocked) {
+      if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+      if (bgm && bgmKey && !save().mute) void bgm.play().catch(() => undefined);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+if (typeof document !== 'undefined') {
+  const check = (): void => setAsleep(document.visibilityState === 'hidden');
+  document.addEventListener('visibilitychange', check);
+  // some browsers skip visibilitychange when the page is frozen, unloaded or put in the back/forward cache
+  window.addEventListener('pagehide', () => setAsleep(true));
+  window.addEventListener('pageshow', check);
+  document.addEventListener('freeze', () => setAsleep(true));
+  document.addEventListener('resume', check);
+  window.addEventListener('focus', check);
 }

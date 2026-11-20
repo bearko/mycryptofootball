@@ -413,3 +413,10 @@ footer.bar { height: 6.2rem; border-top: 0.2rem solid var(--line); justify-conte
 @media (prefers-reduced-motion: reduce) {
   .title-turf .sprite, .banner-box, .face, .face-edge, .cutin-band { animation: none; }
 }
+
+/* "play it as an app" */
+.install-top { display: grid; grid-template-columns: auto 1fr; gap: 1.4rem; align-items: center; flex-direction: row !important; }
+.install-icon { width: 7rem; height: 7rem; border-radius: 1.4rem; }
+.install-steps { display: grid; gap: 0.5rem; font-size: 1.2rem; line-height: 1.4; }
+.install-steps li { display: grid; grid-template-columns: auto 1fr; gap: 0.8rem; align-items: center; }
+.install-steps b { width: 2.4rem; line-height: 2.4rem; text-align: center; background: var(--yellow); color: var(--ink); border-radius: 50%; font-family: var(--display); font-weight: 400; }
