@@ -26,7 +26,7 @@
 @keyframes lu-dir-down { 50% { transform: translateY(0.2rem); } }
 
 /* chalk lines: drawn on, and drawn again whenever the line-up changes */
-.lu-chalk { position: absolute; inset: 0; pointer-events: none; }
+.lu-chalk { position: absolute; inset: 0; pointer-events: none; will-change: transform; /* its own layer: the rough-chalk filter is painted once, not under every breathing magnet */ }
 .lu-chalk svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .lu-chalk path { fill: none; stroke: rgba(255, 251, 232, 0.78); stroke-width: 0.2rem; stroke-linecap: round; stroke-linejoin: round; }
 .lu-chalk .los { stroke: rgba(255, 251, 232, 0.5); stroke-width: 0.14rem; stroke-dasharray: 0.7rem 0.55rem; }
@@ -54,9 +54,9 @@
 .lineup.live .lu-seat { animation: lu-snap 0.42s var(--spring) backwards; animation-delay: calc(var(--i) * 45ms + 40ms); }
 @keyframes lu-snap { 0% { transform: translateY(-2.4rem) scale(1.6) rotate(-14deg); opacity: 0; } 60% { opacity: 1; } }
 
-.lu-mag { position: absolute; inset: 0; display: block; transform-origin: 50% 60%; transition: transform 0.2s var(--spring), filter 0.2s, opacity 0.12s; filter: drop-shadow(0.2rem 0.24rem 0 rgba(6, 8, 26, 0.8)); }
+.lu-mag { position: absolute; inset: 0; display: block; transform-origin: 50% 60%; transition: transform 0.2s var(--spring), filter 0.2s, opacity 0.12s; }
 .lu-mag .portrait { width: 100%; }
-.lu-mag .portrait::before { inset: 3% 3% 3%; box-shadow: 0 0 0 0.22rem var(--ink), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35), inset 0 -0.4rem 0 rgba(6, 8, 26, 0.22); }
+.lu-mag .portrait::before { inset: 3% 3% 3%; box-shadow: 0 0 0 0.22rem var(--ink), 0.3rem 0.36rem 0 0.16rem rgba(6, 8, 26, 0.8), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35), inset 0 -0.4rem 0 rgba(6, 8, 26, 0.22); transition: box-shadow 0.15s; }
 .lu-mag .portrait::after { display: none; }
 .lu-mag .portrait img { width: 92%; height: 92%; }
 .lu-name { position: absolute; left: 50%; bottom: -0.6rem; z-index: 2; transform: translateX(-50%); white-space: nowrap; font-size: var(--fs-xs); line-height: 1.3; padding: 0 0.55rem; color: var(--chalk); background: var(--ink); clip-path: polygon(0.3rem 0, 100% 0, calc(100% - 0.3rem) 100%, 0 100%); }
@@ -89,8 +89,8 @@
 
 /* a hero in the hand: lifted, and every other spot says what it would give */
 .lu-slot.home { cursor: grabbing; }
-.lu-slot.home .lu-mag { transform: translateY(-0.7rem) scale(1.14) rotate(-5deg); filter: drop-shadow(0.5rem 0.8rem 0 rgba(6, 8, 26, 0.6)); animation: lu-wiggle 0.55s ease-in-out infinite alternate; }
-.lu-slot.home .lu-mag .portrait::before { box-shadow: 0 0 0 0.22rem var(--ink), 0 0 0 0.5rem var(--yellow), 0 0 0 0.7rem var(--ink), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35); }
+.lu-slot.home .lu-mag { transform: translateY(-0.7rem) scale(1.14) rotate(-5deg); animation: lu-wiggle 0.55s ease-in-out infinite alternate; }
+.lu-slot.home .lu-mag .portrait::before { box-shadow: 0 0 0 0.22rem var(--ink), 0 0 0 0.5rem var(--yellow), 0 0 0 0.7rem var(--ink), 0.7rem 1rem 0 0.4rem rgba(6, 8, 26, 0.55), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35); }
 @keyframes lu-wiggle { to { transform: translateY(-0.9rem) scale(1.14) rotate(4deg); } }
 .lu-slot.lifted .lu-mag, .lu-slot.returning .lu-mag { opacity: 0; animation: none; }
 .lu-slot.target .lu-mag { filter: saturate(0.5) brightness(0.55); }
@@ -112,16 +112,16 @@
 .lu-slot.over .lu-if { transform: scale(1.25); border-style: solid; border-color: var(--yellow); background: rgba(255, 225, 74, 0.28); animation: none; }
 .lu-slot.over .lu-socket { transform: scale(1.3); border-color: var(--yellow); border-style: solid; }
 
-.lu-ghost { position: fixed; inset: auto; z-index: 120; height: auto; aspect-ratio: 1; pointer-events: none; transform: translate(-50%, -62%) scale(1.18) rotate(var(--lean, 0deg)); filter: drop-shadow(0.7rem 1rem 0 rgba(6, 8, 26, 0.5)); transition: transform 0.09s ease-out; }
+.lu-ghost { position: fixed; inset: auto; z-index: 120; height: auto; aspect-ratio: 1; pointer-events: none; transform: translate(-50%, -62%) scale(1.18) rotate(var(--lean, 0deg)); transition: transform 0.09s ease-out; }
 .lu-ghost .lu-grade, .lu-ghost .lu-star { display: none; }
-.lu-ghost .portrait::before { box-shadow: 0 0 0 0.22rem var(--ink), 0 0 0 0.5rem var(--yellow), 0 0 0 0.7rem var(--ink), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35); }
+.lu-ghost .portrait::before { box-shadow: 0 0 0 0.22rem var(--ink), 0 0 0 0.5rem var(--yellow), 0 0 0 0.7rem var(--ink), 0.9rem 1.3rem 0 0.4rem rgba(6, 8, 26, 0.5), inset 0 0.35rem 0 rgba(255, 255, 255, 0.35); }
 
 /* ---------- LED gauges ---------- */
 .lu-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; height: 2.7rem; align-items: center; padding: 0 0.5rem; }
 .lu-meter { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) 2.5rem; align-items: center; gap: 0.5rem; height: 2.2rem; padding: 0 0.6rem; font-size: var(--fs-xs); white-space: nowrap; color: var(--chalk); background: #04050d; border: 0.18rem solid var(--ink); box-shadow: inset 0 0 0 0.1rem #23274f, 0.2rem 0.2rem 0 rgba(6, 8, 26, 0.7); transform: skewX(-9deg); --mc: var(--led); }
 .lu-meter.def { --mc: var(--cyan); }
 .lu-led { position: relative; height: 1.1rem; background: repeating-linear-gradient(90deg, #20244d 0 0.36rem, transparent 0.36rem 0.52rem); }
-.lu-led i { position: absolute; inset: 0 auto 0 0; width: 0; background: repeating-linear-gradient(90deg, var(--mc) 0 0.36rem, transparent 0.36rem 0.52rem); filter: drop-shadow(0 0 0.3rem var(--mc)); transition: width 0.7s var(--spring); }
+.lu-led i { position: absolute; inset: 0 auto 0 0; width: 0; background: repeating-linear-gradient(90deg, var(--mc) 0 0.36rem, transparent 0.36rem 0.52rem); box-shadow: 0 0 0.6rem color-mix(in srgb, var(--mc) 55%, transparent); transition: width 0.7s var(--spring); }
 .lu-led i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent) no-repeat; background-size: 30% 100%; animation: sheen 2.6s linear infinite; mix-blend-mode: overlay; }
 .lu-meter b { font-weight: 400; font-size: var(--fs-m); line-height: 1; text-align: right; background: none; color: var(--mc); text-shadow: 0 0 0.7rem var(--mc); }
 .lu-meter.up { animation: lu-up 0.45s var(--spring); }
