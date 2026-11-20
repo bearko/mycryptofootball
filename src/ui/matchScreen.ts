@@ -40,8 +40,8 @@ interface Snap {
 export function matchScreen(): [HTMLElement, () => void] {
   const s = save().season!;
   const p = plan(s);
-  if (p.t !== 'match') throw new Error('not a match week');
-  const isFinal = s.week === SCHEDULE.length - 1;
+  if (p.t !== 'match') throw new Error('not a match day');
+  const isFinal = s.day === SCHEDULE.length - 1;
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
@@ -206,15 +206,14 @@ export function matchScreen(): [HTMLElement, () => void] {
       sfx.chalk();
     };
 
-    const confirm = (): void => {
-      if (busy || !selected) return;
-      const mine = selected;
+    /** Plays a card: one tap. (A "look first" special shows the opponent's card and asks once more.) */
+    const playCardNow = (mine: Pick): void => {
+      if (busy) return;
+      busy = true;
       if (mine.special && (mine.special.kind === 'peekOff' || mine.special.kind === 'peekDef')) {
-        busy = true;
         void runPeek(mine.special);
         return;
       }
-      busy = true;
       if (onOffense) taughtOff = true;
       else taughtDef = true;
       void playOut(onOffense ? mine : theirs, onOffense ? theirs : mine);
@@ -229,6 +228,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       peeked = { ok };
       drawBug(snap());
       selected = null;
+      stadium.preview(null, side, 0);
       dealt = false;
       sense.replaceChildren();
       if (ok) {
@@ -241,22 +241,20 @@ export function matchScreen(): [HTMLElement, () => void] {
       prompt();
     };
 
-    const choose = (pick: Pick): void => {
-      if (busy) return;
-      if (selected === pick) {
-        confirm();
-        return;
-      }
+    /** Considering a card (hovering with the mouse, or holding a finger on it): it is drawn on the turf and explained. */
+    const consider = (pick: Pick | null, el?: HTMLElement): void => {
+      if (busy || selected === pick) return;
       selected = pick;
-      sfx.cardPick();
-      vibrate(8);
+      for (const c of hand.querySelectorAll('.card.selected')) c.classList.remove('selected');
       stadium.preview(pick, side, 0);
+      if (!pick) return;
+      el?.classList.add('selected');
+      sfx.cardPick();
       if (pick.special) booth.say(`${hero(pick.special.owner).name}の「${pick.special.name}」！ ${KIND[pick.special.kind].text}`, 'sparkle');
       else {
         const info = onOffense ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
         booth.say(`${info.name}。${info.text}`, 'idle');
       }
-      drawHand();
     };
 
     const drawHand = (): void => {
@@ -272,8 +270,22 @@ export function matchScreen(): [HTMLElement, () => void] {
         const block = c.special ? specialBlock(st, 0, c.special) : null;
         const el = playCard(c, side, {
           selected: selected === c, blocked: block ? BLOCK_TEXT[block] : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
-          mom: st.mom[0], index: i, key: true, deal: firstDeal, onpick: () => choose(c),
+          mom: st.mom[0], index: i, key: true, deal: firstDeal,
+          onpick: () => {
+            vibrate(12);
+            playCardNow(c);
+          },
         });
+        if (!block) {
+          // mouse: hover considers. touch: pressing considers, lifting the finger on the card plays, sliding off cancels
+          el.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && consider(c, el));
+          el.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && consider(c, el));
+          el.addEventListener('pointerleave', () => selected === c && consider(null));
+          el.addEventListener('focus', () => consider(c, el));
+        } else if (c.special) {
+          const why = BLOCK_TEXT[block];
+          el.addEventListener('click', () => booth.say(`${hero(c.special!.owner).name}の「${c.special!.name}」は、いまは使えません（${why}）`, 'sad'));
+        }
         if (block) el.classList.add('spine');
         if (c.special && !block) {
           nowReady.add(c.special.key);
@@ -294,13 +306,12 @@ export function matchScreen(): [HTMLElement, () => void] {
         h('div.hand-cards', els),
         historyEl(),
         h('div.hand-go',
-          button(selected ? 'これでいく！' : 'カードをえらぶ', confirm, { cls: selected ? 'big go' : 'big off', sound: 'confirm' }),
+          h('p.hand-tip', peeked ? 'えらんだカードで勝負' : 'カードを押すと、その作戦で勝負'),
           button('おまかせ', () => {
             if (busy) return;
-            busy = true;
             const mine = !peeked ? autoPick(st, 0, theirs)
-              : selected ?? (peeked.ok ? cards.find((c) => c.type === bestAgainst(theirs, onOffense)) : null) ?? cards[0]!;
-            void playOut(onOffense ? mine : theirs, onOffense ? theirs : mine);
+              : (peeked.ok ? cards.find((c) => c.type === bestAgainst(theirs, onOffense)) : null) ?? cards[0]!;
+            playCardNow(mine);
           }, { cls: 'mini alt', key: 'A' })));
       // a crowded hand gives the cards the room: the log steps aside
       const log = hand.querySelector<HTMLElement>('.hand-log')!;
@@ -314,12 +325,9 @@ export function matchScreen(): [HTMLElement, () => void] {
       const n = Number(e.key);
       if (n >= 1 && n <= cards.length) {
         const c = cards[n - 1]!;
-        if (!c.special || !specialBlock(st, 0, c.special)) choose(c);
+        if (!c.special || !specialBlock(st, 0, c.special)) playCardNow(c);
         else sfx.deny();
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        confirm();
-      } else if (e.key === 'a' || e.key === 'A') hand.querySelector<HTMLElement>('.hand-go .btn.mini')?.click();
+      } else if (e.key === 'a' || e.key === 'A') hand.querySelector<HTMLElement>('.hand-go .btn')?.click();
     };
 
     drawHand();
@@ -331,9 +339,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (debug.bot) {
       setTimeout(() => {
         if (!alive || busy) return;
-        busy = true;
-        const mine = autoPick(st, 0, theirs);
-        void playOut(onOffense ? mine : theirs, onOffense ? theirs : mine);
+        playCardNow(autoPick(st, 0, theirs));
       }, 30);
     }
   };
@@ -460,8 +466,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       },
       onImpact: (power) => {
         sfx.impact(power);
-        shake(0.4 + power * 0.9, 200 + power * 160);
-        vibrate(15 + Math.round(power * 45));
+        if (power >= 0.5) shake(power * 0.7, 180 + power * 140);
+        if (power >= 0.3) vibrate(10 + Math.round(power * 45));
       },
       onSteal: () => {
         sfx.steal();

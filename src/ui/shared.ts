@@ -79,7 +79,7 @@ export function memberModal(s: Season, m: Member): void {
       radar(m.stats, r.stats).el),
     h('div.member-play', { class: learned(m) ? 'on' : '' },
       playCard({ type: 'inside', star: 1, special: sp }, 'off', { small: true, read: 0 }),
-      h('div', h('span.label', learned(m) ? '' : 'dark'), h('b', `特別作戦「${sp.name}」`), h('i', state), h('p', specialText(sp)))),
+      h('div', h('b', `特別作戦「${sp.name}」`), h('i', state), h('p', specialText(sp)))),
     h('div.modal-actions', button('とじる', closeModal, { sound: 'back' }))), { cls: 'wide' });
 }
 

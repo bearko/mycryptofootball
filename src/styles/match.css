@@ -180,7 +180,7 @@
 .hand-log b { font-weight: 400; color: var(--cyan); margin-left: auto; flex: none; }
 .hand-log li.good b { color: var(--lime); }
 .hand-log li:nth-child(n + 3) { opacity: 0.55; }
-.hand-go { width: 11.6rem; flex: none; display: flex; flex-direction: column; gap: 0.7rem; justify-content: center; align-items: stretch; }
+.hand-go { width: 9.6rem; flex: none; display: flex; flex-direction: column; gap: 0.7rem; justify-content: center; align-items: stretch; }
 .hand-go .btn-face { padding: 0 0.6rem; font-size: var(--fs-m); }
 .match > .ticker { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; }
 
@@ -204,3 +204,5 @@
 .talk b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); color: #c23a12; }
 @media (hover: hover) { .talk:hover { transform: translateY(-0.6rem) rotate(0deg) scale(1.04); } }
 .talk:active { transform: scale(0.95); }
+
+.hand-tip { font-size: var(--fs-xs); line-height: 1.35; color: var(--dim); text-align: center; }

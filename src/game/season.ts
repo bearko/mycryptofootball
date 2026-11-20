@@ -1,87 +1,249 @@
-// One season of the club: recruiting, weekly practice, and the tournament.
+// One season of the club: recruiting, daily practice, and the tournament.
 // Plain data in, plain data out, so a season can be saved as JSON at any moment.
+//
+// How practice works:
+//  - every hero has a training policy: the one ability they are working on (`focus`). It is set when the season
+//    starts and can only be changed at a milestone (see `policyOpen`)
+//  - each practice day the coach plays ONE practice card from the hand. A card hands out experience in four
+//    colours (power, speed, technique, brains) to the heroes
+//  - each hero turns that experience into abilities on their own: first into the policy ability, and whatever
+//    colours the policy has no use for into the other abilities their positions need
 
 import { Rng, clamp } from '../core/rng';
 import { READ_MAX } from './cards';
 import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
-import { OFF_POS, STATS, STAT_LABEL, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
+import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
 export const CANDIDATES = 9;
+/** trust at which a hero's special practice card may turn up / the special play is learned / it gets stronger */
+export const TRUST_DRILL = 20;
 export const TRUST_LEARN = 40;
 export const TRUST_BOOST = 80;
 export const TRUST_MAX = 100;
-export const SOLO_PER_WEEK = 2;
-/** trust gained from a week of group practice / from a one-on-one session */
-export const GROUP_TRUST = 2;
-export const SOLO_TRUST = 12;
+export const HAND_SIZE = 5;
 
 export const TEAM_NAME = 'マイクリ学園';
 export const TEAM_SHORT = 'マイクリ';
 export const TEAM_COLOR = '#ffd84a';
 
-export type WeekPlan = { t: 'train' } | { t: 'match'; opp: number; label: string; cup: boolean };
-export const SCHEDULE: readonly WeekPlan[] = [
-  { t: 'train' },
-  { t: 'train' },
-  { t: 'match', opp: 0, label: '練習試合', cup: false },
-  { t: 'train' },
-  { t: 'train' },
-  { t: 'match', opp: 1, label: '地区大会 1回戦', cup: true },
-  { t: 'train' },
-  { t: 'match', opp: 2, label: '地区大会 準決勝', cup: true },
-  { t: 'train' },
-  { t: 'match', opp: 3, label: '地区大会 決勝', cup: true },
+// ------------------------------------------------------------------ the calendar
+
+export interface DayPlan {
+  /** 0-based day of the season */
+  n: number;
+  month: number;
+  date: number;
+  /** 0 = Monday ... 6 = Sunday */
+  dow: number;
+  t: 'train' | 'match';
+  /** matches only */
+  opp: number;
+  label: string;
+  cup: boolean;
+}
+export const DOW = ['月', '火', '水', '木', '金', '土', '日'] as const;
+const MATCHES = [
+  { label: '練習試合', cup: false },
+  { label: '地区大会 1回戦', cup: true },
+  { label: '地区大会 準決勝', cup: true },
+  { label: '地区大会 決勝', cup: true },
 ];
+
+/** Four weeks from Monday, April 5: practice Monday to Saturday, a match every Sunday. */
+export const SCHEDULE: readonly DayPlan[] = Array.from({ length: MATCHES.length * 7 }, (_, n) => {
+  const day = 5 + n;
+  const month = day > 30 ? 5 : 4;
+  const dow = n % 7;
+  const week = Math.floor(n / 7);
+  const match = dow === 6;
+  return {
+    n, month, date: day > 30 ? day - 30 : day, dow, t: match ? 'match' as const : 'train' as const,
+    opp: match ? week : -1, label: match ? MATCHES[week]!.label : '練習', cup: match ? MATCHES[week]!.cup : false,
+  };
+});
+export const dateText = (d: DayPlan): string => `${d.month}月${d.date}日（${DOW[d.dow]}）`;
+
+// ------------------------------------------------------------------ experience
+
+export type Xp = 'pow' | 'spd' | 'tec' | 'int';
+export const XPS: readonly Xp[] = ['pow', 'spd', 'tec', 'int'];
+export const XP_LABEL: Record<Xp, string> = { pow: 'パワー', spd: 'スピード', tec: 'テクニック', int: 'ずのう' };
+export type XpBag = Record<Xp, number>;
+const noXp = (): XpBag => ({ pow: 0, spd: 0, tec: 0, int: 0 });
+
+/** How much dearer an ability is while it is not the hero's policy. */
+export const OFF_POLICY = 1.6;
+
+/** Experience needed to raise an ability by one point. */
+export const STAT_COST: Record<Stat, Partial<XpBag>> = {
+  spd: { spd: 10 },
+  pas: { tec: 7, int: 3 },
+  cat: { tec: 6, spd: 4 },
+  blk: { pow: 10 },
+  tkl: { pow: 6, spd: 4 },
+  iq: { int: 10 },
+};
 
 export interface Member {
   id: number;
   stats: Stats;
   trust: number;
   captain: boolean;
+  /** experience not yet turned into abilities */
+  xp: XpBag;
+  /** the training policy: the ability this hero is working on */
+  focus: Stat;
 }
 
-export interface MatchRecord {
-  week: number;
-  opp: number;
-  us: number;
-  them: number;
-  win: boolean;
+/** What one more point of an ability costs this hero now (the talent is cheap, the weak spot dear, the heights steep). */
+export function costOf(m: Member, k: Stat): Partial<XpBag> {
+  const { best, worst } = talentOf(recruit(m.id).stats);
+  let mul = k === best ? 0.7 : k === worst ? 1.4 : 1;
+  if (m.stats[k] >= 90) mul *= 2.6;
+  else if (m.stats[k] >= 80) mul *= 1.8;
+  // practice aimed at the policy sticks; everything else is picked up along the way, at a price
+  if (k !== m.focus) mul *= OFF_POLICY;
+  const out: Partial<XpBag> = {};
+  for (const [c, v] of Object.entries(STAT_COST[k])) out[c as Xp] = (v as number) * mul;
+  return out;
 }
 
-// ------------------------------------------------------------------ practice
+function pay(m: Member, k: Stat): boolean {
+  if (m.stats[k] >= 99) return false;
+  const cost = costOf(m, k);
+  for (const [c, v] of Object.entries(cost)) if (m.xp[c as Xp] < (v as number) - 1e-9) return false;
+  for (const [c, v] of Object.entries(cost)) m.xp[c as Xp] -= v as number;
+  m.stats[k] += 1;
+  return true;
+}
+
+/** How much each ability matters to a hero where they play now (bench: their talent). */
+export function needOf(l: Lineup | null, m: Member): Partial<Stats> {
+  const out: Partial<Stats> = {};
+  const add = (role: keyof typeof ROLE_WEIGHTS): void => {
+    for (const [k, w] of Object.entries(ROLE_WEIGHTS[role])) out[k as Stat] = (out[k as Stat] ?? 0) + (w as number);
+  };
+  if (l) {
+    for (const p of OFF_POS) if (l.off[p] === m.id) add(roleOf(p));
+    for (const p of DEF_POS) if (l.def[p] === m.id) add(roleOf(p));
+  }
+  if (!Object.keys(out).length) out[talentOf(m.stats).best] = 1;
+  return out;
+}
+
+/** Turns stored experience into abilities, following the hero's policy. Returns the points gained. */
+function convert(m: Member, l: Lineup | null): Partial<Stats> {
+  const gained: Partial<Stats> = {};
+  const up = (k: Stat): void => {
+    let guard = 0;
+    while (guard < 40 && pay(m, k)) {
+      guard += 1;
+      gained[k] = (gained[k] ?? 0) + 1;
+    }
+  };
+  // the policy ability first
+  up(m.focus);
+  // colours the policy has no use for go to the other abilities the hero's positions need
+  const reserved = new Set(Object.keys(STAT_COST[m.focus]));
+  const need = needOf(l, m);
+  const others = STATS.filter((k) => k !== m.focus && !Object.keys(STAT_COST[k]).some((c) => reserved.has(c)))
+    .sort((a, b) => (need[b] ?? 0) - (need[a] ?? 0));
+  for (const k of others) up(k);
+  return gained;
+}
+
+// ------------------------------------------------------------------ practice cards
 
 export type PracticeKey = 'dash' | 'pass' | 'catch' | 'hit' | 'tackle' | 'study' | 'game';
 export interface Practice {
   name: string;
-  main: Stat | null;
-  sub: Stat | null;
+  xp: Partial<XpBag>;
+  /** trust every member gains */
   trust: number;
   text: string;
 }
 export const PRACTICE: Record<PracticeKey, Practice> = {
-  dash: { name: '走りこみ', main: 'spd', sub: null, trust: 0, text: '走力が上がる' },
-  pass: { name: 'パス練習', main: 'pas', sub: 'cat', trust: 0, text: 'パスが上がる。捕球も少し' },
-  catch: { name: 'キャッチ練習', main: 'cat', sub: 'spd', trust: 0, text: '捕球が上がる。走力も少し' },
-  hit: { name: '当たり稽古', main: 'blk', sub: 'tkl', trust: 0, text: 'ブロックが上がる。タックルも少し' },
-  tackle: { name: 'タックル練習', main: 'tkl', sub: 'blk', trust: 0, text: 'タックルが上がる。ブロックも少し' },
-  study: { name: '作戦会議', main: 'iq', sub: null, trust: 2, text: '判断が上がる。信頼も少し' },
-  game: { name: 'ミニゲーム', main: null, sub: null, trust: 5, text: '全能力が少しずつ上がり、信頼が大きく上がる' },
+  dash: { name: '走りこみ', xp: { spd: 12 }, trust: 0, text: 'ひたすら走る' },
+  pass: { name: 'パス練習', xp: { tec: 8, int: 4 }, trust: 0, text: '投げて、投げて、投げる' },
+  catch: { name: 'キャッチ練習', xp: { tec: 7, spd: 5 }, trust: 0, text: '走りながら捕る' },
+  hit: { name: '当たり稽古', xp: { pow: 12 }, trust: 0, text: '体をぶつけ合う' },
+  tackle: { name: 'タックル練習', xp: { pow: 7, spd: 5 }, trust: 0, text: '追いかけて、倒す' },
+  study: { name: '作戦会議', xp: { int: 10 }, trust: 1, text: '黒板を囲んで作戦を練る。信頼も少し上がる' },
+  game: { name: 'ミニゲーム', xp: { pow: 3, spd: 3, tec: 3, int: 3 }, trust: 2, text: 'みんなで試合形式。信頼が上がる' },
 };
 export const PRACTICE_KEYS = Object.keys(PRACTICE) as PracticeKey[];
-/** What a one-on-one session can be. */
-export const SOLO_KEYS: PracticeKey[] = ['dash', 'pass', 'catch', 'hit', 'tackle', 'study'];
+const STAR_MUL = [0, 1, 1.35, 1.7];
 
-export type Group = 'backs' | 'recv' | 'line';
-export const GROUPS: readonly Group[] = ['backs', 'recv', 'line'];
-export const GROUP_LABEL: Record<Group, string> = { backs: 'バックス', recv: 'レシーバー', line: 'ライン' };
-export const GROUP_HINT: Record<Group, string> = { backs: '司令塔・ランナー', recv: 'パスを捕る2人', line: '壁になる2人' };
+/** The special practice a trusted hero can run, by that hero's talent. */
+export const DRILL_NAME: Record<Stat, string> = {
+  spd: '鬼ごっこ', pas: '的当て', cat: '空中キャッチ', blk: '押しくらべ', tkl: '一騎打ち', iq: '兵法講義',
+};
+const DRILL_TOTAL = 26;
+const SOLO_TOTAL = 32;
+const SOLO_TRUST = 10;
 
-export interface PracticeCard {
-  key: PracticeKey;
+export type PracticeCard =
+  /** an ordinary drill for everyone */
+  | { uid: number; kind: 'basic'; key: PracticeKey; star: number }
+  /** the coach works with one hero alone: a lot of experience for the policy ability, and trust */
+  | { uid: number; kind: 'solo'; hero: number }
+  /** a trusted hero runs their own special drill for the whole team */
+  | { uid: number; kind: 'special'; hero: number };
+
+export interface CardInfo {
+  name: string;
+  text: string;
+  /** experience each hero gets (for 'solo': only that hero) */
+  xp: Partial<XpBag>;
+  /** trust for everyone / extra trust for the card's hero */
+  trust: number;
+  heroTrust: number;
+  hero: number | null;
   star: number;
+}
+
+/** Spreads an amount of experience over the colours an ability needs. */
+function xpFor(k: Stat, total: number): Partial<XpBag> {
+  const cost = STAT_COST[k];
+  const sum = Object.values(cost).reduce((a, b) => a + (b as number), 0);
+  const out: Partial<XpBag> = {};
+  for (const [c, v] of Object.entries(cost)) out[c as Xp] = Math.round((total * (v as number)) / sum * 10) / 10;
+  return out;
+}
+
+export function cardInfo(s: Season, card: PracticeCard): CardInfo {
+  if (card.kind === 'basic') {
+    const p = PRACTICE[card.key];
+    const xp: Partial<XpBag> = {};
+    for (const [c, v] of Object.entries(p.xp)) xp[c as Xp] = Math.round((v as number) * STAR_MUL[card.star]! * 10) / 10;
+    return { name: p.name, text: p.text, xp, trust: p.trust, heroTrust: 0, hero: null, star: card.star };
+  }
+  const m = member(s, card.hero);
+  const name = hero(card.hero).name;
+  if (card.kind === 'solo') {
+    return {
+      name: 'マンツーマン', text: `${name}とふたりで特訓。${STAT_LABEL[m.focus]}がぐんと伸び、信頼が大きく上がる`,
+      xp: xpFor(m.focus, SOLO_TOTAL), trust: 0, heroTrust: SOLO_TRUST, hero: card.hero, star: 0,
+    };
+  }
+  const talent = talentOf(recruit(card.hero).stats).best;
+  return {
+    name: DRILL_NAME[talent], text: `${name}の特別練習。全員の${STAT_LABEL[talent]}の経験がどっさり入る`,
+    xp: xpFor(talent, DRILL_TOTAL), trust: 1, heroTrust: 2, hero: card.hero, star: 0,
+  };
+}
+
+// ------------------------------------------------------------------ the season
+
+export interface MatchRecord {
+  day: number;
+  opp: number;
+  us: number;
+  them: number;
+  win: boolean;
 }
 
 export interface WeekEvent {
@@ -91,7 +253,7 @@ export interface WeekEvent {
 }
 
 export interface Season {
-  v: 1;
+  v: 2;
   seed: number;
   /** state of the season's random generator */
   rs: number;
@@ -99,9 +261,14 @@ export interface Season {
   candidates: number[];
   members: Member[];
   lineup: Lineup | null;
-  week: number;
-  /** this week's dealt practice cards, per group */
-  deal: Record<Group, PracticeCard[]> | null;
+  /** index into SCHEDULE */
+  day: number;
+  /** practice cards in hand */
+  hand: PracticeCard[];
+  /** next card id */
+  uid: number;
+  /** a milestone: the training policy may be changed until the next practice card is played */
+  meeting: boolean;
   event: WeekEvent | null;
   /** events already seen */
   seen: string[];
@@ -124,8 +291,8 @@ export function newSeason(seed: number): Season {
   }
   candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
   return {
-    v: 1, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, week: 0,
-    deal: null, event: null, seen: [], results: [], usage: {}, champion: false,
+    v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
+    hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
   };
 }
 
@@ -143,75 +310,105 @@ export function signRecruits(s: Season, ids: number[]): void {
     stats: { ...recruit(id).stats },
     trust: i === 0 ? TRUST_LEARN : rng.int(5, 15),
     captain: i === 0,
+    xp: noXp(),
+    focus: talentOf(recruit(id).stats).best,
   }));
   s.lineup = bestLineup(s.members.map(asPlayer));
   s.phase = 'club';
-  s.week = 0;
+  s.day = 0;
+  s.meeting = true;
   keep(s, rng);
-  startWeek(s);
+  startDay(s);
 }
 
 export const asPlayer = (m: Member): Player => ({ id: m.id, name: hero(m.id).name, stats: m.stats });
 export const member = (s: Season, id: number): Member => s.members.find((m) => m.id === id)!;
 export const learned = (m: Member): boolean => m.trust >= TRUST_LEARN;
 export const boosted = (m: Member): boolean => m.trust >= TRUST_BOOST;
-export const plan = (s: Season): WeekPlan => SCHEDULE[Math.min(s.week, SCHEDULE.length - 1)]!;
+export const plan = (s: Season): DayPlan => SCHEDULE[Math.min(s.day, SCHEDULE.length - 1)]!;
 
-/** The next match on the calendar from this week on (null after the last one). */
-export function nextMatch(s: Season): (WeekPlan & { t: 'match' }) | null {
-  for (let w = s.week; w < SCHEDULE.length; w += 1) {
-    const p = SCHEDULE[w]!;
-    if (p.t === 'match') return p;
-  }
+/** The next match on the calendar from today on (null after the last one). */
+export function nextMatch(s: Season): DayPlan | null {
+  for (let d = s.day; d < SCHEDULE.length; d += 1) if (SCHEDULE[d]!.t === 'match') return SCHEDULE[d]!;
   return null;
 }
 
-// ------------------------------------------------------------------ the week
+// ------------------------------------------------------------------ the training policy
 
-/** Which practice group each member belongs to: by position for starters, by talent for the bench. */
-export function groupOf(s: Season, id: number): Group {
-  const l = s.lineup!;
-  const pos = OFF_POS.find((p) => l.off[p] === id);
-  if (pos) {
-    const role = roleOf(pos);
-    return role === 'WR' ? 'recv' : role === 'OL' ? 'line' : 'backs';
-  }
-  const best = talentOf(member(s, id).stats).best;
-  return best === 'cat' ? 'recv' : best === 'blk' || best === 'tkl' ? 'line' : 'backs';
+/** True at a milestone (the season's start, the day after the practice match): the policy may be changed. */
+export const policyOpen = (s: Season): boolean => s.phase === 'club' && s.meeting;
+
+export function setFocus(s: Season, id: number, k: Stat): void {
+  if (!policyOpen(s)) throw new Error('the training policy can only be changed at a milestone');
+  member(s, id).focus = k;
 }
 
-export const groupMembers = (s: Season, g: Group): Member[] => s.members.filter((m) => groupOf(s, m.id) === g);
+export type Preset = 'talent' | 'offense' | 'defense';
+export const PRESET_LABEL: Record<Preset, { name: string; text: string }> = {
+  talent: { name: '得意を伸ばす', text: '全員、いちばん得意な能力をさらに伸ばす' },
+  offense: { name: '攻撃に合わせる', text: '攻撃のポジションでいちばん使う能力を伸ばす' },
+  defense: { name: '守備に合わせる', text: '守備のポジションでいちばん使う能力を伸ばす' },
+};
+
+/** The ability a preset would give this hero. */
+export function presetFocus(s: Season, m: Member, preset: Preset): Stat {
+  const talent = talentOf(recruit(m.id).stats).best;
+  if (preset === 'talent' || !s.lineup) return talent;
+  const positions = preset === 'offense' ? OFF_POS : DEF_POS;
+  const map: Record<string, number> = preset === 'offense' ? s.lineup.off : s.lineup.def;
+  const pos = positions.find((p) => map[p] === m.id);
+  if (!pos) return talent;
+  const w = ROLE_WEIGHTS[roleOf(pos)];
+  return (Object.keys(w) as Stat[]).sort((a, b) => (w[b] ?? 0) - (w[a] ?? 0))[0]!;
+}
+
+export function applyPreset(s: Season, preset: Preset): void {
+  if (!policyOpen(s)) throw new Error('the training policy can only be changed at a milestone');
+  for (const m of s.members) m.focus = presetFocus(s, m, preset);
+}
+
+// ------------------------------------------------------------------ a practice day
 
 function star(rng: Rng): number {
   const r = rng.next();
   return r < 0.45 ? 1 : r < 0.82 ? 2 : 3;
 }
 
-/** What each group's practice most naturally is; one of these is always on offer. */
-const GROUP_CORE: Record<Group, PracticeKey[]> = {
-  backs: ['dash', 'pass', 'study'],
-  recv: ['catch', 'dash'],
-  line: ['hit', 'tackle'],
-};
-
-/** Sets up the week: deals practice cards and maybe an event (training weeks only). */
-export function startWeek(s: Season): void {
-  s.deal = null;
-  s.event = null;
-  if (plan(s).t !== 'train') return;
-  const rng = rngOf(s);
-  const deal = {} as Record<Group, PracticeCard[]>;
-  for (const g of GROUPS) {
-    const core = rng.pick(GROUP_CORE[g]);
-    const rest = rng.shuffle(PRACTICE_KEYS.filter((k) => k !== core)).slice(0, 2);
-    deal[g] = [core, ...rest].map((key) => ({ key, star: star(rng) }));
+function drawCard(s: Season, rng: Rng): PracticeCard {
+  const uid = s.uid;
+  s.uid += 1;
+  const inHand = (kind: string, id: number): boolean => s.hand.some((c) => c.kind === kind && 'hero' in c && c.hero === id);
+  // a trusted hero offers their own drill: the more of them, the more often
+  const trusted = s.members.filter((m) => m.trust >= TRUST_DRILL && !inHand('special', m.id));
+  if (trusted.length && !s.hand.some((c) => c.kind === 'special') && rng.chance(Math.min(0.3, 0.07 * trusted.length))) {
+    return { uid, kind: 'special', hero: rng.pick(trusted).id };
   }
-  s.deal = deal;
-  const fresh = EVENTS.filter((e) => !s.seen.includes(e.key));
-  if (fresh.length && s.week > 0) {
-    const e = rng.pick(fresh);
-    const [a, b] = rng.shuffle(s.members.map((m) => m.id));
-    s.event = { key: e.key, a: a!, b: b! };
+  // a chance to work with one hero alone
+  if (s.hand.filter((c) => c.kind === 'solo').length < 2 && rng.chance(0.24)) {
+    const free = s.members.filter((m) => !inHand('solo', m.id));
+    if (free.length) return { uid, kind: 'solo', hero: rng.pick(free).id };
+  }
+  const count = (key: PracticeKey): number => s.hand.filter((c) => c.kind === 'basic' && c.key === key).length;
+  const keys = PRACTICE_KEYS.filter((k) => count(k) === 0);
+  return { uid, kind: 'basic', key: rng.pick(keys.length ? keys : PRACTICE_KEYS), star: star(rng) };
+}
+
+/** Days on which something happens in the club before practice. */
+const EVENT_DAYS = [2, 9, 16, 23];
+
+/** Sets up the day: tops the hand up, maybe an event. */
+export function startDay(s: Season): void {
+  s.event = null;
+  if (s.phase !== 'club' || plan(s).t !== 'train') return;
+  const rng = rngOf(s);
+  while (s.hand.length < HAND_SIZE) s.hand.push(drawCard(s, rng));
+  if (EVENT_DAYS.includes(s.day)) {
+    const fresh = EVENTS.filter((e) => !s.seen.includes(e.key));
+    if (fresh.length) {
+      const e = rng.pick(fresh);
+      const [a, b] = rng.shuffle(s.members.map((m) => m.id));
+      s.event = { key: e.key, a: a!, b: b! };
+    }
   }
   keep(s, rng);
 }
@@ -222,13 +419,13 @@ export interface Change {
   trust: number;
   learnedNow: boolean;
   boostedNow: boolean;
+  /** the hero's special practice became available */
+  drillNow: boolean;
 }
 
 function grow(m: Member, k: Stat, amount: number): number {
   const before = m.stats[k];
-  let v = amount;
-  if (before >= 80) v = Math.max(1, Math.round(v / 2));
-  m.stats[k] = clamp(before + v, 1, 99);
+  m.stats[k] = clamp(before + amount, 1, 99);
   return m.stats[k] - before;
 }
 
@@ -238,70 +435,58 @@ function addTrust(m: Member, v: number): number {
   return m.trust - before;
 }
 
-/** How much a practice card raises its main ability for this hero. */
-export function gainOf(m: Member, card: PracticeCard): number {
-  const p = PRACTICE[card.key];
-  if (!p.main) return 1;
-  const { best, worst } = talentOf(m.stats);
-  const apt = p.main === best ? 1.4 : p.main === worst ? 0.6 : 1;
-  return Math.max(1, Math.round((2 + card.star) * apt));
-}
-
-function practice(m: Member, card: PracticeCard, change: Change): void {
-  const p = PRACTICE[card.key];
-  const add = (k: Stat, v: number): void => {
-    const got = grow(m, k, v);
-    if (got) change.stats[k] = (change.stats[k] ?? 0) + got;
-  };
-  if (p.main) add(p.main, gainOf(m, card));
-  else for (const k of STATS) add(k, card.star >= 3 ? 2 : 1);
-  if (p.sub) add(p.sub, card.star >= 3 ? 2 : 1);
-}
-
-export interface TrainingChoice {
-  /** index of the dealt card chosen for each group */
-  groups: Record<Group, number>;
-  /** one-on-one sessions: member id -> practice (at most SOLO_PER_WEEK) */
-  solo: Record<number, PracticeKey>;
-}
-
-const blankChange = (id: number): Change => ({ id, stats: {}, trust: 0, learnedNow: false, boostedNow: false });
+const blankChange = (id: number): Change => ({ id, stats: {}, trust: 0, learnedNow: false, boostedNow: false, drillNow: false });
 
 function withMilestones(s: Season, run: (changes: Map<number, Change>) => void): Change[] {
-  const was = new Map(s.members.map((m) => [m.id, { l: learned(m), b: boosted(m) }]));
+  const was = new Map(s.members.map((m) => [m.id, m.trust]));
   const changes = new Map(s.members.map((m) => [m.id, blankChange(m.id)]));
   run(changes);
   for (const m of s.members) {
     const c = changes.get(m.id)!;
-    c.learnedNow = !was.get(m.id)!.l && learned(m);
-    c.boostedNow = !was.get(m.id)!.b && boosted(m);
+    const before = was.get(m.id)!;
+    c.learnedNow = before < TRUST_LEARN && m.trust >= TRUST_LEARN;
+    c.boostedNow = before < TRUST_BOOST && m.trust >= TRUST_BOOST;
+    c.drillNow = before < TRUST_DRILL && m.trust >= TRUST_DRILL;
   }
   return [...changes.values()];
 }
 
-/** Runs the week's practice and moves on to the next week. */
-export function train(s: Season, choice: TrainingChoice): Change[] {
-  if (plan(s).t !== 'train' || !s.deal) throw new Error('not a practice week');
-  const soloIds = Object.keys(choice.solo).map(Number);
-  if (soloIds.length > SOLO_PER_WEEK) throw new Error('too many one-on-one sessions');
-  const deal = s.deal;
-  const out = withMilestones(s, (changes) => {
+export interface DayReport {
+  card: PracticeCard;
+  info: CardInfo;
+  changes: Change[];
+}
+
+/** Plays one practice card from the hand: experience, abilities, trust; then the calendar moves on a day. */
+export function train(s: Season, index: number): DayReport {
+  const card = s.hand[index];
+  if (s.phase !== 'club' || plan(s).t !== 'train' || !card) throw new Error('no practice to run');
+  if (s.event) throw new Error('answer the event first');
+  const info = cardInfo(s, card);
+  const changes = withMilestones(s, (ch) => {
     for (const m of s.members) {
-      const c = changes.get(m.id)!;
-      const solo = choice.solo[m.id];
-      if (solo) {
-        practice(m, { key: solo, star: 2 }, c);
-        c.trust += addTrust(m, SOLO_TRUST + PRACTICE[solo].trust);
-      } else {
-        const card = deal[groupOf(s, m.id)][choice.groups[groupOf(s, m.id)]]!;
-        practice(m, card, c);
-        c.trust += addTrust(m, GROUP_TRUST + PRACTICE[card.key].trust);
-      }
+      const c = ch.get(m.id)!;
+      const mine = info.hero === m.id;
+      if (card.kind !== 'solo' || mine) for (const [k, v] of Object.entries(info.xp)) m.xp[k as Xp] += v as number;
+      const got = convert(m, s.lineup);
+      for (const [k, v] of Object.entries(got)) c.stats[k as Stat] = (c.stats[k as Stat] ?? 0) + (v as number);
+      // being on the ground together builds a little trust, every other day
+      const base = s.day % 2;
+      c.trust += addTrust(m, base + info.trust + (mine ? info.heroTrust : 0));
     }
   });
-  s.week += 1;
-  startWeek(s);
-  return out;
+  s.hand.splice(index, 1);
+  s.meeting = false;
+  s.day += 1;
+  startDay(s);
+  return { card, info, changes };
+}
+
+/** What playing a card would do, without doing it (for showing who gains what). */
+export function previewTrain(s: Season, index: number): Change[] {
+  const copy = JSON.parse(JSON.stringify(s)) as Season;
+  copy.event = null;
+  return train(copy, index).changes;
 }
 
 // ------------------------------------------------------------------ events
@@ -356,7 +541,7 @@ export const EVENTS: readonly EventDef[] = [
   {
     key: 'rain',
     title: '雨の日',
-    text: () => '朝からどしゃ降り。グラウンドは使えそうにない。',
+    text: () => '朝からどしゃ降り。グラウンドは水たまりだらけだ。',
     choices: [
       { label: '部室で作戦の勉強', note: '全員の判断 +2', run: (s, _e, add) => everyone(s, (id) => add(id, 'iq', 2)) },
       { label: '廊下でダッシュ', note: '全員の走力 +2', run: (s, _e, add) => everyone(s, (id) => add(id, 'spd', 2)) },
@@ -387,7 +572,7 @@ export const EVENTS: readonly EventDef[] = [
 
 export const eventDef = (key: string): EventDef => EVENTS.find((e) => e.key === key)!;
 
-/** Applies the chosen answer to this week's event. */
+/** Applies the chosen answer to today's event. */
 export function answerEvent(s: Season, choice: number): Change[] {
   const e = s.event;
   if (!e) return [];
@@ -441,9 +626,9 @@ export const scoutedKeys = (s: Season): string[] => Object.keys(clubSheet(s).sco
 /** Books a finished match (the club is team 0) and moves the calendar on. */
 export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean } {
   const p = plan(s);
-  if (p.t !== 'match') throw new Error('not a match week');
+  if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
-  s.results.push({ week: s.week, opp: p.opp, us: st.score[0], them: st.score[1], win });
+  s.results.push({ day: s.day, opp: p.opp, us: st.score[0], them: st.score[1], win });
   for (const [key, n] of Object.entries(st.totals[0].specials)) s.usage[key] = (s.usage[key] ?? 0) + n;
   const on = starters(s.lineup!);
   const changes = withMilestones(s, (ch) => {
@@ -454,14 +639,16 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   }).filter((c) => c.trust !== 0);
   let ended = false;
   if (p.cup && !win) ended = true;
-  if (s.week >= SCHEDULE.length - 1) {
+  if (s.day >= SCHEDULE.length - 1) {
     ended = true;
     s.champion = win && p.cup;
   }
   if (ended) s.phase = 'done';
   else {
-    s.week += 1;
-    startWeek(s);
+    // the practice match is the milestone before the tournament: the policy may be reviewed
+    if (!p.cup) s.meeting = true;
+    s.day += 1;
+    startDay(s);
   }
   return { changes, win, ended };
 }

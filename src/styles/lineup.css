@@ -25,6 +25,17 @@
 @keyframes lu-dir { 50% { transform: translateY(-0.2rem); } }
 @keyframes lu-dir-down { 50% { transform: translateY(0.2rem); } }
 
+/* what the chalk colours mean */
+.lu-key { position: absolute; display: grid; gap: 0.1rem; font-size: var(--fs-xs); line-height: 1.25; color: rgba(255, 251, 232, 0.8); white-space: nowrap; pointer-events: none; transform: rotate(-3deg); }
+.off .lu-key { left: 4%; top: 64%; }
+.def .lu-key { right: 3%; top: 5%; transform: rotate(2deg); }
+.lu-key span { display: flex; align-items: center; gap: 0.5rem; }
+.lu-key i { width: 2rem; height: 0.3rem; border-radius: 0.2rem; background: #ffe680; }
+.lu-key .pass i, .lu-key .zone i { height: 0.18rem; background: #a6ecff; }
+.lu-key .rush i { height: 0.24rem; background: #ffb9c6; }
+.lineup:not(.live) .lu-key { opacity: 0; }
+.lineup.live .lu-key { animation: fade 0.5s 0.7s backwards; }
+
 /* chalk lines: drawn on, and drawn again whenever the line-up changes */
 .lu-chalk { position: absolute; inset: 0; pointer-events: none; will-change: transform; /* its own layer: the rough-chalk filter is painted once, not under every breathing magnet */ }
 .lu-chalk svg { width: 100%; height: 100%; display: block; overflow: visible; }

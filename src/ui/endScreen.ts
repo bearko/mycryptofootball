@@ -16,7 +16,7 @@ import { titleScreen } from './title';
 /** The line-up needs a valid sheet even when the season was cut short in a debug jump. */
 function sheetOf(s: Season): ReturnType<typeof clubSheet> | null {
   try {
-    return clubSheet({ ...s, week: 0 });
+    return clubSheet({ ...s, day: 0 });
   } catch {
     return null;
   }
@@ -27,8 +27,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const champion = s.champion;
   playBgm(champion ? 'final' : 'club');
   const last = s.results[s.results.length - 1];
-  const lastPlan = last ? SCHEDULE[last.week] : null;
-  const where = lastPlan && lastPlan.t === 'match' ? lastPlan.label.replace('地区大会 ', '') : '';
+  const where = last ? SCHEDULE[last.day]!.label.replace('地区大会 ', '') : '';
   let stadium: Stadium | null = null;
   let timer = 0;
   const again = (): void => {
@@ -67,9 +66,9 @@ export function endScreen(): [HTMLElement, () => void] {
       h('h1', kinetic(champion ? '地区大会 優勝！' : `${where}で敗退`)),
       h('p.end-sub', champion ? '弱小と呼ばれた7人が、頂点に立った。全国への道は、ここから。' : 'あと一歩。部員の顔ぶれと育て方を変えて、もう一度挑もう。'),
       h('ol.end-results', s.results.map((r, i) => {
-        const w = SCHEDULE[r.week]!;
+        const w = SCHEDULE[r.day]!;
         return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i) } },
-          h('span', w.t === 'match' ? w.label.replace('地区大会 ', '') : ''),
+          h('span', w.label.replace('地区大会 ', '')),
           h('b.led', `${r.us}-${r.them}`),
           h('span', `${r.win ? '○' : '●'} ${OPPONENTS[r.opp]!.name}`));
       })),

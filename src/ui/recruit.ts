@@ -170,7 +170,7 @@ export function recruitScreen(): HTMLElement {
     card.setAttribute('aria-label', `特別作戦「${sp.name}」`);
     cardBox.replaceChildren(card);
     kick(cardBox, 'turn');
-    spName.textContent = sp.name;
+    spName.replaceChildren(...nameNodes(sp.name));
     // "what it does。" + "side／cost／where": the last part reads better as small tags
     const text = specialText(sp);
     const cut = text.lastIndexOf('。');
@@ -190,7 +190,7 @@ export function recruitScreen(): HTMLElement {
   const tokens = new Map<number, HTMLElement>();
   const slots = Array.from({ length: ROSTER_SIZE }, (_, i) => {
     const el = h('div.rc-slot', { class: i === 0 ? 'cap' : '' });
-    el.innerHTML = `<svg viewBox="0 0 40 38" aria-hidden="true"><path d="${JERSEY}"/><text x="20" y="29" text-anchor="middle">${i + 1}</text></svg>`;
+    el.innerHTML = `<svg viewBox="0 0 40 38" aria-hidden="true"><path d="${JERSEY}"/><text x="20" y="29" font-size="14" text-anchor="middle">${i + 1}</text></svg>`;
     if (i === 0) el.append(h('span.rc-armband', '主将'));
     return el;
   });
@@ -265,8 +265,8 @@ export function recruitScreen(): HTMLElement {
     const miss = STATS.filter((k) => !covered(k));
     const names = miss.slice(0, 2).map((k) => `「${STAT_LABEL[k]}」`).join('と');
     if (!picked.length) tell('まずは主将をえらびましょう！ さいしょの1人は、特別作戦をすぐに使えますよ。', 'point');
-    else if (left === 0 && !miss.length) tell('6つの能力がぜんぶそろった、いいチームです！ この7人でいきましょう、監督！', 'sparkle');
-    else if (left === 0) tell(`7人そろいました！ ${names}は手うすですが、練習でおぎなえますよ。`, 'smile');
+    else if (left === 0 && !miss.length) tell(`6つの能力がぜんぶそろった、いいチームです！ この${ROSTER_SIZE}人でいきましょう、監督！`, 'sparkle');
+    else if (left === 0) tell(`${ROSTER_SIZE}人そろいました！ ${names}は手うすですが、練習でおぎなえますよ。`, 'smile');
     else if (!miss.length) tell(`6つの能力がそろいました！ あと${left}人は、お好みでどうぞ。`, 'cheer');
     else if (miss.length > 2) tell(`あと${left}人。上のランプがぜんぶ光るように、いろんな得意をあつめましょう。`, 'point');
     else tell(`あと${left}人。まだ${names}が得意な子がいませんね。`, 'think');
@@ -274,7 +274,7 @@ export function recruitScreen(): HTMLElement {
 
   const signLabel = h('span');
   const signBtn = button([signLabel], () => toggle(focus), { quiet: true, key: 'Enter' });
-  const startBtn = button('この7人ではじめる', () => {
+  const startBtn = button(`この${ROSTER_SIZE}人ではじめる`, () => {
     if (leaving) return;
     leaving = true;
     signRecruits(season, picked);
@@ -294,7 +294,7 @@ export function recruitScreen(): HTMLElement {
       el.setAttribute('aria-pressed', String(picked.includes(id)));
     }
     root.classList.toggle('full', full());
-    signLabel.textContent = isIn ? 'とりやめる' : full() ? '7人そろった' : '入部させる';
+    signLabel.textContent = isIn ? 'とりやめる' : full() ? `${ROSTER_SIZE}人そろった` : '入部させる';
     signBtn.className = `btn ${isIn ? 'alt' : full() ? 'off' : ''}`;
     startBtn.className = `btn ${full() ? 'go' : 'off'}`;
     sealed.textContent = !isIn ? '' : picked[0] === focus ? '主将' : '入部';
@@ -325,8 +325,8 @@ export function recruitScreen(): HTMLElement {
     const slot = slots[0]!;
     kick(slot, 'crowned');
     cheerAt(slot, '#ff5a2e');
-    const c = center(cands.get(id)!);
-    pop(c.x, c.y - 20, '主将！');
+    const r = cands.get(id)!.getBoundingClientRect();
+    pop(r.left + r.width / 2, r.top + r.height * 0.35, '主将！');
     if (big) {
       sfx.captain();
       flash('#ffe14a', 260, 0.35);
@@ -425,7 +425,7 @@ export function recruitScreen(): HTMLElement {
       kick(cands.get(id)!, 'nope');
       kick(count, 'nope');
       lastLine = '';
-      tell('部員は7人までです。入れかえるなら、だれかを「とりやめる」してからにしましょう。', 'think');
+      tell(`部員は${ROSTER_SIZE}人までです。入れかえるなら、先にだれかの入部をとりやめましょう。`, 'think');
     } else sign(id);
   };
 
@@ -435,7 +435,7 @@ export function recruitScreen(): HTMLElement {
     backdrop(['ROOKIES WANTED', '新入部員 大募集'], ['#3a1f8a', '#090d24', '#ffb648']),
     h('header.head.pad',
       h('h2', '入部説明会'),
-      h('p', h('span', `9人から${ROSTER_SIZE}人をえらぼう。`), h('span', 'さいしょの1人が主将になる！')),
+      h('p', h('span', `${ids.length}人から${ROSTER_SIZE}人をえらぼう。`), h('span', 'さいしょの1人が主将になる！')),
       h('div.row.rc-score', h('div.rc-cov', h('small', 'チームの得意'), h('div.rc-lamps', [...lamps.values()])))),
     h('main.rc-body.pad', stage, rack, clip),
     h('footer.foot.pad', mgr.el, h('div.row', signBtn, startBtn)));

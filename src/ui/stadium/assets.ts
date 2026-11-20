@@ -36,7 +36,8 @@ const NAVY: RGB = [10, 18, 40];
 export const CHALK = 'rgba(246,249,242,0.92)';
 /** the two greens of the mowed bands */
 export const BANDS = ['#22895a', '#1b7048'] as const;
-export const SURROUND = '#134a36';
+/** the apron around the field */
+export const SURROUND = '#10402f';
 
 /** The colour a team's end zone is painted in: its colour, calmed down for the night picture. */
 export function zoneColor(color: string): RGB {
@@ -458,6 +459,8 @@ export interface HeroArt {
   dark: Tex | null;
   /** row just below the lowest opaque pixel */
   foot: number;
+  /** first row with an opaque pixel */
+  top: number;
   /** tinted silhouettes by colour */
   tints: Map<string, Tex>;
 }
@@ -495,14 +498,23 @@ function finish(a: HeroArt): void {
     g.drawImage(img, ART_PAD, ART_PAD, ART, ART);
     // find the feet
     let foot = ART;
+    let top = 0;
     try {
       const data = white.getContext('2d')!.getImageData(0, 0, ART, ART).data;
-      outer: for (let y = ART - 1; y >= 0; y -= 1) {
-        for (let x = 0; x < ART; x += 1) {
-          if (data[(y * ART + x) * 4 + 3]! > 40) {
-            foot = y + 1;
-            break outer;
-          }
+      const solid = (y: number): boolean => {
+        for (let x = 0; x < ART; x += 1) if (data[(y * ART + x) * 4 + 3]! > 40) return true;
+        return false;
+      };
+      for (let y = ART - 1; y >= 0; y -= 1) {
+        if (solid(y)) {
+          foot = y + 1;
+          break;
+        }
+      }
+      for (let y = 0; y < foot; y += 1) {
+        if (solid(y)) {
+          top = y;
+          break;
         }
       }
     } catch {
@@ -512,6 +524,7 @@ function finish(a: HeroArt): void {
     a.white = white;
     a.lit = lit;
     a.foot = foot;
+    a.top = top;
     a.ready = true;
   } catch {
     // leave the hero undrawn rather than break the frame
@@ -522,7 +535,7 @@ export function heroArt(id: number): HeroArt {
   let a = arts.get(id);
   if (!a) {
     const img = new Image();
-    a = { img, ready: false, lit: null, white: null, dark: null, foot: ART, tints: new Map() };
+    a = { img, ready: false, lit: null, white: null, dark: null, foot: ART, top: 0, tints: new Map() };
     const art = a;
     img.onload = () => finish(art);
     let src = '';

@@ -347,6 +347,7 @@ export class Stadium {
   private insInit = false;
   // chalk preview
   private chalk: { lines: ChalkLine[]; zones: ChalkZone[]; t0: number; tint: RGB; owner: Ref | null } | null = null;
+  private chalkKey = '';
   // attract mode
   private attractOn = false;
   private attractShot = 0;
@@ -358,7 +359,11 @@ export class Stadium {
   private quality = 1;
   private qualityAuto = true;
   private frameEma = 16;
+  private frameDev = 0;
   private slowFor = 0;
+  private trial = 0;
+  private trialFrom = 1;
+  private trialBase = 16;
   // stats
   private statDt: number[] = [];
   private statCpu: number[] = [];
@@ -424,9 +429,14 @@ export class Stadium {
   preview(pick: Pick | null, side: 'off' | 'def', playerTeam: 0 | 1): void {
     if (!pick || !this.hasScene || this.playing) {
       this.chalk = null;
+      this.chalkKey = '';
       for (const ac of this.actors) if (!this.playing) ac.aura = false;
       return;
     }
+    // asking for the card that is already drawn must not start the drawing over
+    const key = `${side}:${pick.type}:${pick.special ? pick.special.key : ''}:${playerTeam}:${this.sceneN}:${this.offense}:${this.los}`;
+    if (this.chalk && key === this.chalkKey) return;
+    this.chalkKey = key;
     this.buildChalk(pick, side, playerTeam);
   }
 
@@ -538,6 +548,7 @@ export class Stadium {
     this.qualityAuto = q === 'auto';
     const v = q === 'auto' ? 1 : clamp(q, 0.5, 1);
     this.slowFor = 0;
+    this.trial = 0;
     if (v !== this.quality) {
       this.quality = v;
       this.W = -1;
@@ -1134,18 +1145,7 @@ export class Stadium {
       // never leave a caller waiting for a play that cannot be drawn
       this.endPlay(true);
     }
-    // a device that cannot keep up gets a smaller picture, scaled up by the browser
-    if (this.qualityAuto && raw > 0 && raw < 250 && document.visibilityState !== 'hidden') {
-      this.frameEma += (raw - this.frameEma) * 0.06;
-      this.slowFor = this.frameEma > 21.5 ? this.slowFor + raw : Math.max(0, this.slowFor - raw * 2);
-      if (this.slowFor > 2500 && this.quality > 0.56) {
-        this.quality = Math.max(0.55, this.quality - 0.15);
-        this.slowFor = 0;
-        this.frameEma = 16;
-        this.W = -1;
-        this.resize();
-      }
-    }
+    if (this.qualityAuto && raw > 0 && raw < 250 && document.visibilityState !== 'hidden') this.adapt(raw);
     if (raw > 0 && raw < 1000) {
       this.statDt.push(raw);
       this.statCpu.push(performance.now() - t0);
@@ -1155,6 +1155,40 @@ export class Stadium {
       }
     }
   };
+
+  /**
+   * A device that cannot keep up gets a smaller picture, scaled up by the browser.
+   * A steady 30 frames a second is taken for a cap (power saving), not for a struggle; and if a smaller
+   * picture does not make frames come faster, resolution was not the problem: go back and leave it alone.
+   */
+  private adapt(raw: number): void {
+    this.frameEma += (raw - this.frameEma) * 0.06;
+    this.frameDev += (Math.abs(raw - this.frameEma) - this.frameDev) * 0.06;
+    if (this.trial > 0) {
+      this.trial -= raw;
+      if (this.trial <= 0) {
+        if (this.frameEma > this.trialBase * 0.88) {
+          this.quality = this.trialFrom;
+          this.qualityAuto = false;
+          this.W = -1;
+          this.resize();
+        }
+        this.slowFor = 0;
+      }
+      return;
+    }
+    const capped = this.frameEma > 31 && this.frameEma < 35.5 && this.frameDev < 3;
+    this.slowFor = this.frameEma > 21.5 && !capped ? this.slowFor + raw : Math.max(0, this.slowFor - raw * 2);
+    if (this.slowFor > 2500 && this.quality > 0.56) {
+      this.trialFrom = this.quality;
+      this.trialBase = this.frameEma;
+      this.trial = 3000;
+      this.quality = Math.max(0.55, this.quality - 0.15);
+      this.slowFor = 0;
+      this.W = -1;
+      this.resize();
+    }
+  }
 
   private update(dt: number): void {
     this.clock += dt;
@@ -1246,6 +1280,12 @@ export class Stadium {
         // jump
         const jp = (this.sim - ac.jumpT0) / ac.jumpDur;
         ac.y = jp >= 0 && jp < 1 ? ac.jumpH * Math.sin(Math.PI * jp) : 0;
+        // standing around: now and then somebody shifts their weight with a little hop
+        if (!playing && !ac.hasGoal && ac.speed < 0.3 && ac.tumT0 < 0 && !ac.celebrate && jp > 1.6 && Math.random() < pdt * 0.1) {
+          ac.jumpT0 = this.sim;
+          ac.jumpDur = 0.26;
+          ac.jumpH = 0.22;
+        }
         // dust from running feet
         if (ac.speed > 5 && Math.random() < pdt * 7) {
           const p = this.fx.spawn(PUFF, ac.x - ac.vx * 0.05, 0.15, ac.z);
@@ -1586,7 +1626,8 @@ export class Stadium {
       g.addColorStop(0.85, '#182a5c');
       g.addColorStop(1, '#27407c');
       ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
+      // the ground covers everything below the horizon
+      ctx.fillRect(0, 0, W, clamp(horizon + H * 0.06, 0, H));
     }
     ctx.fillStyle = '#e8eeff';
     for (let i = 0; i < this.stars.length; i += 4) {
@@ -1608,11 +1649,10 @@ export class Stadium {
     this.fillPoly([
       AX0 + CHAMFER, 0, AZ0, AX1 - CHAMFER, 0, AZ0, AX1, 0, AZ0 + CHAMFER, AX1, 0, AZ1 - CHAMFER,
       AX1 - CHAMFER, 0, AZ1, AX0 + CHAMFER, 0, AZ1, AX0, 0, AZ1 - CHAMFER, AX0, 0, AZ0 + CHAMFER,
-    ], '#0f3b30');
+    ], SURROUND);
     // team areas on the far side
     this.fillPoly([6, 0, -4.6, 21, 0, -4.6, 21, 0, -2.4, 6, 0, -2.4], css(mix(scale(this.col[0], 0.55), [12, 40, 36], 0.45)));
     this.fillPoly([29, 0, -4.6, 44, 0, -4.6, 44, 0, -2.4, 29, 0, -2.4], css(mix(scale(this.col[1], 0.55), [12, 40, 36], 0.45)));
-    this.fillPoly([FX0, 0, FZ0, FX1, 0, FZ0, FX1, 0, FZ1, FX0, 0, FZ1], SURROUND);
     // the turf in layers: flat mowed bands, a soft overlay that may fit loosely, sharp paint, crisp lines
     for (let i = 0; i < FIELD / 5; i += 1) {
       this.fillPoly([i * 5, 0, 0, i * 5 + 5.05, 0, 0, i * 5 + 5.05, 0, WIDTH, i * 5, 0, WIDTH], BANDS[i % 2]!);
@@ -1656,7 +1696,10 @@ export class Stadium {
     const ballFree = !this.ballHeld;
     let ballDrawn = !ballFree;
     let ballDepth = 0;
-    if (ballFree && cam.project(this.bx, this.by, this.bz)) ballDepth = cam.sd;
+    const ballSeen = cam.project(this.bx, this.by, this.bz);
+    // only what stands between the lens and the ball may fade out
+    this.subjectDepth = ballSeen ? cam.sd : 99;
+    if (ballFree && ballSeen) ballDepth = cam.sd;
     else ballDrawn = true;
     if (ballFree) this.drawBallShadow();
     // the two goals stand in the same depth order as the heroes
@@ -1714,6 +1757,7 @@ export class Stadium {
   }
 
   private order: Actor[] = [];
+  private subjectDepth = 99;
   private bowlOrder: Panel[] = [];
   private scratch = new Float64Array(64);
 
@@ -2256,10 +2300,10 @@ export class Stadium {
 
     // somebody who wanders right in front of the lens goes translucent instead of hiding the play
     let alpha = 1;
-    if (ac.sd < 11 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
+    if (ac.sd < 13 && ac.sd < this.subjectDepth - 1.5 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
       const sc = this.script;
       const star = sc && sc.star.team === ac.team && sc.star.id === ac.id;
-      if (!star) alpha = sat((ac.sd - 5) / 7) ** 1.4;
+      if (!star) alpha = sat((ac.sd - 6) / 7) ** 1.4;
     }
     if (alpha < 0.02) return;
     ctx.globalAlpha = alpha;
@@ -2296,10 +2340,10 @@ export class Stadium {
     if (!ac || !ac.vis || !order.includes(ac)) return;
     if (ac.tumT0 >= 0) return;
     const ss = ac.ss;
-    const h = HERO_H * ss * ((ac.art.ready ? ac.art.foot : ART) / ART);
-    const bounce = Math.abs(Math.sin(this.clock * 5.5)) * 0.28 * ss;
+    const h = HERO_H * ss * ((ac.art.ready ? ac.art.foot - ac.art.top : ART) / ART) * (1 - 0.2 * ac.crouch);
+    const bounce = Math.abs(Math.sin(this.clock * 5.5)) * Math.min(0.28 * ss, 9 * px);
     const x = ac.sx;
-    const y = ac.sy - h - ac.y * ss - 0.45 * ss - bounce;
+    const y = ac.sy - h - ac.y * ss - Math.min(0.45 * ss, 14 * px) - bounce;
     const s = clamp(0.42 * ss, 5 * px, 16 * px);
     ctx.fillStyle = '#ffeab0';
     ctx.strokeStyle = 'rgba(10,16,40,0.9)';

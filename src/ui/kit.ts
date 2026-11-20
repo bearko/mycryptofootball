@@ -114,7 +114,7 @@ export function radar(initial: Stats, was?: Stats): Radar {
   const dots = [...el.querySelectorAll<SVGCircleElement>('.dot')];
   const tags = STATS.map((k, i) => {
     const [x, y] = pt(i, 1.3);
-    const tag = h('div.radar-tag', { class: `t-${k}`, style: { left: `${x}%`, top: `${(y / 92) * 100}%` } }, h('b', statIcon(k), h('span', '0'), h('u')), STAT_LABEL[k]);
+    const tag = h('div.radar-tag', { class: `t-${k}`, style: { left: `${x}%`, top: `${(y / 92) * 100}%` } }, h('b', statIcon(k), h('span.radar-num', '0'), h('u')), STAT_LABEL[k]);
     el.append(tag);
     return tag;
   });
@@ -138,7 +138,7 @@ export function radar(initial: Stats, was?: Stats): Radar {
     STATS.forEach((k, i) => {
       const tag = tags[i]!;
       tag.classList.toggle('best', k === best);
-      tag.querySelector('span')!.textContent = String(stats[k]);
+      tag.querySelector('.radar-num')!.textContent = String(stats[k]);
       const d = before ? stats[k] - before[k] : 0;
       tag.querySelector('u')!.textContent = d > 0 ? `+${d}` : '';
     });

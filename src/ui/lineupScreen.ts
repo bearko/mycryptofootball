@@ -176,9 +176,13 @@ export function lineupScreen(back: () => void): HTMLElement {
   // ---------------------------------------------------------------- the boards
 
   const chalkOf: Record<Unit, HTMLElement> = { off: h('div.lu-chalk'), def: h('div.lu-chalk') };
+  /** What the chalk colours mean, written in a free corner of the board. */
+  const key = (rows: [string, string][]): HTMLElement => h('div.lu-key', { 'aria-hidden': 'true' }, rows.map(([cls, word]) => h('span', { class: cls }, h('i'), word)));
   const fieldOf: Record<Unit, HTMLElement> = {
-    off: h('div.lu-field', chalkOf.off, h('span.lu-dir', { 'aria-hidden': 'true' }, '▲ 相手側'), OFF_POS.map((p) => makeSlot('off', p, OFF_AT[p]).el)),
-    def: h('div.lu-field', chalkOf.def, h('span.lu-dir', { 'aria-hidden': 'true' }, '▼ 相手側'), DEF_POS.map((p) => makeSlot('def', p, DEF_AT[p]).el)),
+    off: h('div.lu-field', chalkOf.off, h('span.lu-dir', { 'aria-hidden': 'true' }, '▲ 相手側'),
+      key([['run', '走る道'], ['pass', 'パスの道']]), OFF_POS.map((p) => makeSlot('off', p, OFF_AT[p]).el)),
+    def: h('div.lu-field', chalkOf.def, h('span.lu-dir', { 'aria-hidden': 'true' }, '▼ 相手側'),
+      key([['rush', '止めにいく'], ['zone', '見はる']]), DEF_POS.map((p) => makeSlot('def', p, DEF_AT[p]).el)),
   };
   const bench = makeSlot('bench', null);
 
@@ -504,8 +508,8 @@ export function lineupScreen(back: () => void): HTMLElement {
         sfx.learn();
         tell(`${hero(newStars[0]!).name}の特別作戦「${hero(newStars[0]!).passive}」が使えるようになりました！`, 'cheer');
       } else if (opts.stagger) tell('いちばん力の出る並びにしました！ 気になるところは、動かしてみてください。', 'sparkle');
-      else if (net >= 2) tell(`ナイスです！ チームの力が合わせて +${net} になりました。`, 'cheer');
-      else if (net <= -2) tell(`うーん、合わせて ${net} …。元にもどすか、ほかの場所もためしてみましょう。`, 'think');
+      else if (net >= 2) tell(`ナイスです！ チームの力が +${net} 上がりました。`, 'cheer');
+      else if (net <= -2) tell(`うーん、チームの力が ${net} …。元にもどすか、ほかの場所もためしてみましょう。`, 'think');
       else {
         lastLine = '';
         advise();
@@ -546,6 +550,7 @@ export function lineupScreen(back: () => void): HTMLElement {
   };
   const letGo = (): void => {
     if (held === null) return;
+    for (const x of slots) if (heroAt(x) === held) kick(x.seat.firstElementChild, 'clack');
     held = null;
     sfx.drop();
     lastLine = '';
@@ -555,6 +560,7 @@ export function lineupScreen(back: () => void): HTMLElement {
 
   /** Tap, then tap: the first tap picks a hero up, the second puts them down. */
   const tap = (slot: Slot): void => {
+    hover = slot; // on a touch screen there is no hover: the note explains the spot that was tapped
     const here = heroAt(slot);
     const c = center(slot.el);
     if (held === null) {

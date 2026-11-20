@@ -176,15 +176,14 @@ function eventScene(s: Season, after: (changes: Change[]) => void): void {
         setTimeout(() => {
           if (!scene.isConnected) return;
           sfx.pageTurn();
-          const result = h('div.ev-result.panel',
-            h('p.ev-picked', h('span.label.hot', 'えらんだ答え'), h('b', c.label)),
-            changeList(s, changes),
-            h('div.modal-actions', button('OK', () => {
-              closeModal();
-              after(changes);
-            }, { cls: 'go', sound: 'confirm' })));
-          body.replaceWith(result);
-          choices.remove();
+          // the button sits in the list: an odd number of rows leaves the last cell free for it
+          const list = changeList(s, changes);
+          list.append(h('div.modal-actions', { class: changes.length % 2 ? 'is-tuck' : '' }, button('OK', () => {
+            closeModal();
+            after(changes);
+          }, { cls: 'go', sound: 'confirm' })));
+          const result = h('div.ev-result.panel', h('p.ev-picked', h('span.label.hot', def.title), h('b', c.label)), list);
+          scene.replaceChildren(result);
         }, 620);
       },
     },

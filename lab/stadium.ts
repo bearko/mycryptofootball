@@ -3,7 +3,8 @@
 // URL parameters (all optional):
 //   auto=1            keep playing a real match by itself
 //   speed=1|2|12      playback speed
-//   force=longtd|int|sack|bigrun|special|defspecial|fumble|incomplete|stuff|shorttd   show this outcome first
+//   force=longtd|runtd|shorttd|int|sack|bigrun|special|defspecial|fumble|incomplete|stuff   show this outcome first
+//   delay=ms          with force: how long to wait before the forced play (default 900)
 //   loop=1            with force: repeat the forced play forever
 //   preview=inside|outside|short|long|stuff|contain|zone|deep|blitz   chalk this card
 //   attract=1         title-screen mode
@@ -11,7 +12,7 @@
 //   exc=0..1          crowd excitement
 //   safe=none|choose|play|auto   which interface insets to simulate (auto: choose while idle, play during a play)
 //   ui=0              hide the control strip
-//   q=auto|0.5..1     resolution scale (default 1 here, so screenshots are sharp; the game uses auto)
+//   q=auto|0.5..1     resolution scale (default auto, like the game; q=1 keeps screenshots sharp on a slow machine)
 //   seed=, home=, away= (0..3), pos=, poss=   set up the match
 
 import '@fontsource/dela-gothic-one/japanese-400.css';
@@ -51,7 +52,8 @@ const log: string[] = [];
 
 if (q.get('ui') === '0') document.body.classList.add('bare');
 stadium.setMotion(motion);
-stadium.setQuality(q.get('q') === 'auto' ? 'auto' : num('q', 1));
+let quality: 'auto' | number = !q.has('q') || q.get('q') === 'auto' ? 'auto' : num('q', 1);
+stadium.setQuality(quality);
 stadium.setExcitement(num('exc', 0.25));
 
 // ------------------------------------------------------------------ simulated interface insets
@@ -255,13 +257,19 @@ btn('試合に戻る', () => {
 btn(motion ? '動き：フル' : '動き：ひかえめ', (b) => {
   motion = !motion;
   stadium.setMotion(motion);
-stadium.setQuality(q.get('q') === 'auto' ? 'auto' : num('q', 1));
+let quality: 'auto' | number = !q.has('q') || q.get('q') === 'auto' ? 'auto' : num('q', 1);
+stadium.setQuality(quality);
   b.textContent = motion ? '動き：フル' : '動き：ひかえめ';
 });
 btn(`UIの重なり：${safe}`, (b) => {
   safe = safe === 'auto' ? 'choose' : safe === 'choose' ? 'play' : safe === 'play' ? 'none' : 'auto';
   b.textContent = `UIの重なり：${safe}`;
   applySafe(phase);
+});
+btn(`解像度：${quality}`, (b) => {
+  quality = quality === 'auto' ? 1 : quality === 1 ? 0.7 : 'auto';
+  stadium.setQuality(quality);
+  b.textContent = `解像度：${quality}`;
 });
 btn('祝う', () => stadium.celebrate('td', st.poss));
 btn('優勝', () => stadium.celebrate('win', 0));

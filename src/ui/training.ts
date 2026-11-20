@@ -566,12 +566,13 @@ export function trainingScreen(): HTMLElement {
       sfx.pageTurn();
       reveal(c, i === news.length - 1, () => after(i + 1));
     };
-    modal(h('div.results',
-      changeList(s, changes),
-      h('div.modal-actions', button(news.length ? 'つぎへ' : 'OK', () => {
-        closeModal();
-        after(0);
-      }, { cls: 'go', sound: 'confirm' }))), { sticky: true, cls: 'wide', title: `第${week + 1}週 練習の成果` });
+    // the button sits in the list: seven rows in two columns leave the last cell free for it
+    const list = changeList(s, changes);
+    list.append(h('div.modal-actions', { class: changes.length % 2 ? 'is-tuck' : '' }, button(news.length ? 'つぎへ' : 'OK', () => {
+      closeModal();
+      after(0);
+    }, { cls: 'go', sound: 'confirm' })));
+    modal(h('div.results', list), { sticky: true, cls: 'wide', title: `第${week + 1}週 練習の成果` });
   };
 
   const run = (): void => {

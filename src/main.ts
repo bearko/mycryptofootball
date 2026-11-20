@@ -7,7 +7,7 @@ import './styles/cards.css';
 import './styles/title.css';
 import './styles/recruit.css';
 import './styles/club.css';
-import './styles/training.css';
+import './styles/policy.css';
 import './styles/lineup.css';
 import './styles/match.css';
 import './styles/end.css';
@@ -15,7 +15,7 @@ import './styles/end.css';
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';
 import { save } from './core/save';
-import { ROSTER_SIZE, SCHEDULE, newSeason, signRecruits, startWeek } from './game/season';
+import { ROSTER_SIZE, SCHEDULE, newSeason, signRecruits, startDay } from './game/season';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
 import { wireHover } from './ui/kit';
@@ -25,11 +25,13 @@ import { lineupScreen } from './ui/lineupScreen';
 import { recruitScreen } from './ui/recruit';
 import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
-import { trainingScreen } from './ui/training';
 
 for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, unlockAudio, { once: true });
 applyPrefs();
 wireHover();
+
+/** A screen is either an element, or an element with something to do when it is left. */
+const open = (screen: HTMLElement | [HTMLElement, () => void]): void => (Array.isArray(screen) ? show(...screen) : show(screen));
 
 setRouter(() => {
   const s = save().season;
@@ -37,7 +39,7 @@ setRouter(() => {
   else if (s.phase === 'recruit') show(recruitScreen());
   else if (s.phase === 'done') show(...endScreen());
   else if (save().match) show(...matchScreen());
-  else show(clubScreen());
+  else open(clubScreen());
 });
 
 /** ?go=<screen>: jump straight to a screen with a ready-made season (for development). */
@@ -53,18 +55,18 @@ function jump(to: string): void {
   signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
   if (debug.trust !== null) for (const m of s.members) m.trust = debug.trust;
   const firstMatch = SCHEDULE.findIndex((w) => w.t === 'match');
-  s.week = debug.week ?? (to === 'match' ? firstMatch : 0);
-  startWeek(s);
-  if (to === 'training' && s.deal) show(trainingScreen());
-  else if (to === 'lineup') show(lineupScreen(() => show(clubScreen())));
-  else if (to === 'match' && SCHEDULE[s.week]!.t === 'match') show(...matchScreen());
+  s.day = debug.day ?? (to === 'match' ? firstMatch : 0);
+  s.hand = [];
+  startDay(s);
+  if (to === 'lineup') show(lineupScreen(() => open(clubScreen())));
+  else if (to === 'match' && SCHEDULE[s.day]!.t === 'match') show(...matchScreen());
   else if (to === 'end' || to === 'champion') {
     s.phase = 'done';
     s.champion = to === 'champion';
-    s.results = [{ week: 2, opp: 0, us: 21, them: 7, win: true }, { week: 5, opp: 1, us: 14, them: 7, win: true },
-      { week: 7, opp: 2, us: 21, them: 14, win: true }, { week: 9, opp: 3, us: to === 'champion' ? 28 : 7, them: 21, win: to === 'champion' }];
+    s.results = [{ day: 6, opp: 0, us: 21, them: 7, win: true }, { day: 13, opp: 1, us: 14, them: 7, win: true },
+      { day: 20, opp: 2, us: 21, them: 14, win: true }, { day: 27, opp: 3, us: to === 'champion' ? 28 : 7, them: 21, win: to === 'champion' }];
     show(...endScreen());
-  } else show(clubScreen());
+  } else open(clubScreen());
 }
 
 // Always open on the title screen; "つづきから" resumes the season.
