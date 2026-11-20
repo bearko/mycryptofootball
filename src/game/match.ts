@@ -83,6 +83,8 @@ export interface MatchState {
   first: 0 | 1;
   totals: [TeamTotals, TeamTotals];
   n: number;
+  /** added to each team's chance of sensing the other side's pick (from the half-time talk) */
+  insight?: [number, number];
 }
 
 export type Outcome = 'gain' | 'nogain' | 'loss' | 'incomplete' | 'sack' | 'int' | 'fumble';
@@ -259,6 +261,36 @@ export function usePeek(st: MatchState, t: 0 | 1, sp: SpecialCard): boolean {
   return st.rng.chance(Math.min(1, p));
 }
 
+// ------------------------------------------------------------------ the half-time talk
+
+export type TalkKey = 'fire' | 'rethink' | 'study';
+export const TALK_KEYS: readonly TalkKey[] = ['fire', 'rethink', 'study'];
+export const TALKS: Record<TalkKey, { name: string; text: string }> = {
+  fire: { name: '気合いを入れる', text: '流れ +2。後半の入りから特別作戦をねらえる' },
+  rethink: { name: '作戦を練り直す', text: '読まれた特別作戦を、すべて1段階もとにもどす' },
+  study: { name: '相手を分析する', text: '後半は、相手の作戦の気配を読みやすくなる' },
+};
+
+/** What the coach does with the break. Each team gets one. */
+export function halftimeTalk(st: MatchState, t: 0 | 1, key: TalkKey): void {
+  if (key === 'fire') st.mom[t] = clamp(st.mom[t] + 2, 0, MOM_MAX);
+  else if (key === 'rethink') {
+    for (const k of Object.keys(st.read[t])) st.read[t][k] = Math.max(0, st.read[t][k]! - 1);
+  } else {
+    const now = st.insight ?? [0, 0];
+    now[t] += 0.25;
+    st.insight = now;
+  }
+}
+
+/** The computer's half-time talk: fire up when behind, otherwise whatever helps. */
+export function autoTalk(st: MatchState, t: 0 | 1): TalkKey {
+  const read = Object.values(st.read[t]).some((v) => v >= 2);
+  if (read && st.rng.chance(0.6)) return 'rethink';
+  if (st.score[t] < st.score[1 - t]) return 'fire';
+  return st.rng.pick(TALK_KEYS);
+}
+
 // ------------------------------------------------------------------ hints (what a sharp hero senses)
 
 export type Hint = null | 'run' | 'pass' | 'blitz' | 'special';
@@ -270,7 +302,7 @@ export function senseHint(st: MatchState, t: 0 | 1, oppPick: Pick): Hint {
   const onOffense = st.poss === t;
   const mine = onOffense ? at(me, 'QB').stats.iq : at(me, 'S').stats.iq;
   const theirs = onOffense ? at(opp, 'S').stats.iq : at(opp, 'QB').stats.iq;
-  const p = clamp(0.2 + (mine - theirs) / 80, 0.06, 0.8);
+  const p = clamp(0.2 + (mine - theirs) / 80 + (st.insight?.[t] ?? 0), 0.06, 0.85);
   if (!st.rng.chance(p)) return null;
   if (oppPick.special) return 'special';
   if (onOffense) {
@@ -649,7 +681,8 @@ export function simulate(home: TeamSheet, away: TeamSheet, seed: number): MatchS
     const def0 = autoPick(st, d);
     const off = autoPick(st, o, def0);
     const def = def0.special || off.peeked ? def0 : (autoPeek(st, d, off) ?? def0);
-    resolvePlay(st, off, def);
+    const res = resolvePlay(st, off, def);
+    if (res.period === 'half') for (const t of [0, 1] as const) halftimeTalk(st, t, autoTalk(st, t));
   }
   return st;
 }

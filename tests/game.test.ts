@@ -3,7 +3,7 @@ import { KIND, MATCH, OFF_TYPES, DEF_TYPES, READ_POTENCY } from '../src/game/car
 import { RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
 import { bestLineup, isStarter, place, starters, validLineup } from '../src/game/lineup';
 import {
-  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, potency, resolvePlay, simulate, specialBlock, specialPick,
+  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, halftimeTalk, potency, resolvePlay, simulate, specialBlock, specialPick,
   usePeek, usableSpecials, type MatchState, type Pick,
 } from '../src/game/match';
 import { DEF_POS, OFF_POS, STATS, fit, roleOf } from '../src/game/model';
@@ -195,6 +195,19 @@ describe('match', () => {
       total += res.yards;
     }
     expect(total).toBeLessThan(40);
+  });
+
+  it('the half-time talk changes the second half', () => {
+    const [a, b] = sheets();
+    const st = createMatch(a, b, 4);
+    st.mom[0] = 4;
+    halftimeTalk(st, 0, 'fire');
+    expect(st.mom[0]).toBe(MOM_MAX);
+    st.read[0] = { x: 2, y: 0 };
+    halftimeTalk(st, 0, 'rethink');
+    expect(st.read[0]).toEqual({ x: 1, y: 0 });
+    halftimeTalk(st, 0, 'study');
+    expect(st.insight).toEqual([0.25, 0]);
   });
 
   it('looking first spends momentum and works less and less', () => {

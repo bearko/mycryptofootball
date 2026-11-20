@@ -7,7 +7,7 @@
 // Source directory: $MCH_ASSETS_DIR, else vendor/mycryptoheroes (git submodule).
 // Outputs: public/mch/** (copied assets) and src/generated/catalog.json.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,13 +56,12 @@ for (const h of readJson('Data/Heroes/heroes.json')) {
   };
 }
 
-// ---------------------------------------------------------------- the team manager (guide character)
+// ---------------------------------------------------------------- guide characters (every frame, keyed by file name)
+// navi_ain_*: the club manager.  chris_*: the play-by-play announcer.
 const chars = {};
-for (const key of [
-  'navi_ain_00_pointer_up', 'navi_ain_02_both_arms_up', 'navi_ain_06_smile', 'navi_ain_07_talk',
-  'navi_ain_08_sparkle', 'navi_ain_09_cry', 'navi_ain_11_idle',
-]) {
-  chars[key.replace(/^navi_ain_\d+_/, '')] = use(`Image/Characters/${key}.png`);
+for (const file of readdirSync(join(src, 'Image/Characters'))) {
+  if (!/^(navi_ain|chris)_.*\.png$/.test(file)) continue;
+  chars[file.replace(/\.png$/, '')] = use(`Image/Characters/${file}`);
 }
 
 // ---------------------------------------------------------------- sound

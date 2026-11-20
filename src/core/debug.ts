@@ -3,6 +3,8 @@
 //   ?week=5     jump to that week of the calendar (0 = first practice week)
 //   ?bot=1      the computer also calls the club's plays, and plays are shown very fast
 //   ?seed=123   fixed seed for new seasons and matches
+//   ?go=club    open a screen directly with a ready-made season (recruit, club, training, lineup, match, end, champion);
+//               combines with ?week= and ?trust=. Nothing is written to the real save until the game itself saves
 
 const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (key: string): number | null => (params.has(key) && params.get(key) !== '' ? Number(params.get(key)) : null);
@@ -12,6 +14,7 @@ export const debug = {
   week: num('week'),
   bot: params.get('bot') === '1',
   seed: num('seed'),
+  go: params.get('go'),
 };
 
 /** A fresh seed, or the fixed one from the URL. */
