@@ -10,8 +10,8 @@ import { hero, recruit, talentOf } from '../game/heroes';
 import { bestLineup, isStarter, place } from '../game/lineup';
 import { unitSummary } from '../game/match';
 import {
-  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, STAT_LABEL, fit, grade, kickFit, roleOf,
-  type DefPos, type Lineup, type OffPos, type Role, type Stat,
+  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, RANKS, STAT_LABEL, fit, kickFit, rank, rankIndex, roleOf,
+  type DefPos, type Lineup, type OffPos, type Rank, type Role, type Stat,
 } from '../game/model';
 import { asPlayer, clubSheet, learned, member } from '../game/season';
 import { burst, center, countUp, kick, motion, pop, ring, sparks } from './fx';
@@ -20,10 +20,12 @@ import { bestRoles } from './shared';
 
 type Unit = 'off' | 'def';
 type Pos = OffPos | DefPos;
-type Grade = ReturnType<typeof grade>;
+type Grade = Rank;
 type Sum = ReturnType<typeof unitSummary>;
 
-const RANK: Record<Grade, number> = { D: 0, C: 1, B: 2, A: 3, S: 4 };
+const RANK = Object.fromEntries(RANKS.map((r, i) => [r.name, i])) as Record<Grade, number>;
+/** a hero this far down the scale is in the wrong place */
+const WEAK = rankIndex(39);
 const UNIT_LABEL: Record<Unit, string> = { off: '攻撃', def: '守備' };
 
 /** Where each position stands on its board, in % of the field (the offense looks up, the defense looks down). */
@@ -77,7 +79,7 @@ export function lineupScreen(back: () => void): HTMLElement {
   const benchId = (): number => s.members.find((m) => !isStarter(s.lineup!, m.id))!.id;
   const heroAt = (slot: Slot): number =>
     slot.unit === 'off' ? s.lineup!.off[slot.pos as OffPos] : slot.unit === 'def' ? s.lineup!.def[slot.pos as DefPos] : benchId();
-  const gradeAt = (id: number, slot: Slot): Grade | null => (slot.role ? grade(fit(statsOf(id), slot.role)) : null);
+  const gradeAt = (id: number, slot: Slot): Grade | null => (slot.role ? rank(fit(statsOf(id), slot.role)) : null);
   const total = (l: Lineup): number =>
     OFF_POS.reduce((v, p) => v + fit(statsOf(l.off[p]), roleOf(p)), 0) + DEF_POS.reduce((v, p) => v + fit(statsOf(l.def[p]), roleOf(p)), 0);
 
@@ -169,7 +171,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     return h('span.lu-mag', { class: `t-${best}`, data: { id: String(id) } },
       portrait(id, { color: TALENT_COLOR[best] }),
       h('span.lu-name', shortName(name)),
-      g ? h('span.lu-grade', { class: `g${g}` }, g) : null,
+      g ? h('span.lu-grade.rank', { class: `r-${g}` }, g) : null,
       star === null ? null : h('span.lu-star', { class: star ? 'on' : 'no' }, '★', star ? null : h('i', '×')));
   };
 
@@ -292,7 +294,7 @@ export function lineupScreen(back: () => void): HTMLElement {
   const weights = (role: Role): HTMLElement[] =>
     (Object.entries(ROLE_WEIGHTS[role]) as [Stat, number][]).sort((a, b) => b[1] - a[1]).map(([k, w]) =>
       h('div.lu-w', { class: `t-${k}` }, statIcon(k), h('span', STAT_LABEL[k]), h('i', { style: { '--w': String(w) } })));
-  const gradeChip = (g: Grade): HTMLElement => h('span.lu-grade', { class: `g${g}` }, g);
+  const gradeChip = (g: Grade): HTMLElement => h('span.lu-grade.rank', { class: `r-${g}` }, g);
 
   const drawNote = (): void => {
     const slot = drag?.over ?? hover;
@@ -317,7 +319,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     } else {
       note.replaceChildren(
         h('span.label.dark', '見かた'),
-        h('p.lu-legend', (['S', 'A', 'B', 'C', 'D'] as Grade[]).map(gradeChip)),
+        h('p.lu-legend', [...RANKS].reverse().map((r) => gradeChip(r.name))),
         h('p.lu-scale', h('span', '◎ 向いている'), h('span', '苦手 ×')),
         h('p.lu-legend', h('span.lu-star.on', '★'), '特別作戦を使える'),
         h('p.lu-legend', h('span.lu-star.no', '★', h('i', '×')), '場所が合わない'));
@@ -354,9 +356,9 @@ export function lineupScreen(back: () => void): HTMLElement {
         return;
       }
     }
-    const weak = slots.filter((x) => x.role && gradeAt(heroAt(x), x) === 'D')[0];
+    const weak = slots.filter((x) => x.role && RANK[gradeAt(heroAt(x), x)!] <= WEAK)[0];
     const b = s.members.find((m) => m.id === benchId())!;
-    if (weak) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}が苦手そうです（D）。「おまかせ」で並べ直せますよ。`, 'think');
+    if (weak) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}が苦手そうです。「おまかせ」で並べ直せますよ。`, 'think');
     else if (learned(b)) tell(`控えの${hero(b.id).name}は特別作戦を覚えています。出番を作るのも手ですよ。`, 'think');
     else if (total(l) >= total(bestLineup(players)) - 0.01) tell('いまの並びが、いちばん力を出せます！ これでいきましょう。', 'sparkle');
     else tell('同じ6人が攻撃も守備もします。両方のボードの文字を見くらべてみましょう。', 'idle');
@@ -381,9 +383,9 @@ export function lineupScreen(back: () => void): HTMLElement {
       x.el.setAttribute('aria-pressed', String(own));
       if (st && !own && x.role) {
         const v = fit(st, x.role);
-        const g = grade(v);
+        const g = rank(v);
         const top = v >= bestOf[x.unit]! - 0.01;
-        x.tag.className = `lu-if g${g}${top ? ' best' : ''}`;
+        x.tag.className = `lu-if r-${g}${RANK[g] <= WEAK ? ' low' : ''}${top ? ' best' : ''}`;
         x.tag.replaceChildren(g, top ? h('i', '◎') : '');
       } else if (st && !own) {
         x.tag.className = 'lu-if word';
@@ -686,7 +688,7 @@ export function lineupScreen(back: () => void): HTMLElement {
       vibrate(10);
       drawKicker();
       kick(kickEl, 'bump');
-      const g = grade(kickFit(statsOf(next)));
+      const g = rank(kickFit(statsOf(next)));
       tell(`キッカーは${shortName(hero(next).name)}（キック ${g}）。フィールドゴールとパント、タッチダウンのあとのキックを蹴ります。`, g === 'D' || g === 'C' ? 'think' : 'smile');
     },
   });
@@ -696,9 +698,9 @@ export function lineupScreen(back: () => void): HTMLElement {
       kickEl.replaceChildren(h('b', 'K'), h('span.lu-kicker-name', 'キッカーなし'), h('small', 'タップで決める'));
       return;
     }
-    const g = grade(kickFit(statsOf(id)));
+    const g = rank(kickFit(statsOf(id)));
     kickEl.replaceChildren(h('b', 'K'), h('img.px', { src: hero(id).img, alt: '', draggable: false }),
-      h('span.lu-kicker-name', shortName(hero(id).name)), h('span.lu-grade', { class: `g${g}` }, g), h('small', 'タップで交代'));
+      h('span.lu-kicker-name', shortName(hero(id).name)), h('span.lu-grade.rank', { class: `r-${g}` }, g), h('small', 'タップで交代'));
     kickEl.setAttribute('aria-label', `キッカー：${hero(id).name}（キック ${g}）。押すと次のヒーローに交代`);
     kickEl.title = 'キッカー（パスと判断）。フィールドゴール・パント・タッチダウンのあとのキックを蹴る';
   }

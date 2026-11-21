@@ -25,5 +25,6 @@
 - 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAR_MUL`・`STAT_COST`・`OFF_POLICY`）、体力（`PRACTICE` の `sta`・`REST_STA`・`STA_TIRED`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5 割・決勝 3〜4 割前後。
 - デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?day=6`（その日へ。0 が 4/5。6・13・20・27 が試合の日）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）、`?go=recruit|club|lineup|match|end|champion`（その画面から始める）。
 - チェック：`npm test`・`npm run typecheck`・`npm run build`。
+- 能力の数字にはランク（G〜SS。`model.ts` の `RANKS`・`rank`、画面では `kit.ts` の `rankChip` と `base.css` の `.rank.r-*`）を添える。月ごとの成長は `season.ts` の `growth`・`markMonth`（基準は `Season.base`）と `ui/review.ts`。
 - ポップアップ（`modal`）の中身が画面より長いときも、進むためのボタン（`.modal-actions`）は下にはりついて、いつも見えている。試合の終了画面は 1 画面におさめる。
 - PC とスマホ横持ちの両方で遊べること。1rem が画面に合わせて伸び縮みする（`base.css` の `html`）。横幅は 16:9 の PC がいちばん狭い（約 71rem）。画面を直したら 1280×720 と 844×390 で重なりを確かめる。ボタンは 44px 以上、ドット絵は `image-rendering: pixelated`。

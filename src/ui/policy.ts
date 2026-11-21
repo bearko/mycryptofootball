@@ -10,7 +10,7 @@ import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import { PRESET_LABEL, applyPreset, policyOpen, presetFocus, setFocus, type Member, type Preset, type Season } from '../game/season';
 import { burst, center, kick, ring } from './fx';
 import { ICON, icon, shortName } from './ground/bits';
-import { TALENT_COLOR, button, closeModal, modal, portrait, statIcon } from './kit';
+import { TALENT_COLOR, button, closeModal, modal, portrait, rankChip, statIcon } from './kit';
 import { positions } from './shared';
 
 const PRESETS: Preset[] = ['talent', 'offense', 'defense'];
@@ -34,7 +34,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
         h('span', where.map((w) => h('i', w)))),
       h('div.pol-stats', STATS.map((k) => {
         const mark = k === best ? h('i.pol-rec', { title: '得意：少ない経験でのびる' }, 'おすすめ') : k === worst ? h('i.pol-hard', { title: '苦手：のびにくい' }, '△') : null;
-        const inner = [statIcon(k), h('b', String(m.stats[k])), h('span', { class: STAT_LABEL[k].length > 3 ? 'is-long' : '' }, STAT_LABEL[k]), mark];
+        const inner = [statIcon(k), h('b', String(m.stats[k]), rankChip(m.stats[k])), h('span', { class: STAT_LABEL[k].length > 3 ? 'is-long' : '' }, STAT_LABEL[k]), mark];
         const label = `${hero(m.id).name}：${STAT_LABEL[k]} ${m.stats[k]}${k === best ? '（おすすめ・得意）' : k === worst ? '（苦手）' : ''}`;
         const cell: HTMLElement = open
           ? h('button.pol-stat', {

@@ -66,13 +66,24 @@ export function fit(stats: Stats, role: Role): number {
   return v;
 }
 
-export function grade(v: number): 'S' | 'A' | 'B' | 'C' | 'D' {
-  if (v >= 75) return 'S';
-  if (v >= 60) return 'A';
-  if (v >= 45) return 'B';
-  if (v >= 32) return 'C';
-  return 'D';
+/**
+ * The rank of an ability value: a letter (and, on the screen, a colour) that says roughly how good a number is.
+ * One scale for everything that is measured from 0 up: the six abilities, and how well a hero fits a position.
+ */
+export const RANKS = [
+  { name: 'G', min: 0 }, { name: 'F', min: 20 }, { name: 'E', min: 40 }, { name: 'D', min: 50 }, { name: 'C', min: 60 },
+  { name: 'B', min: 70 }, { name: 'A', min: 80 }, { name: 'S', min: 90 }, { name: 'SS', min: 100 },
+] as const;
+export type Rank = typeof RANKS[number]['name'];
+/** 0 for G … 8 for SS */
+export function rankIndex(v: number): number {
+  let i = 0;
+  while (i < RANKS.length - 1 && v >= RANKS[i + 1]!.min) i += 1;
+  return i;
 }
+export const rank = (v: number): Rank => RANKS[rankIndex(v)]!.name;
+/** an ability can be trained up to this (SS begins at 100) */
+export const STAT_MAX = 120;
 
 /** A player as the match engine sees it. */
 export interface Player {

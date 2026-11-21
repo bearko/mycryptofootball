@@ -355,3 +355,49 @@
 /* a considered card rises only a little: the effect bar sits right above the hand */
 .card.pgc.selected { transform: translateY(-0.45rem) rotate(-1deg); }
 @media (hover: hover) { .card.pgc:hover { transform: translateY(-0.45rem); } }
+
+/* ---------- the month's review: every hero's abilities, what they gained, and the rank they stand at ---------- */
+.modal-panel.rv-panel { width: min(69rem, 100%); }
+.rv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: -0.4rem 0 0.5rem; flex-wrap: wrap; }
+.rv-when { color: var(--dim); font-size: var(--fs-s); }
+.rv-total { font-size: var(--fs-s); display: flex; align-items: baseline; gap: 0.6rem; }
+.rv-total b { font-family: var(--display); font-weight: 400; font-size: var(--fs-xl); color: var(--lime); line-height: 1; }
+.rv-total span { font-family: var(--display); color: var(--ink); background: var(--yellow); padding: 0 0.9rem; clip-path: polygon(0.5rem 0, 100% 0, calc(100% - 0.5rem) 100%, 0 100%); }
+.rv-table { display: grid; gap: 0.3rem; }
+.rv-row { display: grid; grid-template-columns: minmax(9rem, 1.5fr) repeat(6, minmax(0, 1fr)) 4.2rem; align-items: center; gap: 0.3rem; padding: 0.1rem 0.5rem; background: rgba(6, 8, 26, 0.45); animation: slide-r 0.4s var(--spring) backwards; animation-delay: calc(var(--i) * 60ms + 0.1s); }
+.rv-row.rv-head { background: none; padding-top: 0; padding-bottom: 0; animation: none; font-size: var(--fs-xs); color: var(--dim); }
+.rv-stat { display: flex; align-items: center; justify-content: center; gap: 0.25rem; white-space: nowrap; color: var(--tc, var(--dim)); letter-spacing: -0.06em; }
+.rv-stat .ticon svg { width: 1.2rem; height: 1.2rem; }
+.rv-who { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.rv-who .portrait { width: 2.6rem; flex: none; }
+.rv-who b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.15; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rv-cell { display: flex; flex-direction: column; align-items: center; line-height: 1.15; padding: 0.15rem 0; border-radius: 0.3rem; }
+.rv-now { display: flex; align-items: center; gap: 0.2rem; }
+.rv-now b { font-family: var(--display); font-weight: 400; font-size: var(--fs-m); }
+.rv-now .rank { font-size: var(--fs-xs); }
+.rv-now u { text-decoration: none; font-size: 0.7rem; color: var(--yellow); }
+.rv-diff { font-size: var(--fs-xs); color: #6f77ad; }
+.rv-cell.grew .rv-diff { color: var(--lime); font-family: var(--display); }
+.rv-cell.fell .rv-diff { color: var(--pink); }
+.rv-cell.up { background: rgba(255, 225, 74, 0.16); box-shadow: inset 0 0 0 0.12rem rgba(255, 225, 74, 0.7); animation: flashy 0.5s steps(2) 2 backwards; animation-delay: calc(var(--i) * 60ms + 0.5s); }
+.rv-cell.up .rv-now .rank:first-child { opacity: 0.6; transform: scale(0.85); }
+.rv-sum { text-align: center; font-family: var(--display); font-size: var(--fs-m); color: var(--dim); }
+.rv-sum.grew { color: var(--lime); }
+.rv-head .rv-sum { font-family: var(--body); font-size: var(--fs-xs); color: var(--dim); }
+.rv-panel .modal-actions { align-items: center; flex-wrap: nowrap; background: linear-gradient(rgba(18, 21, 63, 0), #12153f 30%); }
+.rv-legend { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.7rem; font-size: var(--fs-xs); color: var(--dim); }
+.rv-legend span { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+.rv-legend .rank { font-size: 0.85rem; }
+/* a low, wide screen (a phone held sideways): one line per hero, so all seven fit without scrolling */
+@media (min-aspect-ratio: 2/1) {
+  .rv-top { margin-bottom: 0.2rem; }
+  .rv-table { gap: 0.2rem; }
+  .rv-row { padding: 0 0.5rem; }
+  .rv-who .portrait { width: 2.05rem; }
+  .rv-who b { -webkit-line-clamp: 1; }
+  .rv-cell { flex-direction: row; justify-content: center; align-items: baseline; gap: 0.35rem; padding: 0.05rem 0; }
+  .rv-now { align-items: center; }
+  .rv-now b { font-size: var(--fs-s); }
+  .rv-now u, .rv-cell.up .rv-now .rank:first-child { display: none; }
+  .rv-panel .modal-actions { padding-top: 0.4rem; }
+}
