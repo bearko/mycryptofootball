@@ -4,21 +4,32 @@
 // The simplified sport:
 //  - the field is FIELD yards long; a drive starts START yards from your own goal line
 //  - four plays to gain 10 yards, or the ball goes to the other team where it is
-//  - reaching the far end is a touchdown (TD_POINTS), then the other team attacks
-//  - no kicks, no penalties, no clock: the game is QUARTERS x PLAYS_PER_Q plays long
+//  - reaching the far end is a touchdown (TD_POINTS). The scoring team then tries for more from TRY_YARDS out:
+//    a kick for one point (it needs a kicker) or one more play for two. Then the other team attacks
+//  - a team with a kicker can also kick a field goal (FG_POINTS; a miss gives the ball away where it lies)
+//    or punt the ball away
+//  - no kickoffs to return, no penalties, no clock: the game is QUARTERS x PLAYS_PER_Q plays long
+//    (the try after a touchdown is not counted)
 
 import { Rng, clamp } from '../core/rng';
 import {
-  DEF_SPECIAL_MATCH, DEF_TYPES, KIND, MATCH, OFF_TYPES, READ_MAX, READ_POTENCY, isRun,
-  type DefKind, type DefType, type OffKind, type OffType, type SpecialCard,
+  DEF_SPECIAL_MATCH, DEF_TYPES, KICK_INFO, KIND, MATCH, OFF_TYPES, READ_MAX, READ_POTENCY, isKick, isRun,
+  type DefKind, type DefType, type KickType, type OffKind, type OffType, type SpecialCard,
 } from './cards';
-import { fit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
+import { fit, kickFit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
 
 export const FIELD = 50;
 export const START = 15;
 export const QUARTERS = 4;
 export const PLAYS_PER_Q = 7;
-export const TD_POINTS = 7;
+export const TD_POINTS = 6;
+export const FG_POINTS = 3;
+export const PAT_POINTS = 1;
+export const TWO_POINTS = 2;
+/** the try after a touchdown is played from this far out */
+export const TRY_YARDS = 3;
+/** On the try the defense packs the goal line: a play's quality drops by this much (so two points are a real gamble). */
+export const TRY_WALL = 1.1;
 export const MOM_MAX = 5;
 export const MOM_START = 1;
 
@@ -38,7 +49,7 @@ export interface TeamSheet {
 }
 
 export interface Pick {
-  type: OffType | DefType;
+  type: OffType | DefType | KickType;
   star: number;
   special?: SpecialCard;
   /** chosen after looking at the other side's card */
@@ -85,9 +96,11 @@ export interface MatchState {
   n: number;
   /** added to each team's chance of sensing the other side's pick (from the half-time talk) */
   insight?: [number, number];
+  /** the team with the ball has just scored a touchdown: this play is its try for more points */
+  tfp?: boolean;
 }
 
-export type Outcome = 'gain' | 'nogain' | 'loss' | 'incomplete' | 'sack' | 'int' | 'fumble';
+export type Outcome = 'gain' | 'nogain' | 'loss' | 'incomplete' | 'sack' | 'int' | 'fumble' | 'kick';
 
 export interface PlayResult {
   n: number;
@@ -99,8 +112,14 @@ export interface PlayResult {
   yards: number;
   td: boolean;
   firstDown: boolean;
-  /** why the ball changed hands, if it did */
-  turnover: null | 'downs' | 'int' | 'fumble';
+  /** why the ball changed hands, if it did (a missed field goal and a punt give it away too) */
+  turnover: null | 'downs' | 'int' | 'fumble' | 'miss' | 'punt';
+  /** a kick: what was tried, from how far (a punt: how far it went), whether it was good, who kicked */
+  kick?: { type: KickType; good: boolean; dist: number; kicker: number };
+  /** this play was the try after a touchdown */
+  tfp?: boolean;
+  /** points scored on this play */
+  points: number;
   /** who read whom: the card match-up alone */
   edge: 'off' | 'def' | 'even';
   /** hero ids, for the picture and the call */
@@ -293,7 +312,7 @@ export function autoTalk(st: MatchState, t: 0 | 1): TalkKey {
 
 // ------------------------------------------------------------------ hints (what a sharp hero senses)
 
-export type Hint = null | 'run' | 'pass' | 'blitz' | 'special';
+export type Hint = null | 'run' | 'pass' | 'blitz' | 'special' | 'kick';
 
 /** What team t senses about the other side's pick before choosing its own. */
 export function senseHint(st: MatchState, t: 0 | 1, oppPick: Pick): Hint {
@@ -304,12 +323,48 @@ export function senseHint(st: MatchState, t: 0 | 1, oppPick: Pick): Hint {
   const theirs = onOffense ? at(opp, 'S').stats.iq : at(opp, 'QB').stats.iq;
   const p = clamp(0.2 + (mine - theirs) / 80 + (st.insight?.[t] ?? 0), 0.06, 0.85);
   if (!st.rng.chance(p)) return null;
+  if (isKick(oppPick.type)) return 'kick';
   if (oppPick.special) return 'special';
   if (onOffense) {
     const d = oppPick.type as DefType;
     return d === 'blitz' ? 'blitz' : d === 'stuff' || d === 'contain' ? 'run' : 'pass';
   }
   return isRun(oppPick.type as OffType) ? 'run' : 'pass';
+}
+
+// ------------------------------------------------------------------ kicking
+
+/** The team's kicker, if it has one. */
+export function kickerOf(t: TeamSheet): Player | null {
+  const id = t.lineup.k;
+  return id == null ? null : t.players.find((p) => p.id === id) ?? null;
+}
+/** How far the kicker's leg carries, in yards (the distance where a field goal is a toss-up is a little short of it). */
+const leg = (k: Player): number => 16 + kickFit(k.stats) * 0.2;
+/** The chance a field goal is good from where the ball is now. */
+export function fgChance(st: MatchState, t: 0 | 1): number {
+  const k = kickerOf(st.teams[t]);
+  if (!k) return 0;
+  const d = FIELD - st.pos;
+  return clamp(1.02 - 0.55 * (d / leg(k)) ** 2, 0.03, 0.98);
+}
+/** The chance the kick after a touchdown is good. */
+export function patChance(t: TeamSheet): number {
+  const k = kickerOf(t);
+  return k ? clamp(0.72 + kickFit(k.stats) * 0.003, 0.5, 0.97) : 0;
+}
+/** Why team t cannot play this kick now (null: it can). */
+export function kickBlock(st: MatchState, t: 0 | 1, type: KickType): null | 'nobody' | 'far' | 'time' {
+  const k = kickerOf(st.teams[t]);
+  if (!k || st.poss !== t) return 'nobody';
+  if ((type === 'pat') !== !!st.tfp) return 'time';
+  if (type === 'fg' && FIELD - st.pos > leg(k) * 1.2) return 'far';
+  return null;
+}
+/** The kicks team t has in its hand right now (it must have the ball and a kicker). */
+export function kickPicks(st: MatchState, t: 0 | 1): Pick[] {
+  if (st.poss !== t || !kickerOf(st.teams[t])) return [];
+  return (st.tfp ? (['pat'] as const) : (['fg', 'punt'] as const)).map((type) => ({ type, star: 1 }));
 }
 
 // ------------------------------------------------------------------ what the player is shown before choosing
@@ -353,8 +408,14 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
   const room = FIELD - st.pos;
   const sp = pick.special;
   if (sp && isPeek(sp)) return null;
+  if (isKick(pick.type)) {
+    // a kick: its chance of going in (a punt has no number: what it is worth depends on where the ball is)
+    if (pick.type === 'punt' || kickBlock(st, t, pick.type)) return null;
+    return clamp(Math.round((pick.type === 'fg' ? fgChance(st, t) : patChance(me)) * 10), 1, 10);
+  }
   const pot = sp ? potency(st, t, sp) : 0;
   const star = 0.3 * (pick.star - 1);
+  const wall = st.tfp ? TRY_WALL : 0;
   // the other side's card is unknown: its stars count as the average deal
   const THEIR_STARS = 0.2;
   if (onOffense) {
@@ -363,23 +424,28 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE;
     const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3 : 0;
     let sum = 0;
+    let hit = 0;
     for (const d of DEF_TYPES) {
       let m = MATCH[type][d];
       if (kind === 'trick') m = Math.max(m, m + (1 - m) * Math.min(1, pot));
       for (const [z, w] of BELL) {
-        const q = adv + m + star - THEIR_STARS + push * pot + z * SD[type];
+        const q = adv + m + star - THEIR_STARS + push * pot + z * SD[type] - wall;
         let y = worth(type, q, d === 'blitz', room, kind === 'sureLong' || kind === 'sureShort');
         if (kind === 'flyLong' && q >= 1) y = Math.min(room, y + 8 * pot);
         if ((kind === 'powerRun' || kind === 'pushRun') && q > -2.3) y = Math.max(y, (kind === 'powerRun' ? 4 : 3) * Math.min(1, pot));
         sum += w * y;
+        if (y >= room) hit += w;
       }
     }
+    // the try after a touchdown is all or nothing: like a kick, the number is the chance of getting there
+    if (st.tfp) return clamp(Math.round((hit / DEF_TYPES.length) * 10), 1, 10);
     return clamp(Math.round(1 + (sum / DEF_TYPES.length) * 0.75), 1, 10);
   }
   // defense: what the other side's plays should gain against this call, weighted by how much they like to run
   const call = pick.type as DefType;
   const kind = sp?.kind as DefKind | undefined;
   let sum = 0;
+  let hit = 0;
   for (const type of OFF_TYPES) {
     const share = (isRun(type) ? opp.runBias : 1 - opp.runBias) / 2;
     const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE;
@@ -389,19 +455,26 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     if (kind === 'wall' && type !== 'long') m -= 0.8 * pot;
     const blitz = call === 'blitz' && kind !== 'steal' && kind !== 'wall' && kind !== 'roar';
     for (const [z, w] of BELL) {
-      let y = worth(type, adv + m - star + THEIR_STARS + z * SD[type], blitz, room);
+      let y = worth(type, adv + m - star + THEIR_STARS + z * SD[type] - wall, blitz, room);
       if (kind === 'wall' && type !== 'long') y = Math.min(y, 1 + (1 - Math.min(1, pot)) * 5);
       if (kind === 'steal') y -= (isRun(type) ? 0.12 : type === 'short' ? 0.55 : 0.7) * pot * TURNOVER_COST;
       sum += share * w * y;
+      if (y >= room) hit += share * w;
     }
   }
+  if (st.tfp) return clamp(Math.round(10 * (1 - hit)), 1, 10);
   return clamp(Math.round(10 - sum * 0.9), 1, 10);
 }
 
 /** The heroes a card is about, the one who matters most first (at most three). */
-export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; pos: OffPos | DefPos }[] {
+export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; pos: OffPos | DefPos | 'K' }[] {
   const me = st.teams[t];
   const onOffense = st.poss === t;
+  if (isKick(pick.type)) {
+    const k = kickerOf(me);
+    // the kicker, and the quarterback who holds the ball for a place kick
+    return [...(k ? [{ id: k.id, pos: 'K' as const }] : []), ...(pick.type === 'punt' || k?.id === me.lineup.off.QB ? [] : [{ id: me.lineup.off.QB, pos: 'QB' as const }])];
+  }
   let order: (OffPos | DefPos)[];
   if (onOffense) {
     const type = pick.type as OffType;
@@ -417,7 +490,7 @@ export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; p
       stuff: ['DL1', 'DL2', 'LB'], contain: ['LB', 'CB1', 'CB2'], zone: ['CB1', 'CB2', 'LB'], deep: ['S', 'CB1', 'CB2'], blitz: ['DL1', 'DL2', 'LB'],
     } as Record<DefType, DefPos[]>)[call];
   }
-  const out = order.map((pos) => ({ id: at(me, pos).id, pos }));
+  const out: { id: number; pos: OffPos | DefPos | 'K' }[] = order.map((pos) => ({ id: at(me, pos).id, pos }));
   const sp = pick.special;
   if (sp) {
     // the hero whose play it is comes first, wherever they line up
@@ -431,10 +504,10 @@ export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; p
 // ---- the huddle: before each play the heroes on the field say how their own match-up looks
 
 /** What a hero talks about: one of the four ways to attack, or where the whole thing is weakest ("gap"). */
-export type Topic = OffType | 'gap';
+export type Topic = OffType | 'gap' | 'kick';
 export interface Voice {
   id: number;
-  pos: OffPos | DefPos;
+  pos: OffPos | DefPos | 'K';
   /** the speaker's judgment: the higher, the more their word is worth */
   iq: number;
   topic: Topic;
@@ -474,7 +547,7 @@ export function huddle(st: MatchState, t: 0 | 1): Voice[] {
   /** how far ahead the speaker's own side really is, for one way to attack */
   const real = (type: OffType): number => (onOffense ? offRating(me, type) - defRating(opp, type) : defRating(me, type) - offRating(opp, type));
   const seen = (iq: number, type: OffType): number => real(type) + rng.normal() * (100 - iq) * 0.2;
-  const speak = (pos: OffPos | DefPos, topic: Topic): Voice => {
+  const speak = (pos: OffPos | DefPos, topic: OffType | 'gap'): Voice => {
     const hero = at(me, pos);
     const iq = hero.stats.iq;
     const base = { id: hero.id, pos, iq, topic };
@@ -498,7 +571,7 @@ export function huddle(st: MatchState, t: 0 | 1): Voice[] {
     return { ...base, text: (onOffense ? OFF_LINES : DEF_LINES)[topic][i], tone: i < 2 ? 'good' : i === 2 ? 'even' : 'bad' };
   };
   // who talks about what; the round changes with every play
-  let table: [OffPos | DefPos, Topic][];
+  let table: [OffPos | DefPos, OffType | 'gap'][];
   if (onOffense) {
     const [short] = receivers(me, 'short');
     const [long, other] = receivers(me, 'long');
@@ -511,7 +584,20 @@ export function huddle(st: MatchState, t: 0 | 1): Voice[] {
   if (b === a) b = (b + 1) % table.length;
   // nobody speaks twice in one huddle
   if (table[b]![0] === table[a]![0]) b = (b + 1) % table.length;
-  return [speak(...table[a]!), speak(...table[b]!)];
+  let first = speak(...table[a]!);
+  // when a kick is worth thinking about (fourth down, or the try after a touchdown), the kicker says how it looks
+  const k = onOffense ? kickerOf(me) : null;
+  if (k && (st.tfp || st.down >= 4) && !kickBlock(st, t, st.tfp ? 'pat' : 'fg')) {
+    if (first.id === k.id) first = speak(...table[b]!);
+    const iq = k.stats.iq;
+    const v = (st.tfp ? patChance(me) : fgChance(st, t)) + rng.normal() * (100 - iq) * 0.004;
+    const i = v >= 0.85 ? 0 : v >= 0.62 ? 1 : v >= 0.38 ? 2 : 3;
+    return [first, {
+      id: k.id, pos: 'K', iq, topic: 'kick', tone: i < 2 ? 'good' : i === 2 ? 'even' : 'bad',
+      text: ['この距離なら決めます！', '入ると思います', '五分五分です…', '遠すぎます…届くかどうか'][i]!,
+    }];
+  }
+  return [first, speak(...table[b]!)];
 }
 
 // ------------------------------------------------------------------ the computer's play calling
@@ -587,6 +673,8 @@ export const bestAgainst = (opp: Pick, onOffense: boolean): OffType | DefType =>
     const d = opp.special && !isPeek(opp.special) ? KIND[opp.special.kind].base as DefType : (opp.type as DefType);
     return [...OFF_TYPES].sort((a, b) => MATCH[b][d] - MATCH[a][d])[0]!;
   }
+  // against a kick the only thing a defense can do is come after it
+  if (isKick(opp.type)) return 'blitz';
   const o = opp.type as OffType;
   return [...DEF_TYPES].sort((a, b) => MATCH[o][a] - MATCH[o][b])[0]!;
 };
@@ -595,8 +683,38 @@ export const bestAgainst = (opp: Pick, onOffense: boolean): OffType | DefType =>
  * The computer picks for team t. `opp` is the other side's pick when it is already made:
  * it is only looked at if a "look first" special is used and works.
  */
+/** Whether the computer kicks now, and what (null: it runs a play). */
+function autoKick(st: MatchState, t: 0 | 1): Pick | null {
+  const me = st.teams[t];
+  if (!kickerOf(me)) return null;
+  const diff = st.score[t] - st.score[1 - t];
+  const late = st.quarter >= QUARTERS;
+  if (st.tfp) {
+    // two down late: only two points help. Otherwise take the point, unless the kicker cannot be trusted
+    if (late && (diff === -2 || diff === -5)) return null;
+    return st.rng.chance(patChance(me) >= 0.75 ? 0.93 : 0.6) ? { type: 'pat', star: 1 } : null;
+  }
+  const p = kickBlock(st, t, 'fg') ? 0 : fgChance(st, t);
+  const lastPlay = st.left <= 1 && (st.quarter === QUARTERS / 2 || late) && !st.sudden;
+  // the last play of a half: three points are better than nothing (at the very end, only if they are enough)
+  if (lastPlay && p >= 0.25 && (!late || (diff <= 0 && diff >= -FG_POINTS))) return { type: 'fg', star: 1 };
+  if (st.sudden && st.down >= 3 && p >= 0.6) return { type: 'fg', star: 1 };
+  if (st.down < 4) return null;
+  if (late && diff < -FG_POINTS && st.left <= 3) return null;
+  if (st.toGo <= 1 && FIELD - st.pos > 3 && st.rng.chance(0.6)) return null;
+  if (p >= 0.45) return { type: 'fg', star: 1 };
+  if (st.toGo <= 2) return null;
+  if (late && diff < 0) return null;
+  // deep in its own half, or simply too far to go: kick it away
+  return st.pos <= 32 || st.toGo >= 6 ? { type: 'punt', star: 1 } : null;
+}
+
 export function autoPick(st: MatchState, t: 0 | 1, opp?: Pick): Pick {
   const onOffense = st.poss === t;
+  if (onOffense) {
+    const kick = autoKick(st, t);
+    if (kick) return kick;
+  }
   const specials = usableSpecials(st, t).filter((sp) => !isPeek(sp) || opp);
   if (specials.length) {
     const sp = st.rng.weighted(specials, (s) => specialAppeal(st, s));
@@ -636,8 +754,126 @@ const ADV_SCALE = 20;
 
 const nm = (t: TeamSheet, id: number): string => byId(t, id).name;
 
+/** The other team gets the ball for a new drive from its own START. */
+function kickoff(st: MatchState, to: 0 | 1): void {
+  st.poss = to;
+  st.pos = START;
+  st.down = 1;
+  st.toGo = 10;
+}
+
+/** One play goes off the clock (which is counted in plays); deals the next hand unless the match is over. */
+function tick(st: MatchState): PlayResult['period'] {
+  st.n += 1;
+  let period: PlayResult['period'] = null;
+  if (st.sudden) {
+    if (st.score[0] !== st.score[1]) {
+      st.over = true;
+      period = 'final';
+    }
+  } else {
+    st.left -= 1;
+    if (st.left <= 0) {
+      if (st.quarter >= QUARTERS) {
+        if (st.score[0] === st.score[1]) {
+          st.sudden = true;
+          period = 'sudden';
+        } else {
+          st.over = true;
+          period = 'final';
+        }
+      } else {
+        st.quarter += 1;
+        st.left = PLAYS_PER_Q;
+        period = 'quarter';
+        if (st.quarter === QUARTERS / 2 + 1) {
+          period = 'half';
+          kickoff(st, (1 - st.first) as 0 | 1);
+        }
+      }
+    }
+  }
+  if (!st.over) deal(st);
+  return period;
+}
+
+/** A kick: a field goal, a punt, or the kick after a touchdown. The defense's card cannot stop it (a rush hurries it a little). */
+function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
+  const o = st.poss;
+  const d = (1 - o) as 0 | 1;
+  const O = st.teams[o];
+  const D = st.teams[d];
+  const type = offPick.type as KickType;
+  const why = kickBlock(st, o, type);
+  if (why) throw new Error(`this kick cannot be played now (${why})`);
+  const k = kickerOf(O)!;
+  const rng = st.rng;
+  const before = { pos: st.pos, down: st.down, toGo: st.toGo, quarter: st.quarter, left: st.left };
+  const momBefore: [number, number] = [st.mom[0], st.mom[1]];
+  const mom = (t: 0 | 1, v: number): void => {
+    st.mom[t] = clamp(st.mom[t] + v, 0, MOM_MAX);
+  };
+  const rush = defPick.type === 'blitz' && !defPick.special;
+  const tot = st.totals[o];
+  const lines: string[] = [];
+  let good = false;
+  let dist = FIELD - st.pos;
+  let points = 0;
+  let turnover: PlayResult['turnover'] = null;
+  if (type === 'pat') {
+    good = rng.chance(patChance(O) - (rush ? 0.04 : 0));
+    if (good) {
+      points = PAT_POINTS;
+      st.score[o] += points;
+      lines.push(`${k.name}のキック、成功！ ${O.short}に${points}点`);
+    } else lines.push(`${k.name}のキックは外れた…`);
+    st.tfp = false;
+    kickoff(st, d);
+  } else if (type === 'fg') {
+    tot.plays += 1;
+    good = rng.chance(fgChance(st, o) - (rush ? 0.06 : 0));
+    if (good) {
+      points = FG_POINTS;
+      st.score[o] += points;
+      lines.push(`${k.name}の${dist}ヤードのフィールドゴール、成功！ ${O.short}に${points}点`);
+      mom(o, 1);
+      kickoff(st, d);
+    } else {
+      turnover = 'miss';
+      lines.push(`${k.name}のフィールドゴールは外れた…。${D.short}の攻撃に`);
+      mom(d, 1);
+      st.poss = d;
+      st.pos = clamp(FIELD - before.pos, 8, FIELD - 1);
+      st.down = 1;
+      st.toGo = Math.min(10, FIELD - st.pos);
+    }
+  } else {
+    tot.plays += 1;
+    turnover = 'punt';
+    dist = clamp(Math.round(17 + kickFit(k.stats) * 0.2 + rng.normal() * 4 - (rush ? 3 : 0)), 8, 45);
+    const spot = before.pos + dist;
+    good = true;
+    st.poss = d;
+    // into the end zone: the ball comes out to the ten
+    st.pos = spot >= FIELD ? 10 : clamp(FIELD - spot, 3, FIELD - 1);
+    if (spot >= FIELD) dist = FIELD - before.pos;
+    st.down = 1;
+    st.toGo = Math.min(10, FIELD - st.pos);
+    lines.push(`${k.name}のパント、${dist}ヤード。${D.short}は自陣${st.pos}ヤードから`);
+  }
+  const period = tick(st);
+  return {
+    n: st.n, off: o, offPick, defPick, before, outcome: 'kick', yards: type === 'punt' ? dist : 0, td: false, firstDown: false, turnover, edge: 'even',
+    passer: O.lineup.off.QB, carrier: k.id, defender: D.lineup.def.DL1, offPotency: 0, defPotency: 0,
+    momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines,
+    kick: { type, good, dist, kicker: k.id }, tfp: type === 'pat' || undefined, points,
+  };
+}
+
 export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
   if (st.over) throw new Error('the match is over');
+  if (isKick(offPick.type)) return resolveKick(st, offPick, defPick);
+  const tryPlay = !!st.tfp;
   const o = st.poss;
   const d = (1 - o) as 0 | 1;
   const O = st.teams[o];
@@ -677,6 +913,7 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
   const edge: PlayResult['edge'] = m <= -1 ? 'def' : m >= 0.8 ? 'off' : 'even';
   const adv = (offRating(O, type, isRun(type) ? undefined : targetPos) - defRating(D, type)) / ADV_SCALE;
   let q = adv + m + 0.3 * (offPick.star - 1) - 0.3 * (defPick.star - 1) + rng.normal() * SD[type];
+  if (tryPlay) q -= TRY_WALL;
   if (ok === 'powerRun') q += 1.8 * op;
   if (ok === 'pushRun') q += 1.0 * op;
   if (ok === 'sureLong') q += 2.0 * op;
@@ -769,12 +1006,9 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
     st.mom[t] = clamp(st.mom[t] + v, 0, MOM_MAX);
   };
 
-  const kickoff = (to: 0 | 1): void => {
-    st.poss = to;
-    st.pos = START;
-    st.down = 1;
-    st.toGo = 10;
-  };
+  let points = 0;
+  /** a touchdown is followed by a try: the clock waits for it */
+  let tryNext = false;
   const handOver = (spot: number): void => {
     // spot: where the ball is, measured from the old offense's goal line
     st.poss = d;
@@ -784,7 +1018,24 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
     tot.turnovers += 1;
   };
 
-  if (outcome === 'int' || outcome === 'fumble') {
+  if (tryPlay) {
+    // the try after a touchdown: two points for reaching the end zone, nothing otherwise, and the ball goes over
+    tot.plays -= 1;
+    if (td) {
+      points = TWO_POINTS;
+      st.score[o] += points;
+      lines.push(`2点ねらい、成功！ ${O.short}に${points}点`);
+      mom(o, 1);
+    } else {
+      lines.push(outcome === 'int' || outcome === 'fumble' ? `${dn}が止めた！ 2点ねらいは失敗` : '2点ねらいは失敗');
+      mom(d, 1);
+      if (outcome === 'gain') outcome = 'nogain';
+    }
+    td = false;
+    yards = 0;
+    st.tfp = false;
+    kickoff(st, d);
+  } else if (outcome === 'int' || outcome === 'fumble') {
     turnover = outcome;
     const depth = outcome === 'fumble' ? yards : type === 'long' ? 18 : 5;
     lines.push(outcome === 'int' ? `${dn}がパスを奪い取った！ 攻守交代` : `${cn}がボールをこぼした！ ${dn}が押さえて攻守交代`);
@@ -804,12 +1055,21 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
     if (yards < 0) mom(d, 1);
     if (roared) mom(o, -1);
     if (td) {
-      st.score[o] += TD_POINTS;
+      points = TD_POINTS;
+      st.score[o] += points;
       tot.td += 1;
-      lines.push(`タッチダウン！ ${O.short}に${TD_POINTS}点`);
+      lines.push(`タッチダウン！ ${O.short}に${points}点`);
       mom(o, 2);
       mom(d, -1);
-      kickoff(d);
+      if (st.sudden) kickoff(st, d);
+      else {
+        // the try for more points comes next, from close in; the clock waits for it
+        tryNext = true;
+        st.tfp = true;
+        st.pos = FIELD - TRY_YARDS;
+        st.down = 1;
+        st.toGo = TRY_YARDS;
+      }
     } else {
       if (yards >= 15) mom(o, 1);
       st.pos += yards;
@@ -833,41 +1093,16 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
   }
 
   // ---- the clock (counted in plays)
-  st.n += 1;
   let period: PlayResult['period'] = null;
-  if (st.sudden) {
-    if (st.score[0] !== st.score[1]) {
-      st.over = true;
-      period = 'final';
-    }
-  } else {
-    st.left -= 1;
-    if (st.left <= 0) {
-      if (st.quarter >= QUARTERS) {
-        if (st.score[0] === st.score[1]) {
-          st.sudden = true;
-          period = 'sudden';
-        } else {
-          st.over = true;
-          period = 'final';
-        }
-      } else {
-        st.quarter += 1;
-        st.left = PLAYS_PER_Q;
-        period = 'quarter';
-        if (st.quarter === QUARTERS / 2 + 1) {
-          period = 'half';
-          kickoff((1 - st.first) as 0 | 1);
-        }
-      }
-    }
-  }
-  if (!st.over) deal(st);
+  if (tryNext) {
+    st.n += 1;
+    deal(st);
+  } else period = tick(st);
 
   return {
     n: st.n, off: o, offPick, defPick, before, outcome, yards, td, firstDown, turnover, edge,
     passer, carrier, defender, offPotency: op, defPotency: dp,
-    momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines,
+    momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines, points, tfp: tryPlay || undefined,
   };
 }
 
@@ -882,7 +1117,7 @@ export function simulate(home: TeamSheet, away: TeamSheet, seed: number): MatchS
     // each side picks without seeing the other; a "look first" special is the exception
     const def0 = autoPick(st, d);
     const off = autoPick(st, o, def0);
-    const def = def0.special || off.peeked ? def0 : (autoPeek(st, d, off) ?? def0);
+    const def = def0.special || off.peeked || isKick(off.type) ? def0 : (autoPeek(st, d, off) ?? def0);
     const res = resolvePlay(st, off, def);
     if (res.period === 'half') for (const t of [0, 1] as const) halftimeTalk(st, t, autoTalk(st, t));
   }

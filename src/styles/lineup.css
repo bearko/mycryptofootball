@@ -141,7 +141,7 @@
 @keyframes lu-down { 30% { transform: skewX(-9deg) translateY(0.25rem); filter: brightness(0.7); } }
 
 /* ---------- the bench and the note ---------- */
-.lu-side { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 0.8rem; animation: fade-up 0.45s 0.2s backwards; }
+.lu-side { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.5rem; animation: fade-up 0.45s 0.2s backwards; }
 .lu-bench { position: relative; display: grid; justify-items: center; padding: 0.2rem 0 1.5rem; }
 .lu-bench .lu-role { font-family: var(--display); color: var(--ink); background: var(--yellow); text-shadow: none; padding: 0 0.9rem; line-height: 1.3; height: 1.3rem; clip-path: polygon(0.3rem 0, 100% 0, calc(100% - 0.3rem) 100%, 0 100%); margin-top: -0.15rem; }
 .lu-seatwood { position: absolute; left: 0.9rem; right: 0.9rem; bottom: 0.5rem; height: 0.95rem; background: linear-gradient(180deg, #b0743a, #7d4c22); border: 0.2rem solid var(--ink); box-shadow: 0.25rem 0.25rem 0 var(--ink); transform: skewX(-14deg); }
@@ -170,3 +170,13 @@
 
 .lu-note-role small { display: block; font-family: var(--body); font-size: var(--fs-xs); font-weight: 400; color: #55597a; }
 .lu-role { position: relative; z-index: 4; }
+
+/* the kicker: one chip under the bench; a tap passes the job on */
+.lu-kicker { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; column-gap: 0.4rem; padding: 0.15rem 0.6rem 0.2rem 0; color: var(--chalk); background: #0c3b2a; border: 0.18rem solid var(--ink); box-shadow: 0.2rem 0.2rem 0 var(--ink); text-align: left; cursor: pointer; min-height: 44px; }
+.lu-kicker > b { grid-row: 1 / 3; align-self: stretch; display: grid; place-items: center; width: 2rem; font-family: var(--display); font-weight: 400; font-size: var(--fs-m); color: var(--ink); background: var(--lime); }
+.lu-kicker img { grid-row: 1 / 3; width: 2.6rem; height: 2.6rem; }
+.lu-kicker-name { font-family: var(--display); font-size: var(--fs-s); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lu-kicker .lu-grade { position: static; grid-row: 1 / 3; grid-column: 4; }
+.lu-kicker small { grid-column: 3; font-size: 0.78rem; line-height: 1.2; color: var(--dim); white-space: nowrap; }
+.lu-kicker.bump { animation: bump 0.4s var(--spring); }
+@media (hover: hover) { .lu-kicker:hover { background: #115238; } }

@@ -10,7 +10,7 @@ import { hero, recruit, talentOf } from '../game/heroes';
 import { bestLineup, isStarter, place } from '../game/lineup';
 import { unitSummary } from '../game/match';
 import {
-  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, STAT_LABEL, fit, grade, roleOf,
+  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, STAT_LABEL, fit, grade, kickFit, roleOf,
   type DefPos, type Lineup, type OffPos, type Role, type Stat,
 } from '../game/model';
 import { asPlayer, clubSheet, learned, member } from '../game/season';
@@ -467,6 +467,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     s.lineup = next;
     held = null;
     commit();
+    drawKicker();
     const moved = render(was, opts);
     const settle = motion() ? 380 + (opts.stagger ? moved * 60 : 0) : 0;
     const after = snap();
@@ -671,7 +672,39 @@ export function lineupScreen(back: () => void): HTMLElement {
   const board = h('section.lu-board',
     h('div.lu-half.off', h('span.label', '攻撃'), fieldOf.off, metersOf('off')),
     h('div.lu-half.def', h('span.label.cyan', '守備'), fieldOf.def, metersOf('def')));
-  const side = h('aside.lu-side', h('div.lu-bench', bench.el, h('span.lu-seatwood', { 'aria-hidden': 'true' })), note);
+  // ---------------------------------------------------------------- the kicker
+  // Anybody in the club can be the kicker, starter or not. One tap hands the job to the next best foot.
+  const kickOrder = (): number[] => [...s.members].sort((a, b) => kickFit(b.stats) - kickFit(a.stats)).map((m) => m.id);
+  const kickEl: HTMLButtonElement = h('button.lu-kicker', {
+    type: 'button',
+    onclick: () => {
+      const order = kickOrder();
+      const next = order[(order.indexOf(s.lineup!.k ?? -1) + 1) % order.length]!;
+      s.lineup = { ...s.lineup!, k: next };
+      commit();
+      sfx.swap();
+      vibrate(10);
+      drawKicker();
+      kick(kickEl, 'bump');
+      const g = grade(kickFit(statsOf(next)));
+      tell(`キッカーは${shortName(hero(next).name)}（キック ${g}）。フィールドゴールとパント、タッチダウンのあとのキックを蹴ります。`, g === 'D' || g === 'C' ? 'think' : 'smile');
+    },
+  });
+  function drawKicker(): void {
+    const id = s.lineup!.k ?? null;
+    if (id === null || !s.members.some((m) => m.id === id)) {
+      kickEl.replaceChildren(h('b', 'K'), h('span.lu-kicker-name', 'キッカーなし'), h('small', 'タップで決める'));
+      return;
+    }
+    const g = grade(kickFit(statsOf(id)));
+    kickEl.replaceChildren(h('b', 'K'), h('img.px', { src: hero(id).img, alt: '', draggable: false }),
+      h('span.lu-kicker-name', shortName(hero(id).name)), h('span.lu-grade', { class: `g${g}` }, g), h('small', 'タップで交代'));
+    kickEl.setAttribute('aria-label', `キッカー：${hero(id).name}（キック ${g}）。押すと次のヒーローに交代`);
+    kickEl.title = 'キッカー（パスと判断）。フィールドゴール・パント・タッチダウンのあとのキックを蹴る';
+  }
+  drawKicker();
+
+  const side = h('aside.lu-side', h('div.lu-bench', bench.el, h('span.lu-seatwood', { 'aria-hidden': 'true' })), kickEl, note);
   const root = h('div.screen.lineup',
     backdrop(['FORMATION', '作戦ボード'], ['#0f4a4a', '#090d24', '#37e3ff']),
     h('header.head.pad', h('h2', '編成'), hint),

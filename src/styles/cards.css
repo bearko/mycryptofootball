@@ -98,3 +98,12 @@
 .card.blocked .card-ev { display: none; }
 .card.has-ev:not(.small) .card-band { padding-right: 1.7rem; }
 .card.has-ev:not(.small) .sp-name { padding-right: 1.9rem; }
+
+/* kick cards: green band, the goal drawn in yellow */
+.card.kick .card-band { background: #0f7a44; }
+.card.kick .card-in { background: repeating-linear-gradient(0deg, transparent 0 1.3rem, rgba(20, 110, 60, 0.12) 1.3rem 1.38rem), #e9f7e4; }
+.art-kick .post { fill: none; stroke: #c99a12; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.art-kick .ball { fill: #8a4a1c; stroke: var(--ink); stroke-width: 1.2; }
+.card.kick .card-art .pass, .card.kick .card-art .head { stroke: #0f7a44; }
+.card.kick .card-vs i:last-child { color: var(--ink); }
+.card-name.long { font-size: calc(var(--fs-s) * 0.74); letter-spacing: -0.08em; }

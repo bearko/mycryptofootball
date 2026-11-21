@@ -4,10 +4,10 @@
 // Scripts are written in "drive coordinates" like the rules (u = yards from the offense's own goal line,
 // v = across the field) and converted to world x/z here: team 0 attacks toward +x, team 1 toward -x.
 
-import { KIND, isRun, type DefType, type OffType } from '../../game/cards';
+import { KIND, isRun, type DefType, type KickType, type OffType } from '../../game/cards';
 import { FIELD, type Outcome, type PlayResult, type TeamSheet } from '../../game/match';
 import { DEF_POS, OFF_POS, type DefPos, type OffPos } from '../../game/model';
-import { WIDTH } from './assets';
+import { END, WIDTH } from './assets';
 import { clamp, lerp } from './math';
 
 export type UV = [number, number];
@@ -38,6 +38,8 @@ export type Cue = { t: number } & (
   | { c: 'clash'; at: UV[] }
   | { c: 'handoff' }
   | { c: 'throw'; long: boolean }
+  /** the foot meets the ball */
+  | { c: 'kick' }
   | { c: 'jump'; who: Ref; h: number; dur: number }
   /** dir: +1 toward the goal the offense attacks */
   | { c: 'dive'; who: Ref; dir: number }
@@ -68,6 +70,8 @@ export interface PlaySpec {
   defender: number;
   offStar: number | null;
   defStar: number | null;
+  /** a kick instead of a play (the kicker is `carrier`, lined up where the running back would be) */
+  kick?: { type: KickType; good: boolean; dist: number };
 }
 
 export interface Script {
@@ -102,8 +106,10 @@ export function specOf(res: PlayResult): PlaySpec {
   return {
     n: res.n,
     off: res.off,
-    type: res.offPick.type as OffType,
+    // a kick is filmed like a long pass: the camera follows the ball
+    type: res.kick ? 'long' : (res.offPick.type as OffType),
     call: dsp ? (KIND[dsp.kind].base as DefType) : (res.defPick.type as DefType),
+    kick: res.kick ? { type: res.kick.type, good: res.kick.good, dist: res.kick.dist } : undefined,
     outcome: res.outcome,
     yards: res.yards,
     td: res.td,
@@ -329,7 +335,84 @@ export function buildScript(
     return s + 0.18 + Math.hypot(from[0] - u, from[1] - v) / 15;
   };
 
-  if (isRun(type)) {
+  if (sp.kick) {
+    // ---- a kick: the quarterback holds for a place kick, the kicker (in the running back's spot) swings through
+    const k = rb;
+    const punt = sp.kick.type === 'punt';
+    const holdU = los - 6.2;
+    const tK = s + (punt ? 1.0 : 0.9);
+    const dur = punt ? 1.7 : 1.4;
+    const tLand = tK + dur;
+    const side = ((sp.n % 3) - 1);
+    let from: [number, number, number];
+    if (punt) {
+      go(qb, s + 0.4, los - 2.2, 10.2);
+      go(k, s + 0.3, los - 9.5, 12);
+      go(k, tK, los - 8.4, 12, true);
+      go(k, tK + 0.5, los - 7.6, 12.2);
+      ball.push({ t0: 0, t1: tK, kind: 'held', team: o, id: k.id });
+      from = [X(los - 8), 1.1, 12];
+    } else {
+      go(qb, s + 0.28, holdU, 12.8);
+      go(k, s + 0.3, holdU - 2.8, 10.9);
+      go(k, tK, holdU - 0.5, 12, true);
+      go(k, tK + 0.45, holdU + 0.9, 12.3);
+      ball.push({ t0: 0, t1: s + 0.3, kind: 'held', team: o, id: qb.id });
+      ball.push({ t0: s + 0.3, t1: tK, kind: 'ground', at: [X(holdU + 0.45), 0.15, 12.1] });
+      from = [X(holdU + 0.45), 0.2, 12.1];
+    }
+    cues.push({ t: tK, c: 'kick' });
+    // the rush comes anyway, and somebody leaps at the ball
+    for (const p of ['DL1', 'DL2'] as const) go(b(p), tK + 0.1, los - 3.2, called.def[p][1] + (called.def[p][1] < 12 ? 0.8 : -0.8), true);
+    cues.push({ t: tK - 0.05, c: 'jump', who: ref(b('DL1')), h: 0.9, dur: 0.5 });
+    const goalU = FIELD + END + 0.1;
+    let landU: number;
+    let landV: number;
+    if (punt) {
+      landU = Math.min(los + sp.kick.dist, FIELD + 2.5);
+      landV = 12 + side * 4;
+      const deep = b('S');
+      go(deep, tLand - 0.1, Math.min(landU + 0.4, FIELD + 3.5), landV);
+      moved.add(deep);
+      ball.push({ t0: tK, t1: tLand, kind: 'air', from, to: [X(landU), 1.6, landV], h: 10, spiral: true });
+      if (landU < FIELD) {
+        ball.push({ t0: tLand, t1: 99, kind: 'held', team: d, id: deep.id });
+        cues.push({ t: tLand, c: 'catch', who: ref(deep), long: true });
+      } else ball.push({ t0: tLand, t1: 99, kind: 'ground', at: [X(landU), 0.2, landV] });
+    } else if (sp.kick.good) {
+      landU = goalU + 3.5;
+      landV = 12 + side * 1.3;
+      // through the uprights, then down behind them
+      ball.push({ t0: tK, t1: tLand, kind: 'air', from, to: [X(goalU), 6.2, landV], h: 5.5, spiral: false });
+      ball.push({ t0: tLand, t1: tLand + 0.5, kind: 'air', from: [X(goalU), 6.2, landV], to: [X(landU), 0.2, landV], h: 0.4, spiral: false });
+      ball.push({ t0: tLand + 0.5, t1: 99, kind: 'ground', at: [X(landU), 0.2, landV] });
+      cues.push({ t: tLand + 0.05, c: 'celebrate', team: o });
+    } else if (sp.n % 2) {
+      // wide of the post
+      landU = goalU + 2.5;
+      landV = 12 + (side || 1) * 5.6;
+      ball.push({ t0: tK, t1: tLand, kind: 'air', from, to: [X(goalU), 5.2, landV], h: 5.5, spiral: false });
+      ball.push({ t0: tLand, t1: tLand + 0.45, kind: 'air', from: [X(goalU), 5.2, landV], to: [X(landU), 0.2, landV], h: 0.3, spiral: false });
+      ball.push({ t0: tLand + 0.45, t1: 99, kind: 'ground', at: [X(landU), 0.2, landV] });
+      cues.push({ t: tLand + 0.45, c: 'drop', x: X(landU), z: landV });
+    } else {
+      // short: it comes down in front of the bar
+      landU = goalU - 3.2;
+      landV = 12 + side * 1.5;
+      ball.push({ t0: tK, t1: tLand, kind: 'air', from, to: [X(landU), 0.2, landV], h: 6.5, spiral: false });
+      ball.push({ t0: tLand, t1: 99, kind: 'ground', at: [X(landU), 0.2, landV] });
+      cues.push({ t: tLand, c: 'drop', x: X(landU), z: landV });
+    }
+    tThrow = tK;
+    tCatch = tLand;
+    tEnd = tLand;
+    endT = tLand + (sp.kick.good && !punt ? 1.1 : 0.8);
+    endU = clamp(landU, 0, FIELD + 4);
+    endV = landV;
+    spotU = endU;
+    spotV = landV;
+    star = ref(k);
+  } else if (isRun(type)) {
     const inside = type === 'inside';
     const edge = sp.n % 2 ? 4.4 : 19.6;
     const lane = inside ? 12 + ((sp.n % 3) - 1) * 0.8 : edge;
