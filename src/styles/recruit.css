@@ -196,7 +196,6 @@
 .rc-radar::after { /* a strip of tape holding the chart */ content: ''; position: absolute; top: 0; left: -1.3rem; width: 3.4rem; height: 1.1rem; background: rgba(55, 227, 255, 0.75); transform: rotate(-40deg); box-shadow: 0 0.1rem 0.2rem rgba(0, 0, 0, 0.3); }
 .rc-radar .radar { width: 7.9rem; margin-right: 0.3rem; }
 .rc-radar .radar-tag { line-height: 1.05; }
-.rc-radar .radar-tag svg { width: 1.3em; height: 1.3em; overflow: hidden; } /* base's `.radar svg` rule would stretch the icons */
 .rc-card { position: relative; z-index: 1; transform: rotate(3deg); justify-self: end; /* the card lies over the edge of the chart */ }
 .rc-card::after { /* paper clip */ content: ''; position: absolute; top: -0.9rem; left: 1rem; width: 1.1rem; height: 2.6rem; border: 0.2rem solid #9aa3c7; border-radius: 0.6rem; box-shadow: 0.1rem 0.1rem 0 rgba(6, 8, 26, 0.5); pointer-events: none; }
 .rc-card.turn .card { animation: rc-turn 0.42s var(--spring); }

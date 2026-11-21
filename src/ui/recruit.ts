@@ -27,21 +27,6 @@ const JERSEY = 'M9,2 L15,2 Q20,8 25,2 L31,2 L39,10 L34,17 L30,14 L30,36 L10,36 L
 /** Pennants strung across the top of the stage. */
 const FLAGS = 13;
 
-/**
- * kit's radar() currently writes each number into the first <span> of its tag, which is the ability icon.
- * Until that is fixed there, put the icon back and write the number where it belongs (a no-op once kit is right).
- */
-function mendRadar(el: HTMLElement, stats: Stats): void {
-  el.querySelectorAll('.radar-tag b').forEach((b, i) => {
-    const k = STATS[i];
-    if (!k) return;
-    const icon = b.querySelector('.ticon');
-    if (icon && !icon.querySelector('svg')) icon.replaceWith(statIcon(k));
-    const num = b.querySelector('span:not(.ticon)');
-    if (num) num.textContent = String(stats[k]);
-  });
-}
-
 export function recruitScreen(): HTMLElement {
   const season = save().season!;
   const ids = season.candidates;
@@ -76,7 +61,9 @@ export function recruitScreen(): HTMLElement {
         }
       },
       onpointerenter: (e: PointerEvent) => {
-        if (e.pointerType === 'mouse') kick(pic, 'hop');
+        if (e.pointerType !== 'mouse') return;
+        kick(pic, 'hop');
+        setFocus(id);
       },
     },
     pic,
@@ -120,7 +107,6 @@ export function recruitScreen(): HTMLElement {
   const blurb = h('p.rc-blurb');
   const roles = h('p.rc-roles');
   const rd = radar(recruit(focus).stats);
-  mendRadar(rd.el, recruit(focus).stats);
   const cardBox = h('div.rc-card');
   const spName = h('b.rc-sp-name');
   const spText = h('p.rc-sp-text');
@@ -159,7 +145,6 @@ export function recruitScreen(): HTMLElement {
     blurb.textContent = r.blurb;
     roles.replaceChildren(h('b', '◎'), bestRoles(r.stats));
     rd.set(r.stats);
-    mendRadar(rd.el, r.stats);
     const card = playCard({ type: info.base, star: 1, special: sp }, info.side, {
       small: true,
       onpick: () => {
@@ -274,8 +259,39 @@ export function recruitScreen(): HTMLElement {
 
   const signLabel = h('span');
   const signBtn = button([signLabel], () => toggle(focus), { quiet: true, key: 'Enter' });
-  const startBtn = button(`この${ROSTER_SIZE}人ではじめる`, () => {
+  const startLabel = h('span');
+  let filling = false;
+  /** Fills the empty places: first the abilities nobody has yet, then the strongest left. */
+  const fillRest = (): void => {
+    if (filling) return;
+    filling = true;
+    const order: number[] = [];
+    const have = new Set(picked.map(talent));
+    const rest = ids.filter((id) => !picked.includes(id));
+    const total = (id: number): number => STATS.reduce((sum, k) => sum + recruit(id).stats[k], 0);
+    while (picked.length + order.length < ROSTER_SIZE && rest.length) {
+      rest.sort((x, y) => Number(have.has(talent(x))) - Number(have.has(talent(y))) || total(y) - total(x));
+      const id = rest.shift()!;
+      have.add(talent(id));
+      order.push(id);
+    }
+    const gap = motion() ? 230 : 0;
+    order.forEach((id, i) => setTimeout(() => {
+      if (!root.isConnected || leaving) return;
+      if (!picked.includes(id) && !full()) {
+        setFocus(id);
+        sign(id);
+      }
+      if (i === order.length - 1) filling = false;
+    }, i * gap));
+    if (!order.length) filling = false;
+  };
+  const startBtn = button([startLabel], () => {
     if (leaving) return;
+    if (!full()) {
+      fillRest();
+      return;
+    }
     leaving = true;
     signRecruits(season, picked);
     commit();
@@ -296,7 +312,8 @@ export function recruitScreen(): HTMLElement {
     root.classList.toggle('full', full());
     signLabel.textContent = isIn ? 'とりやめる' : full() ? `${ROSTER_SIZE}人そろった` : '入部させる';
     signBtn.className = `btn ${isIn ? 'alt' : full() ? 'off' : ''}`;
-    startBtn.className = `btn ${full() ? 'go' : 'off'}`;
+    startBtn.className = `btn ${full() ? 'go' : 'alt'}`;
+    startLabel.textContent = full() ? `この${ROSTER_SIZE}人ではじめる` : picked.length ? 'のこりはおまかせ' : 'おまかせでえらぶ';
     sealed.textContent = !isIn ? '' : picked[0] === focus ? '主将' : '入部';
     paper.classList.toggle('signed', isIn);
     placeSpot();
