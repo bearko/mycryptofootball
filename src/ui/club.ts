@@ -12,7 +12,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, learned, member, nextMatch, plan, policyOpen,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, learned, markMonth, member, nextMatch, plan, policyOpen,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { OPPONENTS, aces } from '../game/teams';
@@ -28,6 +28,7 @@ import { lineupScreen } from './lineupScreen';
 import { matchScreen } from './matchScreen';
 import { show } from './nav';
 import { policyPanel } from './policy';
+import { reviewModal } from './review';
 import { memberModal, settingsModal } from './shared';
 import { titleScreen } from './title';
 
@@ -130,6 +131,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     h('nav.pg-menu',
       button('編成', () => show(lineupScreen(() => show(...clubScreen()))), 'alt'),
       h('span.pg-policy', policyBtn, policyTag),
+      button('成長', () => reviewModal(s, { closed: false }), 'alt'),
       button('設定', settingsModal, 'alt'),
       button('タイトル', () => {
         save().season = s;
@@ -624,6 +626,23 @@ export function clubScreen(): [HTMLElement, () => void] {
   }
   const arrive = (first: boolean): void => {
     if (!alive) return;
+    // a new month: first look back on the last one (then the day goes on as usual)
+    if (s.review) {
+      coach.say('月がかわりました！ 先月のみんなの成長を見てみましょう。', 'smile');
+      setTimeout(() => {
+        if (!alive) return;
+        reviewModal(s, {
+          closed: true,
+          onClose: () => {
+            markMonth(s);
+            save().season = s;
+            commit();
+            arrive(first);
+          },
+        });
+      }, first ? 650 : 350);
+      return;
+    }
     if (s.event && plan(s).t === 'train') {
       coach.say('おや、グラウンドで何かあったようです。', 'think');
       setTimeout(openEvent, first ? 650 : 350);

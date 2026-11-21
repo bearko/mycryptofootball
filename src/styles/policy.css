@@ -17,7 +17,8 @@
 .pol-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem; }
 .pol-stat { position: relative; display: grid; grid-template-columns: auto auto; justify-content: center; align-items: center; gap: 0 0.15rem; min-height: 4.4rem; padding: 0.5rem 0 0.1rem; color: var(--chalk); background: #0d1136; border: 0.18rem solid var(--ink); transition: transform 0.14s var(--spring), background 0.14s, box-shadow 0.14s; min-width: 0; }
 .pol-stat .ticon svg { width: 1.3rem; height: 1.3rem; }
-.pol-stat b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.2; }
+.pol-stat b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.2; display: flex; align-items: center; gap: 0.2rem; }
+.pol-stat b .rank { font-size: 0.72em; min-width: 1.35em; padding: 0 0.15em; }
 .pol-stat span { grid-column: 1 / -1; text-align: center; font-size: var(--fs-xs); line-height: 1.25; white-space: nowrap; letter-spacing: -0.07em; }
 .pol-stat span.is-long { font-size: calc(var(--fs-xs) * 0.95); letter-spacing: -0.11em; }
 button.pol-stat { box-shadow: 0.2rem 0.2rem 0 var(--ink); background: linear-gradient(180deg, #2a3186, #1a1f5c); }

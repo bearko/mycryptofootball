@@ -75,12 +75,11 @@
   position: absolute; right: -0.55rem; top: -0.1rem; z-index: 3; width: 1.95rem; height: 1.95rem; display: grid; place-items: center; border-radius: 50%; transform: rotate(9deg);
   font-family: var(--display); font-size: var(--fs-s); line-height: 1; color: var(--ink); background: var(--chalk); border: 0.16rem solid var(--ink); box-shadow: 0.12rem 0.12rem 0 var(--ink); transition: opacity 0.12s;
 }
-.lu-grade.gS { background: var(--yellow); border-radius: 0.5rem; box-shadow: 0 0 0.7rem rgba(255, 225, 74, 0.8), 0.12rem 0.12rem 0 var(--ink); animation: lu-shine 1.5s ease-in-out infinite; }
-.lu-grade.gA { background: var(--lime); }
-.lu-grade.gB { background: var(--chalk); }
-.lu-grade.gC { background: #aab3dd; }
-.lu-grade.gD { background: #3a2a3f; color: var(--pink); border-style: dashed; border-color: var(--pink); }
-@keyframes lu-shine { 50% { box-shadow: 0 0 0.2rem rgba(255, 225, 74, 0.5), 0.12rem 0.12rem 0 var(--ink); } }
+.lu-grade.rank { background: var(--rk); color: var(--rt); min-width: 0; padding: 0; letter-spacing: -0.08em; }
+.lu-grade.r-SS { font-size: var(--fs-xs); }
+.lu-grade.r-S, .lu-grade.r-SS { animation: lu-shine 1.5s ease-in-out infinite; }
+.lu-grade.r-SS { animation: lu-shine 1.5s ease-in-out infinite, rainbow 2.4s linear infinite; }
+.lu-grade.r-G, .lu-grade.r-F { border-style: dashed; }
 .lu-grade.up { animation: lu-stamp 0.42s var(--spring) 0.36s backwards; }
 .lu-grade.down { animation: lu-sag 0.5s ease-out 0.36s backwards; }
 @keyframes lu-stamp { 0% { transform: rotate(-30deg) scale(3.2); opacity: 0; } 60% { transform: rotate(9deg) scale(0.85); opacity: 1; } }
@@ -112,9 +111,9 @@
   font-family: var(--display); font-size: var(--fs-xl); line-height: 1; color: var(--chalk); border: 0.2rem dashed rgba(255, 251, 232, 0.85); background: rgba(6, 8, 26, 0.55);
   animation: lu-if 0.3s var(--spring) backwards; animation-delay: calc(var(--i) * 18ms);
 }
-.lu-if.gS, .lu-if.gA { color: var(--yellow); }
-.lu-if.gD { color: #aab3dd; font-size: var(--fs-l); }
-.lu-if.gC { font-size: var(--fs-l); }
+.lu-if.r-A, .lu-if.r-S, .lu-if.r-SS, .lu-if.r-B { color: var(--yellow); }
+.lu-if.r-SS { font-size: var(--fs-l); }
+.lu-if.low { color: #aab3dd; font-size: var(--fs-l); }
 .lu-if.word { font-size: var(--fs-s) !important; }
 .lu-slot.target .lu-if.best { border: 0.22rem solid var(--yellow); background: rgba(6, 8, 26, 0.75); box-shadow: 0 0 0 0.3rem rgba(255, 225, 74, 0.35), 0 0 1.2rem rgba(255, 225, 74, 0.8); animation: lu-if 0.3s var(--spring) backwards, lu-best 0.8s ease-in-out 0.3s infinite; }
 .lu-if i { position: absolute; right: -0.9rem; top: -0.7rem; font-style: normal; font-size: var(--fs-m); color: var(--ink); background: var(--yellow); border: 0.14rem solid var(--ink); border-radius: 50%; width: 1.8rem; height: 1.8rem; display: grid; place-items: center; line-height: 1; }
@@ -164,7 +163,8 @@
 .lu-note-fit { display: flex; align-items: center; gap: 0.4rem; font-family: var(--display); }
 .lu-legend { display: flex; align-items: center; gap: 0.25rem; }
 .lu-scale { justify-self: stretch; display: flex; justify-content: space-between; color: rgba(6, 8, 26, 0.7); }
-.lu-legend .lu-grade { width: 1.7rem; height: 1.7rem; font-size: var(--fs-xs); }
+.lu-legend { flex-wrap: wrap; }
+.lu-legend .lu-grade { width: 1.55rem; height: 1.55rem; font-size: 0.8rem; }
 
 .lineup .foot .bubble { max-width: 40rem; }
 

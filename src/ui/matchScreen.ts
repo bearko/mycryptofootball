@@ -203,12 +203,15 @@ export function matchScreen(): [HTMLElement, () => void] {
   const turn = (): void => {
     if (!alive) return;
     if (st.over) {
+      casterEl.replaceChildren();
       void finish();
       return;
     }
     stadium.setScene(st);
     drawBug(snap());
     stage.replaceChildren();
+    // the play is over: the play-by-play clears the right side for the huddle
+    casterEl.replaceChildren();
     const onOffense = st.poss === 0;
     const side = onOffense ? 'off' : 'def';
     const hot = isClutch();

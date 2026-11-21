@@ -5,7 +5,7 @@ import catalog from '../generated/catalog.json';
 import { setMuffled, sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { hero, talentOf } from '../game/heroes';
-import { STATS, STAT_LABEL, type Stat, type Stats } from '../game/model';
+import { STATS, STAT_LABEL, rank, type Stat, type Stats } from '../game/model';
 import { TRUST_BOOST, TRUST_LEARN, TRUST_MAX } from '../game/season';
 import { burst, center, kick, ring, tween, typewriter, type Typing } from './fx';
 
@@ -77,6 +77,9 @@ const ICON: Record<Stat, string> = {
 };
 export const TALENT_COLOR: Record<Stat, string> = { spd: '#ffe14a', pas: '#37e3ff', cat: '#9dff5c', blk: '#ff9a3d', tkl: '#ff5a7a', iq: '#b69bff' };
 
+/** The rank of an ability value as a small coloured letter (G … SS). */
+export const rankChip = (v: number): HTMLElement => h('i.rank', { class: `r-${rank(v)}`, title: `ランク ${rank(v)}` }, rank(v));
+
 export function statIcon(k: Stat): HTMLElement {
   const el = h('span.ticon', { class: `t-${k}` });
   el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
@@ -114,7 +117,7 @@ export function radar(initial: Stats, was?: Stats): Radar {
   const dots = [...el.querySelectorAll<SVGCircleElement>('.dot')];
   const tags = STATS.map((k, i) => {
     const [x, y] = pt(i, 1.3);
-    const tag = h('div.radar-tag', { class: `t-${k}`, style: { left: `${x}%`, top: `${(y / 92) * 100}%` } }, h('b', statIcon(k), h('span.radar-num', '0'), h('u')), STAT_LABEL[k]);
+    const tag = h('div.radar-tag', { class: `t-${k}`, style: { left: `${x}%`, top: `${(y / 92) * 100}%` } }, h('b', statIcon(k), h('span.radar-num', '0'), h('i.rank')), h('span', STAT_LABEL[k], h('u')));
     el.append(tag);
     return tag;
   });
@@ -131,7 +134,7 @@ export function radar(initial: Stats, was?: Stats): Radar {
     const { best } = talentOf(stats);
     el.style.setProperty('--rc', TALENT_COLOR[best]);
     const from = cur;
-    const to = STATS.map((k) => 0.12 + (stats[k] / 100) * 0.88);
+    const to = STATS.map((k) => 0.12 + (Math.min(stats[k], 110) / 100) * 0.88);
     cur = to;
     void tween(420, (t) => draw(to.map((v, i) => from[i]! + (v - from[i]!) * t)));
     wasEl.setAttribute('points', before ? poly(STATS.map((k) => 0.12 + (before[k] / 100) * 0.88)) : '');
@@ -139,6 +142,9 @@ export function radar(initial: Stats, was?: Stats): Radar {
       const tag = tags[i]!;
       tag.classList.toggle('best', k === best);
       tag.querySelector('.radar-num')!.textContent = String(stats[k]);
+      const chip = tag.querySelector<HTMLElement>('.rank')!;
+      chip.className = `rank r-${rank(stats[k])}`;
+      chip.textContent = rank(stats[k]);
       const d = before ? stats[k] - before[k] : 0;
       tag.querySelector('u')!.textContent = d > 0 ? `+${d}` : '';
     });

@@ -16,7 +16,7 @@ import { READ_MAX } from './cards';
 import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
-import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
+import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, rankIndex, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
 export const CANDIDATES = 9;
@@ -306,6 +306,12 @@ export interface Season {
   /** how often each special play has been called this season */
   usage: Record<string, number>;
   champion: boolean;
+  /** every hero's abilities as they stood when the month began (or when he joined): what the month's review compares with */
+  base?: Record<number, Stats>;
+  /** index into SCHEDULE of the day `base` was taken */
+  baseDay?: number;
+  /** a new month has begun: the review of the last one is shown before the day's practice */
+  review?: boolean;
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -348,8 +354,54 @@ export function signRecruits(s: Season, ids: number[]): void {
   s.phase = 'club';
   s.day = 0;
   s.meeting = true;
+  markMonth(s);
   keep(s, rng);
   startDay(s);
+}
+
+// ------------------------------------------------------------------ the month's review
+
+/** Remembers everybody's abilities as they are now: the next review counts from here. */
+export function markMonth(s: Season): void {
+  s.base = Object.fromEntries(s.members.map((m) => [m.id, { ...m.stats }]));
+  s.baseDay = Math.min(s.day, SCHEDULE.length - 1);
+  s.review = false;
+}
+
+export interface GrowthRow {
+  id: number;
+  before: Stats;
+  after: Stats;
+  /** points gained over all six abilities */
+  total: number;
+  /** abilities whose rank went up */
+  ups: Stat[];
+}
+
+export interface Growth {
+  /** the period looked back on: from this day (index into SCHEDULE) … */
+  from: number;
+  /** … to this one, inclusive */
+  to: number;
+  rows: GrowthRow[];
+  total: number;
+}
+
+/**
+ * How everybody has grown since the month began. `closed`: the month is over (the review on the first day of the
+ * next month looks back as far as yesterday); otherwise it counts up to today.
+ */
+export function growth(s: Season, closed = false): Growth {
+  const rows: GrowthRow[] = s.members.map((m) => {
+    const before = s.base?.[m.id] ?? m.stats;
+    return {
+      id: m.id, before: { ...before }, after: { ...m.stats },
+      total: STATS.reduce((v, k) => v + (m.stats[k] - before[k]), 0),
+      ups: STATS.filter((k) => rankIndex(m.stats[k]) > rankIndex(before[k])),
+    };
+  });
+  const today = Math.min(s.day, SCHEDULE.length - 1);
+  return { from: Math.min(s.baseDay ?? 0, today), to: closed ? Math.max(0, today - 1) : today, rows, total: rows.reduce((v, r) => v + r.total, 0) };
 }
 
 export const asPlayer = (m: Member): Player => ({ id: m.id, name: hero(m.id).name, stats: m.stats });
@@ -430,6 +482,8 @@ const EVENT_DAYS = [2, 9, 16, 23];
 /** Sets up the day: tops the hand up, maybe an event. */
 export function startDay(s: Season): void {
   s.event = null;
+  // the first day of a new month: look back at the last one before anything else
+  if (s.phase === 'club' && s.day > 0 && s.day < SCHEDULE.length && SCHEDULE[s.day]!.month !== SCHEDULE[s.day - 1]!.month) s.review = true;
   if (s.phase !== 'club' || plan(s).t !== 'train') return;
   const rng = rngOf(s);
   // the rest card is always there, at the end of the hand
@@ -462,7 +516,7 @@ export interface Change {
 
 function grow(m: Member, k: Stat, amount: number): number {
   const before = m.stats[k];
-  m.stats[k] = clamp(before + amount, 1, 99);
+  m.stats[k] = clamp(before + amount, 1, STAT_MAX);
   return m.stats[k] - before;
 }
 
@@ -712,6 +766,8 @@ export function mend(s: Season): Season {
   for (const m of s.members) if (typeof m.sta !== 'number') m.sta = STA_MAX;
   // kickers came later still: the club's best foot gets the job
   if (s.lineup && s.lineup.k === undefined) s.lineup.k = bestKicker(s.members.map(asPlayer), s.lineup);
+  // a season begun before the month's review existed: it counts from today
+  if (s.phase === 'club' && !s.base) markMonth(s);
   if (s.phase === 'club' && plan(s).t === 'train' && !s.hand.some((c) => c.kind === 'rest')) {
     s.hand.push({ uid: s.uid, kind: 'rest' });
     s.uid += 1;
