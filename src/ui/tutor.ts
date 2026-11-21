@@ -104,7 +104,7 @@ function letters(text: string): { nodes: Node[]; chars: HTMLElement[] } {
 }
 
 interface TalkOpts {
-  /** shown beside the skip button: which scene this is */
+  /** which scene this is (said to screen readers) */
   scene: Scene;
   /** the last page closes with this word on the hint */
   last?: string;
@@ -128,15 +128,20 @@ function talk(pages: Page[], ctx: TalkCtx, opts: TalkOpts): Promise<'read' | 'sk
     const text = h('p.tutor-text', { 'aria-live': 'polite' });
     const dots = h('span.tutor-dots', { 'aria-hidden': 'true' });
     const next = h('span.tutor-next', { 'aria-hidden': 'true' });
-    const skip = button('スキップ', (e) => {
-      e.stopPropagation();
-      end('skip');
-    }, { cls: 'mini alt', sound: 'back' });
+    // skipping is kept well away from the sheet (top right of the screen, plain white letters): on the sheet it was
+    // taken for the button that turns the page
+    const skip = h('button.tutor-skip', {
+      type: 'button', 'aria-label': 'この場面の説明をスキップ',
+      onclick: (e: MouseEvent) => {
+        e.stopPropagation();
+        sfx.back();
+        end('skip');
+      },
+    }, 'SKIP', h('i', { 'aria-hidden': 'true' }, '▶▶'));
     const box = h('div.tutor-box', { role: 'dialog', 'aria-label': `マネージャーの説明：${SCENE_NAME[opts.scene]}` },
       h('div.tutor-who', face),
-      h('div.tutor-main', h('span.tutor-name', 'マネージャー', h('b', 'マイン')), text, h('div.tutor-foot', dots, next)),
-      skip);
-    const layer = h('div.tutor', box);
+      h('div.tutor-main', h('span.tutor-name', 'マネージャー', h('b', 'マイン')), text, h('div.tutor-foot', dots, next)));
+    const layer = h('div.tutor', box, skip);
     const frames = charTalk('manager');
 
     const settle = (): void => {
@@ -154,7 +159,7 @@ function talk(pages: Page[], ctx: TalkCtx, opts: TalkOpts): Promise<'read' | 'sk
       chars = made.chars;
       text.replaceChildren(...made.nodes);
       dots.replaceChildren(...pages.map((_, k) => h('i', { class: k === i ? 'on' : k < i ? 'was' : '' })));
-      next.textContent = i < pages.length - 1 ? (ctx.touch ? 'タップで次へ ▼' : 'クリックで次へ ▼') : (opts.last ?? (ctx.touch ? 'タップで閉じる ▼' : 'クリックで閉じる ▼'));
+      next.textContent = i < pages.length - 1 ? (ctx.touch ? '画面をタップで次へ ▼' : '画面をクリックで次へ ▼') : (opts.last ?? (ctx.touch ? '画面をタップで閉じる ▼' : '画面をクリックで閉じる ▼'));
       box.classList.toggle('is-top', !!pg.top);
       box.classList.remove('is-ready');
       kick(box, 'is-page');

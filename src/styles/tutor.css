@@ -9,6 +9,8 @@
   transition: bottom 0.25s var(--spring), top 0.25s var(--spring);
 }
 .tutor-box.is-top { bottom: auto; top: max(1.4rem, env(safe-area-inset-top)); }
+/* (at the top, the sheet keeps clear of the corner where the skip tab is) */
+.tutor-box.is-top { width: min(52rem, calc(100% - 17rem)); }
 .tutor-who { position: relative; height: 10.4rem; margin-bottom: -0.6rem; }
 .tutor-box.is-top { align-items: start; }
 .tutor-who img { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; filter: drop-shadow(0.25rem 0.25rem 0 var(--ink)); }
@@ -27,7 +29,7 @@
   clip-path: polygon(0 0, 100% 0, calc(100% - 0.9rem) 100%, 0 100%);
 }
 .tutor-name b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); }
-.tutor-text { min-height: 3.9rem; font-size: var(--fs-m); line-height: 1.5; word-break: auto-phrase; line-break: strict; padding-right: 7.4rem; }
+.tutor-text { min-height: 3.9rem; font-size: var(--fs-m); line-height: 1.5; word-break: auto-phrase; line-break: strict; }
 .tutor-text i { font-style: normal; opacity: 0; }
 .tutor-text i.on { opacity: 1; }
 /* the words to remember: a highlighter pen run under them */
@@ -40,10 +42,17 @@
 .tutor-next { font-size: var(--fs-xs); color: #5a4a1a; visibility: hidden; }
 .tutor-box.is-ready .tutor-next { visibility: visible; animation: tutor-bob 0.9s ease-in-out infinite; }
 @keyframes tutor-bob { 50% { transform: translateY(0.2rem); } }
-.tutor-box > .btn { position: absolute; right: 0.9rem; top: 0.8rem; }
-.tutor-box > .btn .btn-face { min-height: 3rem; }
-/* a finger needs the full height */
-@media (pointer: coarse) { .tutor-box > .btn .btn-face { min-height: 4.4rem; } .tutor-box > .btn { top: 0.5rem; } }
+/* skipping: plain white letters on a dark tab in the top right corner of the screen (the tab hides whatever button
+   the screen has there), away from the sheet and from the tap that turns the page */
+.tutor-skip {
+  position: absolute; right: 0; top: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  min-width: 7rem; min-height: 4.6rem; padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 1.2rem;
+  font-family: var(--display); font-size: var(--fs-s); letter-spacing: 0.08em; color: #fff; cursor: pointer;
+  background: rgba(6, 8, 26, 0.9); border: 0; border-radius: 0 0 0 1.2rem;
+}
+.tutor-skip i { font-style: normal; font-size: 0.7em; letter-spacing: -0.2em; }
+.tutor-skip:hover, .tutor-skip:focus-visible { background: var(--ink); text-decoration: underline; text-underline-offset: 0.3rem; }
+.tutor-skip:focus-visible { outline: 0.2rem solid var(--yellow); outline-offset: -0.4rem; }
 
 /* what she is talking about, and what to press next */
 .tutor-ring {
