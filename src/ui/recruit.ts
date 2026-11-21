@@ -16,6 +16,7 @@ import { burst, center, confetti, flash, flip, glitter, kick, kinetic, motion, p
 import { TALENT_COLOR, backdrop, button, cheerAt, modalOpen, portrait, radar, speech, sprite, statIcon, talentChip } from './kit';
 import { route } from './nav';
 import { bestRoles } from './shared';
+import { guideEvent } from './platform';
 
 const STAMP_INK = ['#e0261c', '#ff5a7a', '#fffbe8'];
 /** How many candidates stand on the back riser (the rest stand in front). */
@@ -468,7 +469,10 @@ export function recruitScreen(): HTMLElement {
       kick(count, 'nope');
       lastLine = '';
       tell(`部員は${NEED}人までです。入れかえるなら、先にだれかの入部をとりやめましょう。`, 'think');
-    } else sign(id);
+    } else {
+      sign(id);
+      guideEvent(save(), 'first_pick');
+    }
   };
 
   // ---------------------------------------------------------------- the screen

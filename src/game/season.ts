@@ -300,6 +300,8 @@ export interface Season {
   uid: number;
   /** a milestone: the training policy may be changed until the next practice card is played */
   meeting: boolean;
+  /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
+  guide?: boolean;
   event: WeekEvent | null;
   /** events already seen */
   seen: string[];

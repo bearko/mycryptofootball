@@ -14,6 +14,7 @@ import { kinetic, typewriter } from './fx';
 import { button, closeModal, modal, ticker } from './kit';
 import { route } from './nav';
 import { installWay, onInstallChange } from '../core/install';
+import { openChat, platformOn } from './platform';
 import { helpModal, installModal, offerInstallOnce, settingsModal } from './shared';
 import { Stadium } from './stadium';
 
@@ -33,6 +34,7 @@ export function titleScreen(): [HTMLElement, () => void] {
 
   const start = (): void => {
     s.season = newSeason(newSeed());
+    s.season.guide = true;
     storeMatch(null);
     commit();
     route();
@@ -57,6 +59,8 @@ export function titleScreen(): [HTMLElement, () => void] {
     button(going ? '最初から' : 'はじめる', fresh, { cls: going ? 'big alt' : 'big go' }),
     button('あそびかた', helpModal, { cls: 'alt' }),
     button('設定', settingsModal, { cls: 'alt' }),
+    // the chat of bearko.games (only when its SDK is there)
+    platformOn() ? button('チャット', openChat, { cls: 'alt' }) : null,
   ].filter((b): b is HTMLButtonElement => !!b);
   // the way to full-screen play: shown while the game still runs inside the browser
   const app = button('アプリとして入れる', installModal, { cls: 'cyan' });
