@@ -22,25 +22,28 @@ export const DEF_POS: readonly DefPos[] = ['DL1', 'DL2', 'LB', 'CB1', 'CB2', 'S'
 export type Role = 'QB' | 'RB' | 'WR' | 'OL' | 'DL' | 'LB' | 'CB' | 'S';
 export const roleOf = (p: OffPos | DefPos): Role => p.replace(/\d$/, '') as Role;
 
-export const ROLE_LABEL: Record<Role, string> = {
-  QB: '司令塔',
-  RB: 'ランナー',
-  WR: 'レシーバー',
-  OL: 'ライン',
-  DL: '守備ライン',
+/** Positions are called what a football club calls them. */
+export const ROLE_LABEL: Record<Role, string> = { QB: 'QB', RB: 'RB', WR: 'WR', OL: 'OL', DL: 'DL', LB: 'LB', CB: 'CB', S: 'S' };
+/** ...and spelled out where there is room. */
+export const ROLE_FULL: Record<Role, string> = {
+  QB: 'クォーターバック',
+  RB: 'ランニングバック',
+  WR: 'ワイドレシーバー',
+  OL: 'オフェンスライン',
+  DL: 'ディフェンスライン',
   LB: 'ラインバッカー',
-  CB: 'コーナー',
+  CB: 'コーナーバック',
   S: 'セーフティ',
 };
 /** One line for people who have never watched the sport. */
 export const ROLE_HINT: Record<Role, string> = {
-  QB: 'ボールを投げる人。パスと判断が大事',
-  RB: 'ボールを持って走る人。走力が命',
-  WR: 'パスを捕る人。捕球と走力',
-  OL: '味方を守る壁。ブロック',
-  DL: '相手の壁を壊す人。タックルとブロック',
-  LB: '走ってくる相手を止める人。タックルと走力',
-  CB: 'レシーバーに張りつく人。走力と捕球',
+  QB: '攻撃の司令塔。ボールを投げる。パスと判断が大事',
+  RB: 'ボールを持って走る。走力が命',
+  WR: 'パスを捕る。捕球と走力',
+  OL: 'QBとRBを守る壁。ブロック',
+  DL: '相手の壁を割ってQBに迫る。タックルとブロック',
+  LB: '守備の中心。走ってくる相手を止める。タックルと走力',
+  CB: 'WRに張りつく。走力と捕球',
   S: '最後の砦。判断と捕球',
 };
 

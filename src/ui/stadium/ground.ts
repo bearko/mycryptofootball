@@ -125,8 +125,28 @@ export const CART = { x: 6, z: 12.5 };
 export const BENCH = { x: 15.5, z: 26.8 };
 export const CENTER = { x: 20, z: 12 };
 
-/** Warm-up stations, one per hero in the order they were given. */
-export const STATIONS: { x: number; z: number; job: 'tossA' | 'tossB' | 'sled' | 'jog' | 'hops' | 'shuttle' | 'sway'; face: 1 | -1 }[] = [
+/** A hero's positions in the line-up (null: not on that unit). */
+export type Unit = 'QB' | 'RB' | 'WR' | 'OL' | 'DL' | 'LB' | 'CB' | 'S';
+export interface Post { off: Unit | null; def: Unit | null }
+/** Linemen practise with linemen: the offense's position decides, the defense's only for a hero who plays no offense. */
+export const isLine = (p: Post | null | undefined): boolean => !!p && (p.off ? p.off === 'OL' : p.def === 'DL');
+
+export interface Station {
+  x: number;
+  z: number;
+  /**
+   * tossA: the quarterback, throwing to the receivers (tossB) in turn. sled: the linemen drive the sled together.
+   * bag: a lineman works on a stand-up dummy (`i`). shuttle: the running back weaves the cones with a ball.
+   * hops / jog / sway: footwork for whoever is left.
+   */
+  job: 'tossA' | 'tossB' | 'sled' | 'bag' | 'jog' | 'hops' | 'shuttle' | 'sway';
+  face: 1 | -1;
+  /** bag: which dummy */
+  i?: number;
+}
+
+/** Warm-up stations when nothing is known about positions: one per hero in the order they were given. */
+export const STATIONS: Station[] = [
   { x: 12, z: 8.5, job: 'tossA', face: 1 },
   { x: 20, z: 8.5, job: 'tossB', face: -1 },
   { x: SLED.x - 2.2, z: SLED.z, job: 'sled', face: 1 },
@@ -135,6 +155,41 @@ export const STATIONS: { x: number; z: number; job: 'tossA' | 'tossB' | 'sled' |
   { x: 17, z: 20.8, job: 'shuttle', face: 1 },
   { x: 29, z: 20, job: 'sway', face: -1 },
 ];
+
+/**
+ * Where each hero warms up, the way a football club really splits up for individual work:
+ * the linemen together at the sled and the bags, the quarterback throwing to the receivers,
+ * the running back through the cones, everyone else on footwork. Same order as `ids`.
+ */
+export function stationsFor(ids: number[], posts?: Record<number, Post>): Station[] {
+  if (!posts || !ids.some((id) => posts[id])) return ids.map((_, i) => STATIONS[i % STATIONS.length]!);
+  const out = new Map<number, Station>();
+  const line = ids.filter((id) => isLine(posts[id])).sort((a, b) => Number(posts[b]!.off === 'OL') - Number(posts[a]!.off === 'OL'));
+  line.forEach((id, k) => {
+    if (k < 2) out.set(id, { x: SLED.x - 2.2, z: SLED.z + (line.length > 1 ? (k ? 0.75 : -0.75) : 0), job: 'sled', face: 1 });
+    else {
+      const i = (k - 2) % DUMMIES.length;
+      out.set(id, { x: DUMMIES[i]![0] - 1.7, z: DUMMIES[i]![1], job: 'bag', face: 1, i });
+    }
+  });
+  const rest = ids.filter((id) => !out.has(id));
+  const qb = rest.find((id) => posts[id]?.off === 'QB');
+  if (qb !== undefined) out.set(qb, { x: 11.5, z: 9, job: 'tossA', face: 1 });
+  const catchers = rest.filter((id) => posts[id]?.off === 'WR');
+  const SPOTS: [number, number][] = [[19.5, 7], [21, 11], [18.2, 4.6]];
+  catchers.forEach((id, k) => out.set(id, { x: SPOTS[k % SPOTS.length]![0], z: SPOTS[k % SPOTS.length]![1], job: qb === undefined && k === 0 ? 'tossA' : 'tossB', face: -1 }));
+  const rb = rest.find((id) => posts[id]?.off === 'RB');
+  if (rb !== undefined) out.set(rb, { x: 15.5, z: 20.8, job: 'shuttle', face: 1 });
+  // the substitute and anybody who only plays defense: footwork on their own
+  const SPARE: Station[] = [{ x: 9.5, z: 16.2, job: 'hops', face: 1 }, { x: 14, z: 14, job: 'jog', face: 1 }, { x: 22.5, z: 15.5, job: 'sway', face: -1 }];
+  let n = 0;
+  for (const id of ids) {
+    if (out.has(id)) continue;
+    out.set(id, SPARE[n % SPARE.length]!);
+    n += 1;
+  }
+  return ids.map((id) => out.get(id)!);
+}
 
 export interface Prop {
   kind: 'sled' | 'dummy' | 'cone' | 'cart' | 'bench' | 'board' | 'coach';
@@ -998,7 +1053,7 @@ export interface DrillPlan {
   solo: 'spd' | 'pas' | 'cat' | 'blk' | 'tkl' | 'iq';
 }
 
-export interface DrillActor { id: number; x: number; z: number }
+export interface DrillActor { id: number; x: number; z: number; off?: Unit | null; def?: Unit | null }
 
 const tmp = { x: 0, z: 0 };
 
@@ -1042,50 +1097,142 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
   };
   const leadActor = actors.find((a) => a.id === lead) ?? actors[0]!;
   const dist = (a: DrillActor, x: number, z: number): number => Math.hypot(a.x - x, a.z - z);
+  // position groups: linemen work with linemen, the backs and receivers with each other
+  const grouped = actors.some((a) => a.off || a.def);
+  const inLine = (a: DrillActor): boolean => isLine({ off: a.off ?? null, def: a.def ?? null });
+  const line = grouped ? actors.filter(inLine) : [];
+  const skill = grouped ? actors.filter((a) => !inLine(a)) : actors;
+  const passer = actors.find((a) => a.off === 'QB');
+  /** two linemen, one protecting and one rushing: set, punch, reset, punch */
+  const passSet = (a: DrillActor, b: DrillActor, d: number): void => {
+    const [l, r] = a.x <= b.x ? [a, b] : [b, a];
+    const mx = clamp((l.x + r.x) / 2, 8, 44);
+    const mz = (l.z + r.z) / 2;
+    face.set(l.id, 1);
+    face.set(r.id, -1);
+    go(l.id, 0.34, mx - 1.5, mz);
+    go(r.id, 0.34, mx + 1.7, mz);
+    cues.push({ t: 0.3, c: 'crouch', who: l.id, on: true }, { t: 0.3, c: 'crouch', who: r.id, on: true });
+    cues.push({ t: 0.5 + d, c: 'crouch', who: l.id, on: false }, { t: 0.5 + d, c: 'crouch', who: r.id, on: false });
+    // the protector gives ground, the rusher comes: they meet twice
+    go(l.id, 0.66 + d, mx - 2.1, mz, true);
+    go(r.id, 0.66 + d, mx - 0.7, mz, true);
+    go(l.id, 0.92 + d, mx - 2.4, mz + 0.5);
+    go(r.id, 0.92 + d, mx + 0.4, mz + 0.5);
+    go(l.id, 1.22 + d, mx - 2.9, mz + 0.5, true);
+    go(r.id, 1.22 + d, mx - 1.5, mz + 0.5, true);
+    go(l.id, 1.56, mx - 3.1, mz + 0.5);
+    go(r.id, 1.56, mx - 0.6, mz + 0.5);
+    cues.push({ t: 0.66 + d, c: 'impact', x: mx - 1.4, z: mz, power: 0.45, a: l.id, b: r.id }, { t: 1.22 + d, c: 'impact', x: mx - 2.2, z: mz + 0.5, power: 0.6, a: l.id, b: r.id });
+    cues.push({ t: 1.26 + d, c: 'payoff', who: l.id }, { t: 1.3 + d, c: 'payoff', who: r.id });
+  };
+  /** a lineman alone works on the nearest bag: two shots */
+  const bagWork = (o: DrillActor, d: number): void => {
+    const di = DUMMIES.map((p, i) => [dist(o, p[0], p[1]), i] as const).sort((p, r) => p[0] - r[0])[0]![1];
+    const [dx, dz] = DUMMIES[di]!;
+    const tc = clamp(0.4 + dist(o, dx, dz) / 17, 0.6, 0.95) + d;
+    face.set(o.id, 1);
+    go(o.id, tc, dx - 1, dz, true);
+    go(o.id, tc + 0.22, dx - 1.9, dz);
+    go(o.id, tc + 0.5, dx - 1, dz, true);
+    go(o.id, tc + 0.72, dx - 1.8, dz);
+    cues.push({ t: tc, c: 'impact', x: dx - 0.4, z: dz, power: 0.5, a: o.id }, { t: tc, c: 'rock', i: di });
+    cues.push({ t: tc + 0.5, c: 'impact', x: dx - 0.4, z: dz, power: 0.65, a: o.id }, { t: tc + 0.5, c: 'rock', i: di }, { t: tc + 0.54, c: 'payoff', who: o.id });
+  };
 
   if (kind === 'dash') {
     cues.push({ t: 0.18, c: 'whistle' }, { t: 0.4, c: 'lines', on: true }, { t: 1.22, c: 'lines', on: false });
-    actors.forEach((a, j) => {
-      const x1 = Math.min(a.x + 13, 45);
-      cues.push({ t: 0, c: 'crouch', who: a.id, on: true }, { t: 0.2 + j * 0.02, c: 'crouch', who: a.id, on: false });
+    // the backs and receivers go first and further; the linemen come out of their stance a beat behind them
+    [...skill, ...line].forEach((a, j) => {
+      const big = line.includes(a);
+      const d = big ? 0.14 : 0;
+      const x1 = Math.min(a.x + (big ? 9.5 : 14), 45);
+      cues.push({ t: 0, c: 'crouch', who: a.id, on: true }, { t: 0.2 + d + j * 0.02, c: 'crouch', who: a.id, on: false });
       face.set(a.id, 1);
-      go(a.id, 0.22 + j * 0.025, a.x, a.z);
-      go(a.id, 1.18 + j * 0.03, x1, a.z, true);
+      go(a.id, 0.22 + d + j * 0.025, a.x, a.z);
+      go(a.id, 1.18 + d * 0.5 + j * 0.03, x1, a.z, true);
       go(a.id, 1.6, Math.min(x1 + 1.8, 47), a.z);
-      cues.push({ t: 1.2 + j * 0.045, c: 'payoff', who: a.id });
+      cues.push({ t: 1.2 + d * 0.5 + j * 0.045, c: 'payoff', who: a.id });
     });
     steps(0.3, 1.16, 0.108);
   } else if (kind === 'pass') {
-    const pairs: [DrillActor, DrillActor][] = [];
-    for (let i = 0; i + 1 < actors.length && pairs.length < 3; i += 2) pairs.push([actors[i]!, actors[i + 1]!]);
-    pairs.forEach(([p, r], k) => {
-      const [a, b] = p.x <= r.x ? [p, r] : [r, p];
-      const mx = clamp((a.x + b.x) / 2, 8, 40);
-      const z = (a.z + b.z) / 2 + (k - 1) * 0.6;
-      const d = 0.06 * k;
-      go(a.id, 0.3, mx - 4.6, z);
-      go(b.id, 0.3, mx + 4.6, z);
-      face.set(a.id, 1);
-      face.set(b.id, -1);
-      cues.push({ t: 0.05, c: 'carry', who: a.id, on: true });
-      toss(a.id, b.id, 0.36 + d, 0.42, 1.5, 0.3);
-      cues.push({ t: 0.6 + d, c: 'jump', who: b.id, h: 0.35, dur: 0.26 }, { t: 0.8 + d, c: 'payoff', who: b.id });
-      toss(b.id, a.id, 0.98 + d, 0.42, 1.5, 0.3);
-      cues.push({ t: 1.22 + d, c: 'jump', who: a.id, h: 0.35, dur: 0.26 }, { t: 1.42 + d, c: 'payoff', who: a.id }, { t: 1.95, c: 'carry', who: a.id, on: false });
-    });
-    // whoever is left over throws into the ball cart
-    for (let i = pairs.length * 2; i < actors.length; i += 1) {
-      const a = actors[i]!;
-      face.set(a.id, a.x > CART.x ? -1 : 1);
-      cues.push({ t: 0.1, c: 'carry', who: a.id, on: true });
-      toss(a.id, [CART.x, 1.35, CART.z], 0.5, 0.55, 2.6);
-      cues.push({ t: 0.9, c: 'carry', who: a.id, on: true });
-      toss(a.id, [CART.x, 1.35, CART.z], 1.05, 0.5, 2.6);
-      cues.push({ t: 1.5, c: 'payoff', who: a.id });
+    const targets = skill.filter((a) => a !== passer);
+    if (passer && targets.length) {
+      // routes on air: the quarterback sets up and hits each receiver in turn as he breaks
+      const qx = clamp(passer.x, 8, 15);
+      const qz = clamp(passer.z, 6, 16);
+      go(passer.id, 0.28, qx, qz);
+      go(passer.id, 0.5, qx - 1.1, qz);
+      face.set(passer.id, 1);
+      cues.push({ t: 0.08, c: 'carry', who: passer.id, on: true });
+      targets.slice(0, 4).forEach((r, k) => {
+        const tc = 0.86 + k * 0.24;
+        const cut = k % 2 ? 2.6 : -2.6;
+        const x0 = Math.max(r.x, qx + 6);
+        face.set(r.id, 1);
+        go(r.id, 0.2 + k * 0.04, r.x, r.z);
+        go(r.id, tc - 0.26, x0 + 4.5, r.z);
+        go(r.id, tc, x0 + 6.6, r.z + cut, true);
+        go(r.id, Math.min(1.72, tc + 0.36), x0 + 8.4, r.z + cut * 1.4);
+        toss(passer.id, r.id, tc - 0.4, 0.4, 1.4 + (k % 2) * 0.5, 0.3);
+        if (k < Math.min(targets.length, 4) - 1) cues.push({ t: tc - 0.36, c: 'carry', who: passer.id, on: true });
+        cues.push({ t: tc - 0.12, c: 'jump', who: r.id, h: 0.4, dur: 0.26 }, { t: tc + 0.04, c: 'payoff', who: r.id });
+      });
+      for (const r of targets.slice(4)) cues.push({ t: 1.4, c: 'payoff', who: r.id });
+      cues.push({ t: 1.5, c: 'payoff', who: passer.id });
+      for (const r of targets) cues.push({ t: 2.05, c: 'carry', who: r.id, on: false });
+      steps(0.3, 0.8, 0.15);
+      camX = qx + 6;
+      camZ = qz;
+      focus = [passer.id, ...targets.map((r) => r.id)];
+    } else {
+      const pairs: [DrillActor, DrillActor][] = [];
+      for (let i = 0; i + 1 < skill.length && pairs.length < 3; i += 2) pairs.push([skill[i]!, skill[i + 1]!]);
+      pairs.forEach(([p, r], k) => {
+        const [a, b] = p.x <= r.x ? [p, r] : [r, p];
+        const mx = clamp((a.x + b.x) / 2, 8, 40);
+        const z = (a.z + b.z) / 2 + (k - 1) * 0.6;
+        const d = 0.06 * k;
+        go(a.id, 0.3, mx - 4.6, z);
+        go(b.id, 0.3, mx + 4.6, z);
+        face.set(a.id, 1);
+        face.set(b.id, -1);
+        cues.push({ t: 0.05, c: 'carry', who: a.id, on: true });
+        toss(a.id, b.id, 0.36 + d, 0.42, 1.5, 0.3);
+        cues.push({ t: 0.6 + d, c: 'jump', who: b.id, h: 0.35, dur: 0.26 }, { t: 0.8 + d, c: 'payoff', who: b.id });
+        toss(b.id, a.id, 0.98 + d, 0.42, 1.5, 0.3);
+        cues.push({ t: 1.22 + d, c: 'jump', who: a.id, h: 0.35, dur: 0.26 }, { t: 1.42 + d, c: 'payoff', who: a.id }, { t: 1.95, c: 'carry', who: a.id, on: false });
+      });
+      // whoever is left over throws into the ball cart
+      for (let i = pairs.length * 2; i < skill.length; i += 1) {
+        const a = skill[i]!;
+        face.set(a.id, a.x > CART.x ? -1 : 1);
+        cues.push({ t: 0.1, c: 'carry', who: a.id, on: true });
+        toss(a.id, [CART.x, 1.35, CART.z], 0.5, 0.55, 2.6);
+        cues.push({ t: 0.9, c: 'carry', who: a.id, on: true });
+        toss(a.id, [CART.x, 1.35, CART.z], 1.05, 0.5, 2.6);
+        cues.push({ t: 1.5, c: 'payoff', who: a.id });
+      }
     }
+    // meanwhile the linemen work on pass protection, one on one
+    for (let i = 0; i + 1 < line.length; i += 2) passSet(line[i]!, line[i + 1]!, i * 0.03);
+    if (line.length % 2) bagWork(line[line.length - 1]!, 0);
   } else if (kind === 'catch') {
-    const T = [...actors].sort((p, r) => dist(p, CART.x, CART.z) - dist(r, CART.x, CART.z))[0]!;
-    const rest = actors.filter((a) => a !== T);
+    const T = passer ?? [...skill].sort((p, r) => dist(p, CART.x, CART.z) - dist(r, CART.x, CART.z))[0] ?? actors[0]!;
+    const rest = skill.filter((a) => a !== T);
+    // the linemen do the drill linemen do with a ball: a loose one hits the turf, fall on it
+    line.forEach((l, k) => {
+      if (l === T) return;
+      const tc = 0.92 + k * 0.16;
+      const px = clamp(l.x + (k % 2 ? -2.4 : 2.6), 6, 44);
+      const pz = clamp(l.z + (k % 2 ? 1.4 : -1.2), 2, WIDTH - 2);
+      face.set(l.id, px >= l.x ? 1 : -1);
+      toss([CART.x, 1.35, CART.z], [px, 0.25, pz], tc - 0.5, 0.5, 2.2);
+      go(l.id, tc - 0.42, l.x, l.z);
+      go(l.id, tc, px - (px >= l.x ? 0.4 : -0.4), pz, true);
+      cues.push({ t: tc - 0.06, c: 'tumble', who: l.id, dir: px >= l.x ? 1 : -1, down: 0.34 }, { t: tc, c: 'dust', x: px, z: pz });
+      cues.push({ t: tc, c: 'catch', who: l.id }, { t: tc, c: 'carry', who: l.id, on: true }, { t: tc + 0.06, c: 'payoff', who: l.id }, { t: 2.05, c: 'carry', who: l.id, on: false });
+    });
     go(T.id, 0.26, CART.x + 1.9, CART.z + 0.4);
     face.set(T.id, 1);
     cues.push({ t: 0.12, c: 'carry', who: T.id, on: true });
@@ -1112,10 +1259,26 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
     camZ = CART.z;
   } else if (kind === 'hit') {
     const order = [...actors].sort((p, r) => dist(p, SLED.x, SLED.z) - dist(r, SLED.x, SLED.z));
-    const crew = order.slice(0, 2);
-    const rest = order.slice(2);
+    const crew = line.length ? line.slice(0, 2) : order.slice(0, 2);
+    // the backs and receivers each take a stand-up bag (two shots with the shoulder); whoever is left pairs off
+    const bags = grouped ? skill.slice(0, DUMMIES.length) : [];
+    const taken = new Set<number>();
+    bags.forEach((o, k) => {
+      const di = DUMMIES.map((p, i) => [taken.has(i) ? 1e9 : dist(o, p[0], p[1]), i] as const).sort((p, r) => p[0] - r[0])[0]![1];
+      taken.add(di);
+      const [dx, dz] = DUMMIES[di]!;
+      const tc = clamp(0.4 + dist(o, dx, dz) / 20, 0.62, 1.0) + k * 0.04;
+      face.set(o.id, 1);
+      go(o.id, tc, dx - 1, dz, true);
+      go(o.id, tc + 0.24, dx - 2.2, dz);
+      go(o.id, tc + 0.52, dx - 1, dz, true);
+      go(o.id, tc + 0.74, dx - 1.9, dz);
+      cues.push({ t: tc, c: 'impact', x: dx - 0.4, z: dz, power: 0.45, a: o.id }, { t: tc, c: 'rock', i: di });
+      cues.push({ t: tc + 0.52, c: 'impact', x: dx - 0.4, z: dz, power: 0.6, a: o.id }, { t: tc + 0.52, c: 'rock', i: di }, { t: tc + 0.56, c: 'payoff', who: o.id });
+    });
+    const rest = order.filter((a) => !crew.includes(a) && !bags.includes(a));
     crew.forEach((c, k) => {
-      const z = SLED.z + (k ? 0.65 : -0.65);
+      const z = SLED.z + (crew.length < 2 ? 0 : k ? 0.65 : -0.65);
       face.set(c.id, 1);
       go(c.id, 0.5, SLED.x - 1.25, z, true);
       go(c.id, 0.98, SLED.x + 1.35, z);
@@ -1162,10 +1325,14 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
   } else if (kind === 'tackle') {
     cues.push({ t: 0.1, c: 'whistle' });
     const free = [...actors];
+    const bigs = [...line];
     DUMMIES.forEach(([dx, dz], i) => {
-      free.sort((p, r) => dist(p, dx, dz) - dist(r, dx, dz));
-      const t = free.shift();
+      if (grouped && !bigs.length) return;
+      const from = bigs.length ? bigs : free;
+      from.sort((p, r) => dist(p, dx, dz) - dist(r, dx, dz));
+      const t = from.shift();
       if (!t) return;
+      if (from === bigs) free.splice(free.indexOf(t), 1);
       const tc = Math.max(0.68 + i * 0.2, 0.3 + dist(t, dx, dz) / 18);
       face.set(t.id, 1);
       go(t.id, tc, dx - 0.9, dz, true);
@@ -1194,8 +1361,8 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
     camX = DUMMIES[1]![0];
     camZ = DUMMIES[1]![1];
   } else if (kind === 'study') {
-    const sorted = [...actors].sort((p, r) => p.x - r.x);
-    const half = Math.ceil(sorted.length / 2);
+    const sorted = grouped ? [...line, ...skill] : [...actors].sort((p, r) => p.x - r.x);
+    const half = grouped && line.length ? line.length : Math.ceil(sorted.length / 2);
     sorted.forEach((a, j) => {
       const left = j < half;
       const k = left ? half - 1 - j : j - half;
@@ -1213,9 +1380,30 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
     const pool = [...actors];
     // the one nearest the camera side watches with the whistle
     pool.sort((p, r) => r.z - p.z);
-    const ref = pool.length > 6 ? pool.shift() : undefined;
+    let ref = pool.length > 6 ? pool.shift() : undefined;
     pool.sort((p, r) => p.x - r.x);
-    const [rb, qb, ol, dl, lb, cb] = pool;
+    let [rb, qb, ol, dl, lb, cb]: (DrillActor | undefined)[] = pool;
+    if (grouped) {
+      // everybody lines up where they really play: the offense against a scout defense made of team-mates
+      const left = [...pool, ...(ref ? [ref] : [])];
+      const take = (want: (a: DrillActor) => boolean): DrillActor | undefined => {
+        const i = left.findIndex(want);
+        return i < 0 ? undefined : left.splice(i, 1)[0];
+      };
+      qb = take((a) => a.off === 'QB');
+      rb = take((a) => a.off === 'RB');
+      ol = take((a) => a.off === 'OL');
+      dl = take((a) => a.def === 'DL' || a.off === 'OL');
+      lb = take((a) => a.def === 'LB' || a.def === 'S');
+      cb = take((a) => a.def === 'CB');
+      qb ??= left.shift();
+      rb ??= left.shift();
+      ol ??= left.shift();
+      dl ??= left.shift();
+      lb ??= left.shift();
+      cb ??= left.shift();
+      ref = left.shift();
+    }
     const spot = (a: DrillActor | undefined, x: number, z: number, f: 1 | -1): void => {
       if (!a) return;
       go(a.id, 0.32, x, z);
