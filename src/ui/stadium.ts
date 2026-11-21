@@ -167,6 +167,9 @@ function buildBowl(): Panel[] {
 
 // ------------------------------------------------------------------ actors
 
+/** the ring under the hero whose card is open */
+const MARK_RING = '#ffe14a';
+
 interface Actor extends Ref {
   art: HeroArt;
   pos: string;
@@ -821,6 +824,42 @@ export class Stadium {
     if (!ac || !ac.vis || this.dpr <= 0) return null;
     const h = (this.heroH * ac.ss) / this.dpr;
     return { x: ac.sx / this.dpr, y: ac.sy / this.dpr, scale: h / ART, h };
+  }
+
+  /**
+   * The hero under a point of the canvas (CSS px from its top left corner), the nearest one when several overlap;
+   * null when there is nobody there. A finger gets a little more room than a mouse (`slack`, in CSS px).
+   */
+  heroAt(x: number, y: number, slack = 0): { team: 0 | 1; id: number } | null {
+    if (this.dpr <= 0 || this.groundOn) return null;
+    const px = x * this.dpr;
+    const py = y * this.dpr;
+    const pad = slack * this.dpr;
+    let best: Actor | null = null;
+    let bestD = Infinity;
+    for (const ac of this.order) {
+      if (!ac.vis) continue;
+      const h = this.heroH * ac.ss * ((ac.art.ready ? ac.art.foot - ac.art.top : ART) / ART);
+      const w = h * 0.36 + pad;
+      const top = ac.sy - h - ac.y * ac.ss - pad;
+      const bottom = ac.sy + h * 0.08 + pad;
+      if (px < ac.sx - w || px > ac.sx + w || py < top || py > bottom) continue;
+      // the nearest to the camera wins (it is drawn on top); then the one whose middle is closest
+      const d = ac.sd * 1000 + Math.abs(px - ac.sx);
+      if (d < bestD) {
+        bestD = d;
+        best = ac;
+      }
+    }
+    return best ? { team: best.team, id: best.id } : null;
+  }
+
+  /** Puts a gold ring under one hero (the one whose card is open); null takes it away. */
+  mark(who: { team: 0 | 1; id: number } | null): void {
+    for (const ac of this.actors) {
+      if (ac.ring === MARK_RING) ac.ring = null;
+      if (who && ac.team === who.team && ac.id === who.id && !ac.ring) ac.ring = MARK_RING;
+    }
   }
 
   /** false: no shake, no flashes, no slow motion, calmer camera (accessibility setting). Default true. */

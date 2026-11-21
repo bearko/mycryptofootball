@@ -36,6 +36,7 @@ import { ROUTE_LABEL } from './stadium/choreo';
 import { lessonDue } from '../game/tutorial';
 import { guideEvent } from './platform';
 import { clearGoal, teach } from './tutor';
+import { factsOf, heroCard } from './heroCard';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足' } as const;
 
@@ -124,7 +125,9 @@ export function matchScreen(): [HTMLElement, () => void] {
   const stage = h('div.stage');
   const hand = h('footer.hand');
   const clutch = h('div.clutch-frame', { 'aria-hidden': 'true' }, h('span', '勝負どころ'), h('span', '勝負どころ'));
-  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, casterEl, stage, hand, booth.el);
+  /** a hero's scouting sheet, beside him on the field (heroCard.ts) */
+  const peekEl = h('div.hcard-layer', { 'aria-live': 'polite' });
+  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, casterEl, stage, hand, booth.el, peekEl);
   const stadium = new Stadium(canvas, [home, away]);
   stadium.setMotion(save().prefs.motion);
 
@@ -149,10 +152,96 @@ export function matchScreen(): [HTMLElement, () => void] {
   /** set by the turn in progress: puts a considered card back */
   let unconsider: () => void = () => undefined;
   stage.addEventListener('click', () => skip?.());
-  canvas.addEventListener('click', () => skip?.());
-  // a finger anywhere but on a card or a button puts a considered card back
+
+  // ------------------------------------------------------------------ a hero's sheet
+  // Between plays, a hero on the field shows his sheet: under the mouse, or tapped (tap him again, or anywhere
+  // else, and it goes). While a play runs the field is for skipping, and the sheet stays shut.
+  let sheet: { team: 0 | 1; id: number } | null = null;
+  let hoverTimer = 0;
+  const heroUnder = (e: { clientX: number; clientY: number }, slack: number): { team: 0 | 1; id: number } | null => {
+    const r = canvas.getBoundingClientRect();
+    return stadium.heroAt(e.clientX - r.left, e.clientY - r.top, slack);
+  };
+  const closePeek = (): void => {
+    clearTimeout(hoverTimer);
+    if (!sheet) return;
+    sheet = null;
+    stadium.mark(null);
+    const old = peekEl.firstElementChild as HTMLElement | null;
+    if (old) {
+      old.classList.add('out');
+      setTimeout(() => old.remove(), 150);
+    }
+  };
+  const openPeek = (who: { team: 0 | 1; id: number }): void => {
+    if (sheet && sheet.team === who.team && sheet.id === who.id) return;
+    peekEl.replaceChildren();
+    sheet = who;
+    stadium.mark(who);
+    const card = heroCard(factsOf({
+      team: st.teams[who.team], mine: who.team === 0, id: who.id, members: s.members, season: s.box, match: st.box?.[who.team], booked: false,
+    }));
+    peekEl.append(card);
+    placePeek();
+    sfx.tap();
+  };
+  /** keeps the sheet beside its hero, on whichever side has room */
+  const placePeek = (): void => {
+    const card = peekEl.firstElementChild as HTMLElement | null;
+    if (!sheet || !card) return;
+    const pos = stadium.screenPos(sheet.team, sheet.id);
+    if (!pos) {
+      closePeek();
+      return;
+    }
+    const W = root.clientWidth;
+    const H = root.clientHeight;
+    const w = card.offsetWidth;
+    const hh = card.offsetHeight;
+    const gap = Math.max(12, pos.h * 0.42);
+    const right = pos.x + gap + w <= W - 8 && (pos.x < W * 0.55 || pos.x - gap - w < 8);
+    const x = right ? pos.x + gap : pos.x - gap - w;
+    const top = bug.getBoundingClientRect().height + 4;
+    const y = Math.max(top, Math.min(H - hh - 6, pos.y - pos.h * 0.6 - hh * 0.35));
+    card.style.transform = `translate(${Math.round(Math.max(6, x))}px, ${Math.round(y)}px)`;
+    card.classList.toggle('on-left', !right);
+  };
+  const canPeek = (): boolean => alive && !skip && !modalOpen();
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const who = canPeek() ? heroUnder(e, 0) : null;
+    clearTimeout(hoverTimer);
+    if (!who) {
+      if (sheet) hoverTimer = window.setTimeout(closePeek, 160);
+      return;
+    }
+    if (sheet && sheet.team === who.team && sheet.id === who.id) return;
+    hoverTimer = window.setTimeout(() => canPeek() && openPeek(who), sheet ? 60 : 140);
+  });
+  canvas.addEventListener('pointerleave', (e) => {
+    if (e.pointerType === 'mouse') {
+      clearTimeout(hoverTimer);
+      hoverTimer = window.setTimeout(closePeek, 160);
+    }
+  });
+  canvas.addEventListener('click', (e) => {
+    if (skip) {
+      skip();
+      return;
+    }
+    if (!canPeek()) return;
+    // a finger gets a little room around the hero
+    const who = heroUnder(e, touchy ? 14 : 0);
+    if (!who) closePeek();
+    else if (touchy && sheet && sheet.team === who.team && sheet.id === who.id) closePeek();
+    else openPeek(who);
+  });
+  // a finger anywhere but on a card, a button or a hero puts a considered card back (and closes a sheet)
   root.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'mouse' && !skip && !(e.target as HTMLElement).closest?.('.card, .btn, button')) unconsider();
+    if (e.pointerType === 'mouse' || skip) return;
+    const onField = e.target === canvas && !!heroUnder(e, 14);
+    if (!onField && !(e.target as HTMLElement).closest?.('.card, .btn, button')) unconsider();
+    if (e.target !== canvas) closePeek();
   });
 
   // ------------------------------------------------------------------ scorebug
@@ -238,6 +327,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       void finish();
       return;
     }
+    closePeek();
     stadium.setScene(st);
     drawBug(snap());
     stage.replaceChildren();
@@ -566,6 +656,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   let raf = 0;
   const follow = (): void => {
     raf = requestAnimationFrame(follow);
+    if (sheet) placePeek();
     for (const k of keys3) {
       const pos = stadium.screenPos(0, k.id);
       k.el.style.visibility = pos ? 'visible' : 'hidden';
@@ -599,6 +690,7 @@ export function matchScreen(): [HTMLElement, () => void] {
 
   // ------------------------------------------------------------------ showing a play
   const playOut = async (off: Pick, def: Pick): Promise<void> => {
+    closePeek();
     const before = snap();
     const res: PlayResult = resolvePlay(st, off, def);
     storeMatch(st);
@@ -895,6 +987,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   // ------------------------------------------------------------------ full time
   const finish = async (): Promise<void> => {
     if (!alive) return;
+    closePeek();
     alive = false;
     busy = true;
     hand.classList.remove('in');
