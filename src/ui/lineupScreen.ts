@@ -1,5 +1,6 @@
 // 編成: the coach's chalkboard. Two formations drawn in chalk (offense: the other side is up, defense: the other side is down),
-// the heroes are round magnets. The same six play both units; the seventh sits on the bench.
+// the heroes are round magnets. The offense and the defense are set separately (in a small club the same heroes
+// play both ways); everybody who is on neither board sits on the bench.
 // Drag a magnet (or tap it, then tap a spot): while a hero is held, every spot shows the grade that hero would have there.
 
 import { sfx, vibrate } from '../core/audio';
@@ -7,7 +8,7 @@ import { h } from '../core/dom';
 import { commit, save } from '../core/save';
 import { KIND } from '../game/cards';
 import { hero, recruit, talentOf } from '../game/heroes';
-import { bestLineup, isStarter, place } from '../game/lineup';
+import { bestLineup, fielded, isStarter, place } from '../game/lineup';
 import { unitSummary } from '../game/match';
 import {
   DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, RANKS, STAT_LABEL, fit, kickFit, rank, rankIndex, roleOf,
@@ -49,6 +50,8 @@ interface Slot {
   seat: HTMLElement;
   /** "this hero would be an A here" */
   tag: HTMLElement;
+  /** a seat on the bench: which one */
+  n: number;
 }
 
 interface Was { key: string; unit: Unit | 'bench'; id: number; rect: DOMRect }
@@ -76,9 +79,13 @@ export function lineupScreen(back: () => void): HTMLElement {
   let live = false;
 
   const statsOf = (id: number) => member(s, id).stats;
-  const benchId = (): number => s.members.find((m) => !isStarter(s.lineup!, m.id))!.id;
+  /** everybody who is on neither board, in the club's order */
+  const benchList = (): number[] => s.members.map((m) => m.id).filter((id) => !isStarter(s.lineup!, id));
+  /** the hero on a spot (-1: an empty seat on the bench) */
   const heroAt = (slot: Slot): number =>
-    slot.unit === 'off' ? s.lineup!.off[slot.pos as OffPos] : slot.unit === 'def' ? s.lineup!.def[slot.pos as DefPos] : benchId();
+    slot.unit === 'off' ? s.lineup!.off[slot.pos as OffPos] : slot.unit === 'def' ? s.lineup!.def[slot.pos as DefPos] : benchList()[slot.n] ?? -1;
+  /** the spot the held hero was picked up from */
+  let heldFrom: Slot | null = null;
   const gradeAt = (id: number, slot: Slot): Grade | null => (slot.role ? rank(fit(statsOf(id), slot.role)) : null);
   const total = (l: Lineup): number =>
     OFF_POS.reduce((v, p) => v + fit(statsOf(l.off[p]), roleOf(p)), 0) + DEF_POS.reduce((v, p) => v + fit(statsOf(l.def[p]), roleOf(p)), 0);
@@ -97,14 +104,14 @@ export function lineupScreen(back: () => void): HTMLElement {
   const slots: Slot[] = [];
   const bySlotEl = new Map<Element, Slot>();
 
-  const makeSlot = (unit: Unit | 'bench', pos: Pos | null, at?: [number, number]): Slot => {
+  const makeSlot = (unit: Unit | 'bench', pos: Pos | null, at?: [number, number], n = 0): Slot => {
     const role = pos ? roleOf(pos) : null;
     const seat = h('span.lu-seat');
     const tag = h('span.lu-if', { 'aria-hidden': 'true' });
     const el: HTMLButtonElement = h('button.lu-slot', {
       type: 'button', class: unit, style: at ? { left: `${at[0]}%`, top: `${at[1]}%`, '--i': String(slots.length) } : { '--i': String(slots.length) },
     }, h('span.lu-role', role ? ROLE_LABEL[role] : '控え'), h('span.lu-socket', { 'aria-hidden': 'true' }), seat, tag);
-    const slot: Slot = { key: pos ? `${unit}:${pos}` : 'bench', unit, pos, role, el, seat, tag };
+    const slot: Slot = { key: pos ? `${unit}:${pos}` : `bench:${n}`, unit, pos, role, el, seat, tag, n };
     slots.push(slot);
     bySlotEl.set(el, slot);
 
@@ -127,6 +134,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     // dragging: the magnet follows the finger once it has moved a little
     el.addEventListener('pointerdown', (e) => {
       if (drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (heroAt(slot) < 0) return;
       drag = { id: heroAt(slot), pointer: e.pointerId, from: slot, x: e.clientX, y: e.clientY, ghost: null, over: null };
       try {
         el.setPointerCapture(e.pointerId);
@@ -186,7 +194,8 @@ export function lineupScreen(back: () => void): HTMLElement {
     def: h('div.lu-field', chalkOf.def, h('span.lu-dir', { 'aria-hidden': 'true' }, '▼ 相手側'),
       key([['rush', '止めにいく'], ['zone', '見はる']]), DEF_POS.map((p) => makeSlot('def', p, DEF_AT[p]).el)),
   };
-  const bench = makeSlot('bench', null);
+  // as many seats as the bench can ever need (when the same six play both ways); the empty ones are not shown
+  const benches = Array.from({ length: Math.max(1, s.members.length - 6) }, (_, i) => makeSlot('bench', null, undefined, i));
 
   /** Draws the play lines of one board in chalk, sized to the board as it is right now. */
   const drawChalk = (unit: Unit, animate: boolean): void => {
@@ -315,7 +324,7 @@ export function lineupScreen(back: () => void): HTMLElement {
       note.replaceChildren(
         h('span.label.dark', '控え'),
         h('b.lu-note-role', 'ベンチ'),
-        h('p', '試合には出ない7人目。先発のだれかと、いつでも入れかえられます。'));
+        h('p', '試合に出ない部員。攻撃か守備のだれかと、いつでも入れかえられます。'));
     } else {
       note.replaceChildren(
         h('span.label.dark', '見かた'),
@@ -357,11 +366,13 @@ export function lineupScreen(back: () => void): HTMLElement {
       }
     }
     const weak = slots.filter((x) => x.role && RANK[gradeAt(heroAt(x), x)!] <= WEAK)[0];
-    const b = s.members.find((m) => m.id === benchId())!;
+    const b = benchList().map((id) => member(s, id)).find(learned);
+    const twoWay = fielded(l).length < 12;
     if (weak) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}が苦手そうです。「おまかせ」で並べ直せますよ。`, 'think');
-    else if (learned(b)) tell(`控えの${hero(b.id).name}は特別作戦を覚えています。出番を作るのも手ですよ。`, 'think');
+    else if (b) tell(`控えの${hero(b.id).name}は特別作戦を覚えています。出番を作るのも手ですよ。`, 'think');
     else if (total(l) >= total(bestLineup(players)) - 0.01) tell('いまの並びが、いちばん力を出せます！ これでいきましょう。', 'sparkle');
-    else tell('同じ6人が攻撃も守備もします。両方のボードの文字を見くらべてみましょう。', 'idle');
+    else if (twoWay && benchList().length) tell('攻撃と守備は、べつべつに組めます。控えのヒーローを片方だけに出すのも手ですよ。', 'idle');
+    else tell('攻撃と守備は、べつべつに組めます。両方のボードの文字を見くらべてみましょう。', 'idle');
   };
 
   // ---------------------------------------------------------------- marking: who is held, what every spot would give
@@ -387,7 +398,7 @@ export function lineupScreen(back: () => void): HTMLElement {
         const top = v >= bestOf[x.unit]! - 0.01;
         x.tag.className = `lu-if r-${g}${RANK[g] <= WEAK ? ' low' : ''}${top ? ' best' : ''}`;
         x.tag.replaceChildren(g, top ? h('i', '◎') : '');
-      } else if (st && !own) {
+      } else if (st && !own && heldFrom && heldFrom.unit !== 'bench') {
         x.tag.className = 'lu-if word';
         x.tag.replaceChildren('交代');
       } else {
@@ -397,7 +408,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     }
     hint.textContent = held !== null
       ? `${shortName(hero(held).name)}をどこに置く？ 光った文字が、そこでの適性（◎がいちばん）`
-      : 'マグネットをつかんで、置きたい場所へ。同じ6人が攻撃も守備もします';
+      : 'マグネットをつかんで、置きたい場所へ。攻撃と守備はべつべつに組めます';
     drawNote();
   };
 
@@ -409,7 +420,7 @@ export function lineupScreen(back: () => void): HTMLElement {
 
   // ---------------------------------------------------------------- putting magnets on the board
 
-  const wasNow = (): Was[] => slots.map((x) => ({ key: x.key, unit: x.unit, id: heroAt(x), rect: (x.seat.firstElementChild ?? x.seat).getBoundingClientRect() }));
+  const wasNow = (): Was[] => slots.filter((x) => heroAt(x) >= 0).map((x) => ({ key: x.key, unit: x.unit, id: heroAt(x), rect: (x.seat.firstElementChild ?? x.seat).getBoundingClientRect() }));
 
   /**
    * Makes the board show the line-up. Magnets that changed place glide there from where that hero was
@@ -419,6 +430,11 @@ export function lineupScreen(back: () => void): HTMLElement {
     let moved = 0;
     for (const x of slots) {
       const id = heroAt(x);
+      x.el.hidden = id < 0;
+      if (id < 0) {
+        x.seat.replaceChildren();
+        continue;
+      }
       const old = x.seat.firstElementChild as HTMLElement | null;
       if (old && Number(old.dataset.id) === id) continue;
       const mag = magnet(id, x);
@@ -453,6 +469,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     const stars = new Set<number>();
     for (const x of slots) {
       const id = heroAt(x);
+      if (id < 0) continue;
       const g = gradeAt(id, x);
       if (g) grades.set(`${x.unit}:${id}`, g);
       if (starAt(id, x)) stars.add(id);
@@ -532,7 +549,12 @@ export function lineupScreen(back: () => void): HTMLElement {
     const l = s.lineup!;
     let next = l;
     if (slot.unit !== 'bench') next = place(l, slot.unit, slot.pos!, id);
-    else if (isStarter(l, id)) next = place(l, 'off', OFF_POS.find((p) => l.off[p] === id)!, benchId());
+    else {
+      // onto somebody on the bench: that hero takes over the spot this one was picked up from
+      const from = heldFrom;
+      const other = heroAt(slot);
+      if (from && from.unit !== 'bench' && other >= 0) next = place(l, from.unit, from.pos!, other);
+    }
     if (next === l) return false;
     sfx.drop();
     setTimeout(() => root.isConnected && sfx.swap(), 70);
@@ -544,8 +566,9 @@ export function lineupScreen(back: () => void): HTMLElement {
     return true;
   };
 
-  const pick = (id: number, quiet = false): void => {
+  const pick = (id: number, from: Slot, quiet = false): void => {
     held = id;
+    heldFrom = from;
     if (!quiet) sfx.drag();
     lastLine = '';
     advise();
@@ -565,9 +588,10 @@ export function lineupScreen(back: () => void): HTMLElement {
   const tap = (slot: Slot): void => {
     hover = slot; // on a touch screen there is no hover: the note explains the spot that was tapped
     const here = heroAt(slot);
+    if (here < 0) return;
     const c = center(slot.el);
     if (held === null) {
-      pick(here);
+      pick(here, slot);
       ring(c.x, c.y, TALENT_COLOR[talentOf(statsOf(here)).best], 1.1);
     } else if (held === here) letGo();
     else putOn(slot);
@@ -584,7 +608,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     ghost.style.width = `${mag.getBoundingClientRect().width}px`;
     root.append(ghost);
     drag.ghost = ghost;
-    pick(drag.id);
+    pick(drag.id, drag.from);
     vibrate(8);
   };
   const follow = (x: number, y: number): void => {
@@ -706,11 +730,12 @@ export function lineupScreen(back: () => void): HTMLElement {
   }
   drawKicker();
 
-  const side = h('aside.lu-side', h('div.lu-bench', bench.el, h('span.lu-seatwood', { 'aria-hidden': 'true' })), kickEl, note);
+  const side = h('aside.lu-side', { class: benches.length > 2 ? 'is-many' : '' },
+    h('div.lu-bench', benches.length > 2 ? h('b.lu-bench-head', '控え') : null, h('div.lu-bench-seats', benches.map((b) => b.el)), h('span.lu-seatwood', { 'aria-hidden': 'true' })), kickEl, note);
   const root = h('div.screen.lineup',
     backdrop(['FORMATION', '作戦ボード'], ['#0f4a4a', '#090d24', '#37e3ff']),
     h('header.head.pad', h('h2', '編成'), hint),
-    h('main.lu-body.pad', board, side),
+    h('main.lu-body.pad', { class: benches.length > 2 ? 'has-many' : '' }, board, side),
     h('footer.foot.pad', mgr.el, h('div.row', auto, ok)));
 
   const onKey = (e: KeyboardEvent): void => {

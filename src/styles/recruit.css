@@ -218,3 +218,14 @@
 @keyframes rc-seal { 0% { transform: rotate(-40deg) scale(3); opacity: 0; } 70% { transform: rotate(-14deg) scale(0.88); opacity: 0.88; } }
 
 .recruit .foot .bubble { max-width: 40rem; }
+
+/* ---------- a big briefing (a club that has grown): three rows, everybody a little smaller ---------- */
+.rc-stage.is-many { grid-template-rows: 1.2rem repeat(3, 1fr); }
+.rc-stage.is-many .rc-row { padding-bottom: 0.35rem; }
+.rc-stage.is-many .rc-cand { width: 4.5rem; }
+.rc-stage.is-many .rc-cand .portrait { width: 3.5rem; }
+.rc-stage.is-many .rc-name { font-size: 0.78rem; line-height: 1.1; padding: 0.05rem 0.25rem; max-width: 4.9rem; }
+.rc-stage.is-many .rc-cand .talent { left: 0; top: -0.1rem; transform: rotate(-7deg) scale(0.58); transform-origin: 0 0; }
+.rc-stage.is-many .rc-ask, .rc-stage.is-many .rc-stamp { transform: scale(0.75); }
+.rc-slots.is-many .rc-slot { height: 3.4rem; }
+.rc-slots.is-many .rc-slot svg { width: 2.2rem; height: 2.15rem; margin-left: -1.1rem; }

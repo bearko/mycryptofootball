@@ -1,4 +1,5 @@
-// 入部説明会: nine candidates stand on the stage, the coach signs seven of them.
+// 入部説明会: the candidates stand on the stage and the coach signs some of them: seven of nine when the club is
+// founded (the first one becomes captain), in later years as many newcomers as the club's standing has room for.
 // The stage is the broadcast side (spotlight, LED counter, lamps); the scouting memo is the playbook side
 // (cream paper on a clipboard, tape, a rubber stamp). The first hero signed becomes captain.
 
@@ -8,7 +9,8 @@ import { commit, save } from '../core/save';
 import { KIND } from '../game/cards';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat, type Stats } from '../game/model';
-import { ROSTER_SIZE, signRecruits } from '../game/season';
+import { tierOf } from '../game/prestige';
+import { joinCount, signRecruits } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { burst, center, confetti, flash, flip, glitter, kick, kinetic, motion, pop, ring, shake, typewriter, type Typing } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, modalOpen, portrait, radar, speech, sprite, statIcon, talentChip } from './kit';
@@ -30,7 +32,20 @@ const FLAGS = 13;
 export function recruitScreen(): HTMLElement {
   const season = save().season!;
   const ids = season.candidates;
-  /** in signing order: the first one is the captain */
+  /** how many sign today */
+  const NEED = joinCount(season);
+  /** the club is being founded: the first hero signed becomes its captain */
+  const founding = !season.members.length;
+  /** what a newcomer to a club of this standing has on top of a beginner's abilities */
+  const plus = founding ? 0 : tierOf(season.tier).join;
+  const joinStats = (id: number): Stats => {
+    const base = recruit(id).stats;
+    if (!plus) return base;
+    const out = { ...base };
+    for (const k of STATS) out[k] = base[k] + plus;
+    return out;
+  };
+  /** in signing order: when the club is founded, the first one is the captain */
   const picked: number[] = [];
   let focus = ids[0]!;
   let typing: Typing | null = null;
@@ -38,8 +53,10 @@ export function recruitScreen(): HTMLElement {
   let leaving = false;
 
   const talent = (id: number): Stat => talentOf(recruit(id).stats).best;
-  const full = (): boolean => picked.length >= ROSTER_SIZE;
-  const covered = (k: Stat): number => picked.filter((id) => talent(id) === k).length;
+  const full = (): boolean => picked.length >= NEED;
+  // the heroes who are already in the club count too
+  const old = season.members.map((m) => m.id);
+  const covered = (k: Stat): number => [...old, ...picked].filter((id) => talent(id) === k).length;
 
   // ---------------------------------------------------------------- the stage
 
@@ -77,11 +94,17 @@ export function recruitScreen(): HTMLElement {
   };
 
   const rows = [
-    h('div.rc-row.back', ids.slice(0, BACK_ROW).map((id, i) => makeCand(id, i))),
-    h('div.rc-row.front', ids.slice(BACK_ROW).map((id, i) => makeCand(id, BACK_ROW + i))),
+    // a big briefing stands in three rows, everybody a little smaller
+    ...(ids.length > 9
+      ? [0, 1, 2].map((r) => {
+        const per = Math.ceil(ids.length / 3);
+        return h('div.rc-row', { class: r === 0 ? 'back' : r === 2 ? 'front' : '' }, ids.slice(r * per, (r + 1) * per).map((id, i) => makeCand(id, r * per + i)));
+      })
+      : [h('div.rc-row.back', ids.slice(0, BACK_ROW).map((id, i) => makeCand(id, i))),
+        h('div.rc-row.front', ids.slice(BACK_ROW).map((id, i) => makeCand(id, BACK_ROW + i)))]),
   ];
   const flags = h('div.rc-flags', { 'aria-hidden': 'true' }, Array.from({ length: FLAGS }, (_, i) => h('i', { style: { '--i': String(i) } })));
-  const stage = h('section.rc-stage', flags, rows, spot);
+  const stage = h(ids.length > 9 ? 'section.rc-stage.is-many' : 'section.rc-stage', flags, rows, spot);
 
   /** Moves the spotlight onto the focused candidate (positions in % of the stage, so it survives a resize). */
   const placeSpot = (): void => {
@@ -106,7 +129,7 @@ export function recruitScreen(): HTMLElement {
   const bubble = h('div.bubble.rc-bubble', ghost, say);
   const blurb = h('p.rc-blurb');
   const roles = h('p.rc-roles');
-  const rd = radar(recruit(focus).stats);
+  const rd = radar(joinStats(focus));
   const cardBox = h('div.rc-card');
   const spName = h('b.rc-sp-name');
   const spText = h('p.rc-sp-text');
@@ -144,7 +167,7 @@ export function recruitScreen(): HTMLElement {
     typing = typewriter(say, r.line, { cps: 48, onTick: () => sfx.typeTick() });
     blurb.textContent = r.blurb;
     roles.replaceChildren(h('b', '◎'), bestRoles(r.stats));
-    rd.set(r.stats);
+    rd.set(joinStats(focus));
     const card = playCard({ type: info.base, star: 1, special: sp }, info.side, {
       small: true,
       onpick: () => {
@@ -173,16 +196,16 @@ export function recruitScreen(): HTMLElement {
   // ---------------------------------------------------------------- the uniforms, the lamps, the counter
 
   const tokens = new Map<number, HTMLElement>();
-  const slots = Array.from({ length: ROSTER_SIZE }, (_, i) => {
-    const el = h('div.rc-slot', { class: i === 0 ? 'cap' : '' });
-    el.innerHTML = `<svg viewBox="0 0 40 38" aria-hidden="true"><path d="${JERSEY}"/><text x="20" y="29" font-size="14" text-anchor="middle">${i + 1}</text></svg>`;
-    if (i === 0) el.append(h('span.rc-armband', '主将'));
+  const slots = Array.from({ length: NEED }, (_, i) => {
+    const el = h('div.rc-slot', { class: founding && i === 0 ? 'cap' : '' });
+    el.innerHTML = `<svg viewBox="0 0 40 38" aria-hidden="true"><path d="${JERSEY}"/><text x="20" y="29" font-size="14" text-anchor="middle">${old.length + i + 1}</text></svg>`;
+    if (founding && i === 0) el.append(h('span.rc-armband', '主将'));
     return el;
   });
   const lamps = new Map<Stat, HTMLElement>(STATS.map((k) => [k, h('div.rc-lamp', { class: `t-${k}` }, statIcon(k), h('span', STAT_LABEL[k]), h('u'))]));
   const countNum = h('b', '0');
-  const count = h('div.rc-count.led', h('small', '部員'), countNum, h('i', `/${ROSTER_SIZE}`));
-  const rack = h('section.rc-rack', count, h('div.rc-slots', slots));
+  const count = h('div.rc-count.led', h('small', founding ? '部員' : '新入部員'), countNum, h('i', `/${NEED}`));
+  const rack = h('section.rc-rack', count, h('div.rc-slots', { class: NEED > 9 ? 'is-many' : '' }, slots));
 
   /** Lights the lamp of every ability the picked heroes are great at; a lamp that just came on celebrates. */
   const syncLamps = (): void => {
@@ -246,12 +269,13 @@ export function recruitScreen(): HTMLElement {
     mgr.say(line, pose);
   };
   const advise = (): void => {
-    const left = ROSTER_SIZE - picked.length;
+    const left = NEED - picked.length;
     const miss = STATS.filter((k) => !covered(k));
     const names = miss.slice(0, 2).map((k) => `「${STAT_LABEL[k]}」`).join('と');
-    if (!picked.length) tell('まずは主将をえらびましょう！ さいしょの1人は、特別作戦をすぐに使えますよ。', 'point');
-    else if (left === 0 && !miss.length) tell(`6つの能力がぜんぶそろった、いいチームです！ この${ROSTER_SIZE}人でいきましょう、監督！`, 'sparkle');
-    else if (left === 0) tell(`${ROSTER_SIZE}人そろいました！ ${names}は手うすですが、練習でおぎなえますよ。`, 'smile');
+    if (!picked.length && founding) tell('まずは主将をえらびましょう！ さいしょの1人は、特別作戦をすぐに使えますよ。', 'point');
+    else if (!picked.length) tell(`${tierOf(season.tier).name}になって、部員を${NEED}人むかえられます！ ${miss.length ? `${names}が得意な子がほしいですね。` : 'だれをむかえましょう？'}`, 'point');
+    else if (left === 0 && !miss.length) tell(founding ? `6つの能力がぜんぶそろった、いいチームです！ この${NEED}人でいきましょう、監督！` : `これで部員は${old.length + NEED}人！ たのもしくなりますね、監督！`, 'sparkle');
+    else if (left === 0) tell(`${NEED}人そろいました！ ${names}は手うすですが、練習でおぎなえますよ。`, 'smile');
     else if (!miss.length) tell(`6つの能力がそろいました！ あと${left}人は、お好みでどうぞ。`, 'cheer');
     else if (miss.length > 2) tell(`あと${left}人。上のランプがぜんぶ光るように、いろんな得意をあつめましょう。`, 'point');
     else tell(`あと${left}人。まだ${names}が得意な子がいませんね。`, 'think');
@@ -269,7 +293,8 @@ export function recruitScreen(): HTMLElement {
     const have = new Set(picked.map(talent));
     const rest = ids.filter((id) => !picked.includes(id));
     const total = (id: number): number => STATS.reduce((sum, k) => sum + recruit(id).stats[k], 0);
-    while (picked.length + order.length < ROSTER_SIZE && rest.length) {
+    // (the bonus of the club's standing is the same for everybody, so it does not change the order)
+    while (picked.length + order.length < NEED && rest.length) {
       rest.sort((x, y) => Number(have.has(talent(x))) - Number(have.has(talent(y))) || total(y) - total(x));
       const id = rest.shift()!;
       have.add(talent(id));
@@ -306,15 +331,15 @@ export function recruitScreen(): HTMLElement {
     const isIn = picked.includes(focus);
     for (const [id, el] of cands) {
       el.classList.toggle('focus', id === focus);
-      el.classList.toggle('cap', picked[0] === id);
+      el.classList.toggle('cap', founding && picked[0] === id);
       el.setAttribute('aria-pressed', String(picked.includes(id)));
     }
     root.classList.toggle('full', full());
-    signLabel.textContent = isIn ? 'とりやめる' : full() ? `${ROSTER_SIZE}人そろった` : '入部させる';
+    signLabel.textContent = isIn ? 'とりやめる' : full() ? `${NEED}人そろった` : '入部させる';
     signBtn.className = `btn ${isIn ? 'alt' : full() ? 'off' : ''}`;
     startBtn.className = `btn ${full() ? 'go' : 'alt'}`;
-    startLabel.textContent = full() ? `この${ROSTER_SIZE}人ではじめる` : picked.length ? 'のこりはおまかせ' : 'おまかせでえらぶ';
-    sealed.textContent = !isIn ? '' : picked[0] === focus ? '主将' : '入部';
+    startLabel.textContent = full() ? (founding ? `この${NEED}人ではじめる` : `この${NEED}人をむかえる`) : picked.length ? 'のこりはおまかせ' : 'おまかせでえらぶ';
+    sealed.textContent = !isIn ? '' : founding && picked[0] === focus ? '主将' : '入部';
     paper.classList.toggle('signed', isIn);
     placeSpot();
   };
@@ -354,7 +379,7 @@ export function recruitScreen(): HTMLElement {
 
   const sign = (id: number): void => {
     const el = cands.get(id)!;
-    const isCaptain = picked.length === 0;
+    const isCaptain = founding && picked.length === 0;
     picked.push(id);
     el.classList.remove('out');
     el.classList.add('in');
@@ -388,7 +413,7 @@ export function recruitScreen(): HTMLElement {
         sfx.recruit();
         if (full()) {
           vibrate([15, 30, 15]);
-          telop(`${ROSTER_SIZE}人そろった！`);
+          telop(`${NEED}人そろった！`);
           sfx.learn();
           const c = center(startBtn);
           ring(c.x, c.y, '#ffe14a', 2.2);
@@ -418,7 +443,7 @@ export function recruitScreen(): HTMLElement {
 
   const unsign = (id: number): void => {
     const el = cands.get(id)!;
-    const wasCaptain = picked[0] === id;
+    const wasCaptain = founding && picked[0] === id;
     picked.splice(picked.indexOf(id), 1);
     el.classList.remove('in');
     kick(el, 'out');
@@ -442,7 +467,7 @@ export function recruitScreen(): HTMLElement {
       kick(cands.get(id)!, 'nope');
       kick(count, 'nope');
       lastLine = '';
-      tell(`部員は${ROSTER_SIZE}人までです。入れかえるなら、先にだれかの入部をとりやめましょう。`, 'think');
+      tell(`部員は${NEED}人までです。入れかえるなら、先にだれかの入部をとりやめましょう。`, 'think');
     } else sign(id);
   };
 
@@ -452,7 +477,7 @@ export function recruitScreen(): HTMLElement {
     backdrop(['ROOKIES WANTED', '新入部員 大募集'], ['#3a1f8a', '#090d24', '#ffb648']),
     h('header.head.pad',
       h('h2', '入部説明会'),
-      h('p', h('span', `${ids.length}人から${ROSTER_SIZE}人をえらぼう。`), h('span', 'さいしょの1人が主将になる！')),
+      h('p', h('span', `${ids.length}人から${NEED}人をえらぼう。`), h('span', founding ? 'さいしょの1人が主将になる！' : `${season.year}年目の春。格は「${tierOf(season.tier).name}」！`)),
       h('div.row.rc-score', h('div.rc-cov', h('small', 'チームの得意'), h('div.rc-lamps', [...lamps.values()])))),
     h('main.rc-body.pad', stage, rack, clip),
     h('footer.foot.pad', mgr.el, h('div.row', signBtn, startBtn)));

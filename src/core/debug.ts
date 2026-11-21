@@ -3,6 +3,8 @@
 //   ?day=13     jump to that day of the calendar (0 = the first practice day; 6, 13, 20, 27 are the matches)
 //   ?bot=1      the computer also calls the club's plays, and plays are shown very fast
 //   ?seed=123   fixed seed for new seasons and matches
+//   ?tier=4     with ?go=: the club has that standing (0 beginners … 6), and as many heroes as it allows;
+//               ?go=recruit&tier=2 opens the briefing of a later year
 //   ?go=club    open a screen directly with a ready-made season (recruit, club, training, lineup, match, end, champion);
 //               combines with ?day= and ?trust=. Nothing is written to the real save until the game itself saves
 
@@ -12,6 +14,7 @@ const num = (key: string): number | null => (params.has(key) && params.get(key) 
 export const debug = {
   trust: num('trust'),
   day: num('day'),
+  tier: num('tier'),
   bot: params.get('bot') === '1',
   seed: num('seed'),
   go: params.get('go'),

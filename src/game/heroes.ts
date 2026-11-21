@@ -34,7 +34,7 @@ export interface Recruit {
 const s = (spd: number, pas: number, cat: number, blk: number, tkl: number, iq: number): Stats =>
   ({ spd, pas, cat, blk, tkl, iq });
 
-/** Two heroes for each of the six abilities. */
+/** Four heroes for each of the six abilities: the first twelve were there from the start, the rest came with the bigger clubs. */
 export const RECRUITS: readonly Recruit[] = [
   { id: 5019, stats: s(72, 30, 42, 22, 34, 38), kind: 'powerRun', blurb: '崖も駆け下りる俊足。ボールを持たせれば誰にも止められない', line: '崖だろうと坂だろうと、まっすぐ駆け下りるのみ！' },
   { id: 3038, stats: s(66, 26, 46, 18, 36, 44), kind: 'trick', blurb: '煙にまぎれる忍び。相手の読みをすり抜けて走る', line: '煙が晴れたときには、もうゴールの向こうでござる。' },
@@ -48,6 +48,18 @@ export const RECRUITS: readonly Recruit[] = [
   { id: 1008, stats: s(42, 18, 24, 40, 66, 26), kind: 'rush', blurb: '素手で戦った拳闘王。まっすぐ突っこんで捕まえる', line: 'グローブなんていらねえ。まっすぐ行って、つかまえる。' },
   { id: 5015, stats: s(24, 46, 36, 14, 16, 74), kind: 'peekDef', blurb: '天才軍師。相手の攻めを見抜いてから守りを決める', line: '相手の策は、すでに読めております。' },
   { id: 2011, stats: s(30, 40, 34, 20, 22, 68), kind: 'peekOff', blurb: '兵法の祖。相手の守りを見抜いてから攻めを決める', line: '敵を知り、己を知る。勝ちは戦う前に決まるのです。' },
+  { id: 3010, stats: s(68, 24, 40, 24, 40, 42), kind: 'trick', blurb: '山も谷も越える忍びの頭。道なき道を抜けていく', line: '道がなければ、つくればよい。拙者についてまいれ。' },
+  { id: 5013, stats: s(70, 28, 36, 30, 38, 34), kind: 'powerRun', blurb: '草原を駆けぬけた蒼き狼。走りだしたら地の果てまで', line: '地の果てまで走る。追いつけるものなら、追ってこい。' },
+  { id: 4006, stats: s(40, 68, 32, 18, 22, 40), kind: 'sureShort', blurb: '早撃ちの名手。近い的なら、まばたきの間に射抜く', line: '抜くのも撃つのも、オレがいちばん速いぜ。' },
+  { id: 3026, stats: s(44, 66, 38, 16, 24, 42), kind: 'sureLong', blurb: '森の弓の名人。遠くの的の真ん中を射抜く', line: '森のはしからでも、的の真ん中に当ててみせるよ。' },
+  { id: 4004, stats: s(48, 24, 68, 20, 38, 38), kind: 'steal', blurb: '飛ぶ燕も斬る剣士。空中のボールは見のがさない', line: '飛ぶ燕を斬るのだ。飛ぶボールなど、たやすい。' },
+  { id: 2026, stats: s(50, 26, 66, 14, 22, 46), kind: 'flyLong', blurb: '身軽さで天下まで登りつめた男。高いボールにも手が届く', line: '高いところは得意じゃ！ 天下もボールも、つかんでみせよう。' },
+  { id: 4055, stats: s(22, 16, 20, 70, 52, 36), kind: 'wall', blurb: '生涯かすり傷ひとつ負わなかった猛将。その前はだれも通れない', line: 'それがしの前を通れた者は、まだ一人もおらぬ。' },
+  { id: 4039, stats: s(26, 18, 22, 68, 46, 34), kind: 'pushRun', blurb: '山のように大きな男。押せば道がひらける', line: 'おいどんが押す。みんなは、あとから走ればよか。' },
+  { id: 4016, stats: s(36, 14, 18, 46, 72, 18), kind: 'roar', blurb: '天下無双の武人。立ちふさがる者をまとめて吹き飛ばす', line: '相手になるやつは、どこだ。まとめてかかってこい！' },
+  { id: 5032, stats: s(44, 16, 26, 38, 68, 30), kind: 'rush', blurb: '二刀の剣豪。一直線に踏みこんで、かならずしとめる', line: '間合いに入れば、もう逃がさぬ。' },
+  { id: 4050, stats: s(26, 44, 34, 16, 18, 72), kind: 'peekDef', blurb: '待って勝つ軍師。相手の攻めを見てから手を打つ', line: '急ぐことはありません。相手が動いてからで、間に合います。' },
+  { id: 5002, stats: s(32, 42, 32, 20, 20, 70), kind: 'peekOff', blurb: '戦場を見わたす将軍。守りのうすい所を見つけて突く', line: '守りのうすい所は、かならずある。そこを突くのだ。' },
 ];
 
 export const recruit = (id: number): Recruit => {

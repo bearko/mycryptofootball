@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { KIND, MATCH, OFF_TYPES, DEF_TYPES, READ_POTENCY } from '../src/game/cards';
 import { RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
-import { bestLineup, isStarter, place, starters, validLineup } from '../src/game/lineup';
+import { bestLineup, fielded, place, unitsOf, validLineup } from '../src/game/lineup';
 import {
   FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, halftimeTalk, potency, resolvePlay, simulate, specialBlock, specialPick,
   usePeek, usableSpecials, type MatchState, type Pick,
@@ -30,7 +30,7 @@ const basic = (key: (typeof PRACTICE_KEYS)[number], star = 2): PracticeCard => (
 
 describe('heroes', () => {
   it('each recruit is outstanding at exactly one thing', () => {
-    expect(RECRUITS).toHaveLength(12);
+    expect(RECRUITS).toHaveLength(24);
     const count: Record<string, number> = {};
     for (const r of RECRUITS) {
       const { best } = talentOf(r.stats);
@@ -39,11 +39,15 @@ describe('heroes', () => {
       expect(sorted[0]! - sorted[1]!).toBeGreaterThanOrEqual(14);
       expect(hero(r.id).passive.length).toBeGreaterThan(0);
     }
-    expect(Object.values(count)).toEqual([2, 2, 2, 2, 2, 2]);
+    expect(Object.values(count)).toEqual([4, 4, 4, 4, 4, 4]);
+    expect(new Set(RECRUITS.map((r) => r.id)).size).toBe(RECRUITS.length);
   });
 
-  it('every kind of special play belongs to one recruit', () => {
-    expect(new Set(RECRUITS.map((r) => r.kind)).size).toBe(RECRUITS.length);
+  it('every kind of special play belongs to two recruits', () => {
+    const kinds = new Map<string, number>();
+    for (const r of RECRUITS) kinds.set(r.kind, (kinds.get(r.kind) ?? 0) + 1);
+    expect(kinds.size).toBe(12);
+    expect([...kinds.values()].every((n) => n === 2)).toBe(true);
   });
 
   it('opponents field six heroes who are not recruits, with a full line-up', () => {
@@ -76,21 +80,50 @@ describe('line-up', () => {
     expect(fit(qb.stats, 'QB')).toBeGreaterThanOrEqual(Math.max(...s.members.map((m) => fit(m.stats, 'QB'))) - 25);
   });
 
-  it('swapping starters keeps the same six; a substitute takes over both positions', () => {
+  it('the two units are separate: a swap stays inside its unit, a newcomer takes one spot and nothing else', () => {
     const s = club();
     const l = s.lineup!;
+    const ids = s.members.map((m) => m.id);
     const swapped = place(l, 'off', 'QB', l.off.RB);
     expect(swapped.off.QB).toBe(l.off.RB);
     expect(swapped.off.RB).toBe(l.off.QB);
     expect(swapped.def).toEqual(l.def);
-    const bench = s.members.find((m) => !isStarter(l, m.id))!.id;
+    // somebody who is not on the offense takes a spot there: only that spot changes
+    const sub = ids.find((id) => !OFF_POS.some((p) => l.off[p] === id))!;
     const out = l.off.WR1;
-    const subbed = place(l, 'off', 'WR1', bench);
-    expect(starters(subbed)).toContain(bench);
-    expect(starters(subbed)).not.toContain(out);
-    expect(DEF_POS.map((p) => subbed.def[p])).toContain(bench);
-    expect(validLineup(subbed, s.members.map((m) => m.id))).toBe(true);
+    const subbed = place(l, 'off', 'WR1', sub);
+    expect(subbed.off.WR1).toBe(sub);
+    expect(OFF_POS.map((p) => subbed.off[p])).not.toContain(out);
+    expect(subbed.def).toEqual(l.def);
+    expect(validLineup(subbed, ids)).toBe(true);
+    expect(fielded(subbed)).toContain(sub);
+    expect(unitsOf(subbed, sub)).toContain('off');
+    // six different heroes in each unit, or it is no line-up
+    expect(validLineup({ ...l, off: { ...l.off, QB: l.off.RB } }, ids)).toBe(false);
     expect(bestLineup(s.members.map((m) => ({ id: m.id, name: '', stats: m.stats })))).toEqual(l);
+  });
+
+  it('the best line-up is the best offense and the best defense, each on its own, however big the club', () => {
+    const players = RECRUITS.map((r) => ({ id: r.id, name: '', stats: r.stats }));
+    const t0 = Date.now();
+    const l = bestLineup(players);
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(validLineup(l, players.map((p) => p.id))).toBe(true);
+    const total = (unit: 'off' | 'def'): number =>
+      (unit === 'off' ? OFF_POS : DEF_POS).reduce((v, p) => v + fit(players.find((q) => q.id === (l[unit] as Record<string, number>)[p])!.stats, roleOf(p)), 0);
+    // no single change of one hero makes either unit better
+    for (const unit of ['off', 'def'] as const) {
+      const base = total(unit);
+      for (const pos of unit === 'off' ? OFF_POS : DEF_POS) {
+        for (const q of players) {
+          const alt = place(l, unit, pos, q.id);
+          const v = (unit === 'off' ? OFF_POS : DEF_POS).reduce((sum, p) => sum + fit(players.find((x) => x.id === (alt[unit] as Record<string, number>)[p])!.stats, roleOf(p)), 0);
+          expect(v).toBeLessThanOrEqual(base + 1e-6);
+        }
+      }
+    }
+    // with twenty-four to choose from, nobody has to play both ways
+    expect(fielded(l).length).toBeGreaterThanOrEqual(10);
   });
 });
 

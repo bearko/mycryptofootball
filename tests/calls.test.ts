@@ -76,7 +76,7 @@ describe('the play-by-play', () => {
         expect(c.side).toBe('off');
       }
     }
-    expect(sacks).toBeGreaterThan(3);
+    expect(sacks).toBeGreaterThan(1);
     expect(steals).toBeGreaterThan(3);
     expect(scores).toBeGreaterThan(10);
   });

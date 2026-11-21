@@ -4,6 +4,7 @@
 
 import { h } from '../../core/dom';
 import { prefs } from '../../core/save';
+import { fielded } from '../../game/lineup';
 import { DEF_POS, OFF_POS, roleOf, type Role } from '../../game/model';
 import { TEAM_COLOR, clubSheet, type PracticeKey, type Season } from '../../game/season';
 import { Stadium } from '../stadium';
@@ -65,8 +66,18 @@ export function postText(p: { off: Role | null; def: Role | null; k?: boolean } 
   return [p.off, p.def].filter(Boolean).join('/') + (p.k ? '・K' : '');
 }
 
-export function makeGround(s: Season): Ground {
+/** how many heroes the practice ground shows at most (a big club's bench practises too, just out of the picture) */
+export const CREW_MAX = 12;
+/** The heroes seen on the practice ground: the line-up and the kicker first, then the bench as far as there is room. */
+export function crewOf(s: Season): number[] {
+  const l = s.lineup;
+  const on = new Set(l ? [...fielded(l), ...(l.k != null ? [l.k] : [])] : []);
   const ids = s.members.map((m) => m.id);
+  return [...ids.filter((id) => on.has(id)), ...ids.filter((id) => !on.has(id))].slice(0, CREW_MAX);
+}
+
+export function makeGround(s: Season): Ground {
+  const ids = crewOf(s);
   // ?ground=css forces the drawn stand-in (for looking at it on purpose; never linked from the game)
   const forced = typeof location !== 'undefined' && new URLSearchParams(location.search).get('ground') === 'css';
   if (!forced && 'ground' in Stadium.prototype && 'drill' in Stadium.prototype) {

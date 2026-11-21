@@ -3,7 +3,7 @@
 // When a day passes the strip slides one tile and the ball rolls on.
 
 import { h } from '../../core/dom';
-import { DOW, SCHEDULE, dateText, nextMatch, plan, type Season } from '../../game/season';
+import { DOW, SCHEDULE, dateText, nextMatch, plan, roundOf, type Season } from '../../game/season';
 import { OPPONENTS } from '../../game/teams';
 import { kick } from '../fx';
 
@@ -13,7 +13,6 @@ export interface Calendar {
   set: (s: Season, from?: number | null) => void;
 }
 
-const short = (label: string): string => label.replace('地区大会 ', '');
 
 export function calendar(s: Season): Calendar {
   const tiles = SCHEDULE.map((d) => {
@@ -23,7 +22,7 @@ export function calendar(s: Season): Calendar {
       h('span.cal-date', h('b', String(d.date)), h('i', DOW[d.dow])),
       h('span.cal-full', dateText(d)),
       d.t === 'match'
-        ? h('span.cal-flag', d.cup ? h('i.cal-hot') : null, short(d.label))
+        ? h('span.cal-flag', d.cup ? h('i.cal-hot') : null, roundOf(d))
         : h('i.cal-mark'),
       h('span.cal-note'));
   });
@@ -46,7 +45,7 @@ export function calendar(s: Season): Calendar {
         cls = res.win ? 'is-win' : 'is-lose';
       } else if (n === st.day) {
         if (d.t === 'match') text = d.cup ? '負けたら終わり' : '試合の日！';
-        else if (next) text = next.n - n === 1 ? `あしたは${short(next.label)}` : `あと${next.n - n}日で${short(next.label)}`;
+        else if (next) text = next.n - n === 1 ? `あしたは${roundOf(next)}` : `あと${next.n - n}日で${roundOf(next)}`;
       } else if (d.t === 'train') text = n < st.day ? '✓' : '';
       if (note.textContent !== text) note.textContent = text;
       note.className = `cal-note ${cls}`;

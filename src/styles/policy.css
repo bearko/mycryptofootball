@@ -39,7 +39,8 @@ button.pol-stat:active { transform: translate(0.12rem, 0.12rem); box-shadow: 0.0
 .pol-stat .pol-hard { position: absolute; right: 0.15rem; top: 0; }
 .pol-stat.is-on .pol-hard { color: var(--ink); }
 .pol.is-locked .pol-stat:not(.is-on) { opacity: 0.6; }
-.pol-foot { display: flex; align-items: center; gap: 1rem; margin-top: 0.3rem; }
+/* a big club's meeting is longer than the screen: the presets and the way out stay at the bottom */
+.pol-foot { position: sticky; bottom: -0.8rem; z-index: 3; display: flex; align-items: center; gap: 1rem; margin: 0 -1.8rem -0.8rem; padding: 0.5rem 1.8rem 0.8rem; background: linear-gradient(rgba(18, 21, 63, 0), #12153f 32%); }
 .pol-presets { display: flex; align-items: center; gap: 0.5rem; font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); white-space: nowrap; }
 .pol-presets .btn-face { padding: 0 1rem; font-size: var(--fs-s); }
 .pol-presets .btn.is-on .btn-face { background: var(--cyan); color: var(--ink); }
