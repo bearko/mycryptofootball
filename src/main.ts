@@ -15,7 +15,9 @@ import './styles/end.css';
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';
 import { save } from './core/save';
-import { ROSTER_SIZE, SCHEDULE, newSeason, signRecruits, startDay } from './game/season';
+import { RECRUITS } from './game/heroes';
+import { TOP_TIER } from './game/prestige';
+import { ROSTER_SIZE, SCHEDULE, joinCount, newSeason, nextYear, signRecruits, startDay } from './game/season';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
 import { wireHover } from './ui/kit';
@@ -52,11 +54,27 @@ function jump(to: string): void {
   save().season = s;
   save().match = null;
   save().helpSeen = true;
-  if (to === 'recruit') {
+  if (to === 'recruit' && debug.tier === null) {
     show(recruitScreen());
     return;
   }
   signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
+  if (debug.tier !== null) {
+    // a club that has already come some way
+    s.tier = Math.max(0, Math.min(TOP_TIER, debug.tier));
+    s.fame = 40;
+    s.year = 1 + s.tier;
+    if (to === 'recruit') {
+      s.phase = 'done';
+      nextYear(s, debug.seed ?? 7);
+      show(recruitScreen());
+      return;
+    }
+    s.league = s.tier;
+    const have = new Set(s.members.map((m) => m.id));
+    s.candidates = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
+    if (joinCount(s) > 0) signRecruits(s, s.candidates.slice(0, joinCount(s)));
+  }
   if (debug.trust !== null) for (const m of s.members) m.trust = debug.trust;
   const firstMatch = SCHEDULE.findIndex((w) => w.t === 'match');
   s.day = debug.day ?? (to === 'match' ? firstMatch : 0);

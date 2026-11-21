@@ -2,21 +2,22 @@
 
 import { Rng } from '../src/core/rng';
 import { recruit, talentOf } from '../src/game/heroes';
-import { isStarter } from '../src/game/lineup';
+import { bestLineup, isStarter } from '../src/game/lineup';
 import { simulate, type MatchState } from '../src/game/match';
 import { STATS, type Stat } from '../src/game/model';
 import { opponentSheet } from '../src/game/teams';
 import {
-  ROSTER_SIZE, STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, cardInfo, clubSheet, costOf, finishMatch, intake, needOf, newSeason,
-  nextMatch, plan, policyOpen, setFocus, signRecruits, train,
+  STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, asPlayer, cardInfo, clubSheet, costOf, finishMatch, intake, joinCount, needOf, newSeason,
+  nextMatch, nextYear, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
 } from '../src/game/season';
 
 export type Style = 'sensible' | 'careless';
 
-/** Picks seven heroes: one of each ability first, then whoever is left. */
+/** Picks the heroes who join: one of each ability first, then whoever is left. */
 function pickRecruits(s: Season, rng: Rng, style: Style): number[] {
-  if (style === 'careless') return rng.shuffle(s.candidates).slice(0, ROSTER_SIZE);
+  const n = joinCount(s);
+  if (style === 'careless') return rng.shuffle(s.candidates).slice(0, n);
   const picked: number[] = [];
   const seen = new Set<Stat>();
   for (const id of rng.shuffle(s.candidates)) {
@@ -26,8 +27,8 @@ function pickRecruits(s: Season, rng: Rng, style: Style): number[] {
       picked.push(id);
     }
   }
-  for (const id of rng.shuffle(s.candidates)) if (picked.length < ROSTER_SIZE && !picked.includes(id)) picked.push(id);
-  return picked.slice(0, ROSTER_SIZE);
+  for (const id of rng.shuffle(s.candidates)) if (picked.length < n && !picked.includes(id)) picked.push(id);
+  return picked.slice(0, n);
 }
 
 /** How much a practice card is worth to the club today. */
@@ -76,12 +77,9 @@ export interface SeasonRun {
   matches: MatchState[];
 }
 
-/** Plays a whole season with the computer calling the club's plays too. */
-export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
-  const rng = new Rng(seed ^ 0x5eed);
-  const s = newSeason(seed);
-  signRecruits(s, pickRecruits(s, rng, style));
-  const matches: MatchState[] = [];
+/** Plays the year the club is in to its end (recruiting first, when a briefing is due). */
+function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): void {
+  if (s.phase === 'recruit') signRecruits(s, pickRecruits(s, rng, style));
   let guard = 0;
   while (s.phase === 'club' && guard < 80) {
     guard += 1;
@@ -102,12 +100,43 @@ export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
       }
       train(s, pick);
     } else {
-      const st = simulate(clubSheet(s), opponentSheet(p.opp), rng.int(1, 2 ** 31 - 1));
+      // a sensible coach looks at the line-up again before every match
+      if (style === 'sensible') s.lineup = bestLineup(s.members.map(asPlayer));
+      const st = simulate(clubSheet(s), opponentSheet(p.opp, s.league), rng.int(1, 2 ** 31 - 1));
       matches.push(st);
       finishMatch(s, st);
     }
   }
+}
+
+/** Plays a whole season with the computer calling the club's plays too. */
+export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
+  const rng = new Rng(seed ^ 0x5eed);
+  const s = newSeason(seed);
+  const matches: MatchState[] = [];
+  playYear(s, rng, style, matches);
   return { season: s, matches };
+}
+
+export interface YearLog { year: number; league: number; tier: number; fame: number; members: number; wins: number; played: number; champion: boolean; avg: number }
+
+/** Plays the same club for several years. */
+export function runCareer(seed: number, years: number, style: Style = 'sensible'): { season: Season; log: YearLog[] } {
+  const rng = new Rng(seed ^ 0x5eed);
+  const s = newSeason(seed);
+  const log: YearLog[] = [];
+  for (let y = 0; y < years; y += 1) {
+    if (y > 0) nextYear(s, rng.int(1, 2 ** 31 - 1));
+    const league = s.league;
+    playYear(s, rng, style, []);
+    const on = s.members.filter((m) => isStarter(s.lineup!, m.id));
+    log.push({
+      year: s.year, league, tier: s.tier, fame: s.fame, members: s.members.length,
+      wins: s.results.filter((r) => r.win).length, played: s.results.length, champion: s.champion,
+      avg: on.reduce((v, m) => v + STATS.reduce((a, k) => a + m.stats[k], 0) / STATS.length, 0) / Math.max(1, on.length),
+    });
+  }
+  return { season: s, log };
 }
 
 export type { Xp };

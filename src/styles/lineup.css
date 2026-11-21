@@ -180,3 +180,29 @@
 .lu-kicker small { grid-column: 3; font-size: 0.78rem; line-height: 1.2; color: var(--dim); white-space: nowrap; }
 .lu-kicker.bump { animation: bump 0.4s var(--spring); }
 @media (hover: hover) { .lu-kicker:hover { background: #115238; } }
+
+/* ---------- a big club's bench: everybody who is on neither board, as small magnets ---------- */
+.lu-bench-seats { display: grid; justify-items: center; }
+.lu-side.is-many { grid-template-rows: minmax(0, 1fr) auto; }
+.lu-side.is-many .lu-note { display: none; }
+.lu-side.is-many .lu-bench { align-content: start; justify-items: stretch; padding: 0 0 0.9rem; min-height: 0; background: rgba(6, 8, 26, 0.5); border: 0.18rem solid var(--ink); }
+.lu-bench-head { justify-self: start; font-family: var(--display); font-weight: 400; font-size: var(--fs-s); color: var(--ink); background: var(--yellow); padding: 0 1.4rem 0 0.8rem; clip-path: polygon(0 0, 100% 0, calc(100% - 0.6rem) 100%, 0 100%); }
+.lu-side.is-many .lu-bench-seats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.15rem 0; padding: 0.3rem 0.2rem 0; align-content: start; }
+.lu-side.is-many .lu-slot.bench { width: 100%; min-width: 0; height: 3.75rem; grid-template-rows: 3.75rem; }
+.lu-side.is-many .lu-slot.bench .lu-seat { grid-row: 1; width: 2.9rem; height: 2.9rem; }
+.lu-side.is-many .lu-slot.bench .lu-if { grid-area: 1 / 1; width: 2.6rem; height: 2.6rem; }
+.lu-side.is-many .lu-slot.bench .lu-role, .lu-side.is-many .lu-slot.bench .lu-socket { display: none; }
+.lu-side.is-many .lu-slot.bench .lu-mag .portrait { width: 100%; }
+.lu-side.is-many .lu-slot.bench .lu-name { font-size: 0.68rem; max-width: 3.5rem; padding: 0 0.15rem; bottom: -0.75rem; clip-path: none; letter-spacing: -0.06em; overflow: hidden; text-overflow: clip; white-space: nowrap; }
+.lu-side.is-many .lu-seatwood { bottom: 0.1rem; height: 0.6rem; }
+.lu-side.is-many .lu-slot.bench .lu-star { transform: scale(0.7); }
+/* a phone held sideways: the screen is wide and a finger is thick, so the long bench takes more room (44px a seat) */
+@media (min-aspect-ratio: 21/10) {
+  .lu-body.has-many { grid-template-columns: minmax(0, 1fr) 21.8rem; gap: 0.9rem; }
+  .lu-side.is-many .lu-slot.bench { height: 4.5rem; grid-template-rows: 4.5rem; }
+  .lu-side.is-many .lu-slot.bench .lu-seat { width: 3.5rem; height: 3.5rem; }
+  .lu-side.is-many .lu-slot.bench .lu-if { width: 3.2rem; height: 3.2rem; }
+  .lu-side.is-many .lu-slot.bench .lu-name { font-size: 0.8rem; max-width: 4.2rem; }
+  .lu-side.is-many .lu-seatwood { display: none; }
+  .lu-side.is-many .lu-bench { padding-bottom: 0.2rem; }
+}

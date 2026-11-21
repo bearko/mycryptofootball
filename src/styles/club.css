@@ -227,6 +227,21 @@
 /* the cards: a picture and a name; the frame and the background say what kind */
 .card.pgc { width: 7.6rem; height: 9.2rem; }
 .card.pgc.is-played { visibility: hidden; }
+/* a club of standing is dealt more cards: they close up a little and the manager's bubble gives way */
+.club[data-cards="7"] { --cards: 49.2rem; }
+.club[data-cards="7"] .card.pgc { width: 6.6rem; }
+.club[data-cards="8"] { --cards: 50.7rem; }
+.club[data-cards="8"] .card.pgc { width: 5.9rem; }
+.club[data-cards="7"] .pgc-name { font-size: 1rem; letter-spacing: -0.07em; }
+.club[data-cards="8"] .pgc-name { font-size: 0.9rem; letter-spacing: -0.08em; }
+.club[data-cards="8"] .pgc-art img { width: 4.5rem; height: 4.5rem; }
+@media (min-aspect-ratio: 21/10) {
+  .club[data-cards="7"] { --cards: 54.1rem; }
+  .club[data-cards="7"] .card.pgc { width: 7.3rem; }
+  .club[data-cards="8"] { --cards: 55.5rem; }
+  .club[data-cards="8"] .card.pgc { width: 6.5rem; }
+  .club[data-cards="8"] .pgc-name { font-size: 1rem; }
+}
 .club.is-busy .card.pgc { pointer-events: none; }
 .club.is-busy .card.pgc:not(.deal) { filter: brightness(0.8); }
 .pgc .card-in { align-items: stretch; text-align: center; --frame: var(--ink); --bg1: var(--paper); --bg2: #e9dfbd; --band: var(--ink); --ink2: var(--chalk); border-color: var(--frame); background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.75), transparent 62%), repeating-linear-gradient(0deg, transparent 0 1.3rem, rgba(40, 60, 140, 0.1) 1.3rem 1.38rem), linear-gradient(180deg, var(--bg1), var(--bg2)); }

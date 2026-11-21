@@ -16,6 +16,7 @@ import { READ_MAX } from './cards';
 import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
+import { applyResult, tierOf, type FameChange } from './prestige';
 import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, rankIndex, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
@@ -310,6 +311,13 @@ export interface Season {
   base?: Record<number, Stats>;
   /** index into SCHEDULE of the day `base` was taken */
   baseDay?: number;
+  /** which year of the club this is (1 = the first) */
+  year: number;
+  /** the club's standing: an index into TIERS, and the gauge (0..FAME_MAX) */
+  tier: number;
+  fame: number;
+  /** the standing the year began with: it decides the tournament and how strong the other schools are, all year */
+  league: number;
   /** a new month has begun: the review of the last one is shown before the day's practice */
   review?: boolean;
 }
@@ -329,6 +337,7 @@ export function newSeason(seed: number): Season {
   return {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
+    year: 1, tier: 0, fame: 0, league: 0,
   };
 }
 
@@ -337,20 +346,39 @@ const keep = (s: Season, rng: Rng): void => {
   s.rs = rng.s;
 };
 
-/** Signs the chosen heroes. The first one picked becomes captain and already trusts the coach. */
+/** How many heroes sign at this briefing: seven when the club is founded, later as many as its standing has room for. */
+export function joinCount(s: Season): number {
+  if (!s.members.length) return ROSTER_SIZE;
+  return Math.max(0, Math.min(tierOf(s.tier).roster - s.members.length, s.candidates.length));
+}
+
+/**
+ * Signs the chosen heroes. When the club is founded the first one picked becomes captain and already trusts the coach.
+ * In later years the newcomers join the heroes who are there (and start on the bench).
+ */
 export function signRecruits(s: Season, ids: number[]): void {
-  if (ids.length !== ROSTER_SIZE) throw new Error(`pick ${ROSTER_SIZE} heroes`);
+  const want = joinCount(s);
+  if (ids.length !== want) throw new Error(`pick ${want} heroes`);
   const rng = rngOf(s);
-  s.members = ids.map((id, i) => ({
-    id,
-    stats: { ...recruit(id).stats },
-    trust: i === 0 ? TRUST_LEARN : rng.int(5, 15),
-    captain: i === 0,
-    xp: noXp(),
-    sta: STA_MAX,
-    focus: talentOf(recruit(id).stats).best,
-  }));
-  s.lineup = bestLineup(s.members.map(asPlayer));
+  const founding = !s.members.length;
+  // a school with a name draws better beginners
+  const plus = founding ? 0 : tierOf(s.tier).join;
+  const joined: Member[] = ids.map((id, i) => {
+    const base = recruit(id).stats;
+    const stats = { ...base };
+    for (const k of STATS) stats[k] = clamp(base[k] + plus, 1, STAT_MAX);
+    return {
+      id, stats,
+      trust: founding && i === 0 ? TRUST_LEARN : rng.int(5, 15),
+      captain: founding && i === 0,
+      xp: noXp(),
+      sta: STA_MAX,
+      focus: talentOf(base).best,
+    };
+  });
+  s.members = [...s.members, ...joined];
+  s.candidates = [];
+  if (founding || !s.lineup || !validLineup(s.lineup, s.members.map((m) => m.id))) s.lineup = bestLineup(s.members.map(asPlayer));
   s.phase = 'club';
   s.day = 0;
   s.meeting = true;
@@ -358,6 +386,51 @@ export function signRecruits(s: Season, ids: number[]): void {
   keep(s, rng);
   startDay(s);
 }
+
+/**
+ * The season is over: the same club goes into its next year. Everybody stays (and keeps what they have learned);
+ * the standing the club has reached decides the tournament, the other schools, and whether new heroes may join.
+ */
+export function nextYear(s: Season, seed: number): void {
+  if (s.phase !== 'done') throw new Error('the season is not over');
+  const rng = new Rng(seed);
+  s.seed = seed;
+  s.year += 1;
+  s.league = s.tier;
+  s.day = 0;
+  s.results = [];
+  s.usage = {};
+  s.seen = [];
+  s.event = null;
+  s.champion = false;
+  s.hand = [];
+  s.review = false;
+  for (const m of s.members) m.sta = STA_MAX;
+  const room = tierOf(s.tier).roster - s.members.length;
+  const have = new Set(s.members.map((m) => m.id));
+  const pool = rng.shuffle(RECRUITS.map((r) => r.id).filter((id) => !have.has(id)));
+  if (room > 0 && pool.length) {
+    // a few more come to the briefing than there is room for, so there is a choice to make
+    s.candidates = pool.slice(0, Math.min(pool.length, room + Math.min(3, Math.max(1, Math.round(room / 2)))));
+    s.candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
+    s.phase = 'recruit';
+    keep(s, rng);
+    return;
+  }
+  s.candidates = [];
+  s.phase = 'club';
+  s.meeting = true;
+  markMonth(s);
+  keep(s, rng);
+  startDay(s);
+}
+
+/** The name of a day's match in this club's tournament ("県大会 準決勝"), and the same without the tournament. */
+export const cupOf = (s: Season): string => tierOf(s.league).cup;
+export const labelOf = (s: Season, d: DayPlan): string => (d.cup ? d.label.replace('地区大会', cupOf(s)) : d.label);
+export const roundOf = (d: DayPlan): string => d.label.replace('地区大会 ', '');
+/** How many practice cards are dealt each day at the club's standing. */
+export const handSize = (s: Season): number => tierOf(s.tier).hand;
 
 // ------------------------------------------------------------------ the month's review
 
@@ -489,7 +562,7 @@ export function startDay(s: Season): void {
   // the rest card is always there, at the end of the hand
   const rest = s.hand.find((c) => c.kind === 'rest') ?? { uid: s.uid++, kind: 'rest' as const };
   s.hand = s.hand.filter((c) => c.kind !== 'rest');
-  while (s.hand.length < HAND_SIZE) s.hand.push(drawCard(s, rng));
+  while (s.hand.length < handSize(s)) s.hand.push(drawCard(s, rng));
   s.hand.push(rest);
   if (EVENT_DAYS.includes(s.day)) {
     const fresh = EVENTS.filter((e) => !s.seen.includes(e.key));
@@ -731,7 +804,7 @@ export function clubSheet(s: Season): TeamSheet {
 export const scoutedKeys = (s: Season): string[] => Object.keys(clubSheet(s).scouted ?? {});
 
 /** Books a finished match (the club is team 0) and moves the calendar on. */
-export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean } {
+export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean; fame: FameChange } {
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
@@ -745,6 +818,10 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
       ch.get(m.id)!.sta += addSta(m, -MATCH_STA);
     }
   }).filter((c) => c.trust !== 0 || c.sta !== 0);
+  // the club's standing: the gauge moves with every result
+  const fame = applyResult({ tier: s.tier, fame: s.fame }, p.opp, win);
+  s.tier = fame.after.tier;
+  s.fame = fame.after.fame;
   let ended = false;
   if (p.cup && !win) ended = true;
   if (s.day >= SCHEDULE.length - 1) {
@@ -758,12 +835,17 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     s.day += 1;
     startDay(s);
   }
-  return { changes, win, ended };
+  return { changes, win, ended, fame };
 }
 
 /** Brings a season saved by an earlier version up to date (stamina and the rest card came later). */
 export function mend(s: Season): Season {
   for (const m of s.members) if (typeof m.sta !== 'number') m.sta = STA_MAX;
+  // the club's standing and its years came later: a season saved before them is the first year of a beginners' club
+  if (typeof s.year !== 'number') s.year = 1;
+  if (typeof s.tier !== 'number') s.tier = 0;
+  if (typeof s.fame !== 'number') s.fame = 0;
+  if (typeof s.league !== 'number') s.league = s.tier;
   // kickers came later still: the club's best foot gets the job
   if (s.lineup && s.lineup.k === undefined) s.lineup.k = bestKicker(s.members.map(asPlayer), s.lineup);
   // a season begun before the month's review existed: it counts from today

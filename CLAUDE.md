@@ -6,8 +6,8 @@
 - サイトを開くと `index.html` → `src/main.ts`。公開は Cloudflare Workers の静的配信（`wrangler.jsonc`）。本番のブランチは `main`。
 - 構成：
   - `src/core/` 乱数（`rng.ts`）、セーブ（`save.ts`）、音（`audio.ts` と `audio/`）、DOM の小道具（`dom.ts`）、デバッグ用 URL（`debug.ts`）、アプリとして入れる案内（`install.ts`）
-  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 12 人）、`teams.ts`（対戦校）、`lineup.ts`（編成）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`calls.ts`（実況のことば）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会）
-  - `src/ui/` 画面：`title.ts`、`recruit.ts`（入部説明会）、`club.ts` と `ground/`（練習グラウンド。ふだんいる画面）、`policy.ts`（育成方針）、`lineupScreen.ts`（編成）、`matchScreen.ts`（試合）、`endScreen.ts`。共通の部品は `kit.ts`・`shared.ts`・`cardView.ts`、演出は `fx.ts`、画面の切り替えは `nav.ts`
+  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 24 人）、`teams.ts`（対戦校）、`lineup.ts`（編成。攻撃の 6 人と守備の 6 人はべつべつ：`bestLineup`・`place`・`fielded`・`unitsOf`）、`prestige.ts`（部の格とゲージ：`TIERS`・`applyResult`）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`calls.ts`（実況のことば）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会・次の年へ `nextYear`）
+  - `src/ui/` 画面：`title.ts`、`recruit.ts`（入部説明会）、`club.ts` と `ground/`（練習グラウンド。ふだんいる画面）、`policy.ts`（育成方針）、`lineupScreen.ts`（編成）、`matchScreen.ts`（試合）、`endScreen.ts`、`standing.ts`（格の札・ゲージ・一覧・試合後の増減）。共通の部品は `kit.ts`・`shared.ts`・`cardView.ts`、演出は `fx.ts`、画面の切り替えは `nav.ts`
   - `src/ui/stadium.ts` と `stadium/`：試合のスタジアムと練習グラウンドを描く Canvas の描画（疑似 3D）。画面からは `Stadium` クラスだけを使う。プレーの台本は `stadium/choreo.ts`（`Script`。作戦として描いた道すじは `design`。パスコースは `routeWay`・`routesFor` の 16 種類）、プレー中に重ねる中継の補助表示（作戦の線・ボールの帯・パスの軌道・ゴールまでの道・獲得ヤード）は `stadium/guide.ts`、サイドラインの標識（「2nd & 7」と「1st」の棒）は `stadium/sticks.ts`。リプレイは `Stadium.replay()`（同じ台本を別のカメラで。出すかどうかは `matchScreen.ts` と設定の `prefs().replay`）
   - `src/styles/` 画面ごとの CSS。共通は `base.css` と `cards.css`
   - `lab/`：描画と音を単体で試すページ（`/lab/stadium.html`・`/lab/audio.html`。開発サーバーでだけ開ける）
@@ -23,7 +23,8 @@
 - 特別作戦の名前は、そのヒーローのパッシブスキル名（カタログの `passive`）をそのまま使う。効果は `cards.ts` の `KIND`。
 - 試合は乱数を `MatchState.rng` だけから取る。同じ種と同じ選択なら同じ試合になること（テストあり）。試合の途中経過はプレーごとにセーブする。
 - 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAR_MUL`・`STAT_COST`・`OFF_POLICY`）、体力（`PRACTICE` の `sta`・`REST_STA`・`STA_TIRED`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5 割・決勝 3〜4 割前後。
-- デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?day=6`（その日へ。0 が 4/5。6・13・20・27 が試合の日）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）、`?go=recruit|club|lineup|match|end|champion`（その画面から始める）。
+- 格（素人→同好会→弱小→注目株→中堅→強豪→名門）は `prestige.ts`。いまの格 `Season.tier` が部員の上限と練習カードの枚数を、その年のはじめの格 `Season.league` が大会の名前と相手の強さを決める。部は年をまたいで続く（`Season.year`）。数字を変えたら `tests/bot.ts` の `runCareer` で何年目にどの格へ届くかを確かめる（目安：ていねいに遊んで 3 年目ごろ弱小、5 年目ごろ中堅）。部員は 24 人まで増えるので、部員を並べる画面（編成の控え・説明会・年のおわり）は 7 人と 24 人の両方で確かめる。
+- デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?day=6`（その日へ。0 が 4/5。6・13・20・27 が試合の日）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）、`?go=recruit|club|lineup|match|end|champion`（その画面から始める）、`?tier=4`（`?go=` と合わせて。その格で部員がそろった部。`?go=recruit&tier=2` は 2 年目からの説明会）。
 - チェック：`npm test`・`npm run typecheck`・`npm run build`。
 - 能力の数字にはランク（G〜SS。`model.ts` の `RANKS`・`rank`、画面では `kit.ts` の `rankChip` と `base.css` の `.rank.r-*`）を添える。月ごとの成長は `season.ts` の `growth`・`markMonth`（基準は `Season.base`）と `ui/review.ts`。
 - ポップアップ（`modal`）の中身が画面より長いときも、進むためのボタン（`.modal-actions`）は下にはりついて、いつも見えている。試合の終了画面は 1 画面におさめる。

@@ -23,12 +23,13 @@ import {
 } from '../game/match';
 import { ROLE_LABEL, fit, kickFit, roleOf, type DefPos, type OffPos } from '../game/model';
 import { opponentSheet } from '../game/teams';
-import { SCHEDULE, clubSheet, finishMatch, plan } from '../game/season';
+import { SCHEDULE, clubSheet, finishMatch, labelOf, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
 import { route } from './nav';
 import { changeList, settingsModal } from './shared';
+import { fameReport } from './standing';
 import { Stadium } from './stadium';
 import { ROUTE_LABEL } from './stadium/choreo';
 
@@ -57,7 +58,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
-  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp), newSeed());
+  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league), newSeed());
   storeMatch(st);
   const [home, away] = st.teams;
   const firstEver = save().seasons === 0 && s.results.length === 0;
@@ -803,7 +804,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     crowd.tension(false);
     root.classList.remove('clutch');
     const totals = st.totals;
-    const { changes, win, ended } = finishMatch(s, st);
+    const { changes, win, ended, fame } = finishMatch(s, st);
     storeMatch(null);
     if (ended) {
       save().seasons += 1;
@@ -833,14 +834,17 @@ export function matchScreen(): [HTMLElement, () => void] {
       return h('tr', { class: a > b ? 'lead' : '' }, ea, h('th', label), eb);
     };
     modal(h('div.fulltime', { class: win ? 'win' : 'lose' },
-      h('div.fulltime-head', h('b', kinetic(win ? '勝利！' : '敗北…'))),
-      h('div.period-score', h('span', { style: { color: home.color } }, home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short)),
-      h('table',
-        row('進んだヤード', totals[0].yards, totals[1].yards, 0),
-        row('ファーストダウン', totals[0].firstDowns, totals[1].firstDowns, 1),
-        row('タッチダウン', totals[0].td, totals[1].td, 2),
-        row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
-      changes.length ? changeList(s, changes) : null,
+      h('div.fulltime-top',
+        h('div.fulltime-head', h('b', kinetic(win ? '勝利！' : '敗北…'))),
+        h('div.period-score', h('span', { style: { color: home.color } }, home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short))),
+      h('div.fulltime-mid',
+        h('table',
+          row('進んだヤード', totals[0].yards, totals[1].yards, 0),
+          row('ファーストダウン', totals[0].firstDowns, totals[1].firstDowns, 1),
+          row('タッチダウン', totals[0].td, totals[1].td, 2),
+          row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
+        fameReport(fame)),
+      changes.length ? h('div.fulltime-changes', { class: changes.length > 9 ? 'is-many' : '' }, changeList(s, changes)) : null,
       h('div.modal-actions', button(ended ? '結果を見る' : 'グラウンドへもどる', () => {
         closeModal();
         route();
@@ -848,7 +852,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   };
 
   root.append(ticker([
-    `${p.label}　${home.name} 対 ${away.name}`, '4回の攻撃で10ヤード進めば攻撃続行', '同じ特別作戦は使うたびに読まれる',
+    `${labelOf(s, p)}　${home.name} 対 ${away.name}`, '4回の攻撃で10ヤード進めば攻撃続行', '同じ特別作戦は使うたびに読まれる',
     'カードの◎は得意な相手、×は苦手な相手', 'カードの右上は期待値の目安（10段階）', 'ハドルの意見は、判断が高いヒーローほど当たる', `${away.name}：${isFinal ? '王者の風格' : '油断は禁物'}`,
   ], '中継'));
   root.addEventListener('shown', () => {

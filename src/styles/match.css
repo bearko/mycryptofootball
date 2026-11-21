@@ -228,6 +228,20 @@
 .fulltime .period-score b { font-size: 3rem; }
 .fulltime td { font-size: var(--fs-m); }
 .fulltime .modal-actions, .period .modal-actions { align-self: stretch; }
+/* the headline and the score share a line, so the standing and everybody who played fit on one screen */
+.fulltime-top { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.2rem 2.4rem; }
+.fulltime-mid { align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 0.5rem 1.6rem; }
+.fulltime-mid table { flex: none; }
+.fulltime-mid th { padding: 0.05rem 1rem; white-space: nowrap; }
+.fulltime-mid td { min-width: 3.4rem; }
+.fulltime-mid .st-report { align-self: center; flex: 0 1 31rem; min-width: 0; padding: 0.5rem 0.8rem; }
+.fulltime-mid .st-news { flex-wrap: wrap; gap: 0.2rem 0.5rem; }
+.fulltime-mid .st-news em { flex-basis: 100%; text-align: center; clip-path: none; }
+.fulltime-changes { align-self: stretch; }
+.fulltime-changes.is-many .changes { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem 0.5rem; }
+.fulltime-changes.is-many .change .portrait { width: 2.4rem; }
+.fulltime-changes.is-many .change { padding: 0.05rem 0.4rem; }
+.fulltime-changes.is-many .change-main { letter-spacing: -0.05em; }
 
 .talks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-self: stretch; margin-top: 0.4rem; }
 .talk { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; text-align: left; padding: 0.9rem 1.2rem 1rem; min-height: 8rem; color: var(--ink); background: repeating-linear-gradient(0deg, transparent 0 1.75rem, rgba(40, 60, 140, 0.13) 1.75rem 1.85rem), var(--paper); border: 0.22rem solid var(--ink); box-shadow: var(--shadow); transform: rotate(calc((var(--i) - 1) * 1.5deg)); transition: transform 0.15s var(--spring); animation: deal 0.5s var(--spring) backwards; animation-delay: calc(var(--i) * 90ms + 0.2s); font-size: var(--fs-s); line-height: 1.35; }

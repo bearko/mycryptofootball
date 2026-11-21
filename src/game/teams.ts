@@ -5,7 +5,8 @@ import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
 import { bestKicker } from './lineup';
 import type { TeamSheet } from './match';
-import { ROLE_WEIGHTS, STATS, roleOf, type DefPos, type Lineup, type OffPos, type Stats } from './model';
+import { ROLE_WEIGHTS, STATS, STAT_MAX, roleOf, type DefPos, type Lineup, type OffPos, type Stats } from './model';
+import { tierOf } from './prestige';
 
 interface OppPlayer {
   id: number;
@@ -32,7 +33,7 @@ export interface OppTeam {
 export const OPPONENTS: readonly OppTeam[] = [
   {
     name: '黄竜商業', short: '黄竜商', color: '#f08a3c', style: 'ランもパスもそこそこ。まずは腕試し',
-    base: 26, spread: 20, runBias: 0.5, smart: 0.2,
+    base: 28, spread: 20, runBias: 0.5, smart: 0.2,
     players: [
       { id: 1005, off: 'RB', def: 'LB', ace: 'pushRun' },
       { id: 2029, off: 'QB', def: 'S' },
@@ -44,7 +45,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '白虎工業', short: '白虎工', color: '#e6edf7', style: 'とにかく走ってくる。壁も厚い',
-    base: 31, spread: 22, runBias: 0.68, smart: 0.4,
+    base: 32, spread: 22, runBias: 0.68, smart: 0.4,
     players: [
       { id: 1003, off: 'RB', def: 'LB', ace: 'powerRun' },
       { id: 2013, off: 'OL1', def: 'DL1', ace: 'wall' },
@@ -56,7 +57,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '玄武学院', short: '玄武学', color: '#b08cff', style: 'ロングパスで一気に攻めてくる',
-    base: 35, spread: 24, runBias: 0.36, smart: 0.6,
+    base: 38, spread: 24, runBias: 0.36, smart: 0.6,
     players: [
       { id: 3019, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4023, off: 'WR1', def: 'CB1', ace: 'flyLong' },
@@ -80,23 +81,27 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
 ];
 
-function oppStats(team: OppTeam, p: OppPlayer): Stats {
+function oppStats(team: OppTeam, p: OppPlayer, level: number): Stats {
   const st = {} as Stats;
   for (const k of STATS) {
     const need = (ROLE_WEIGHTS[roleOf(p.off)][k] ?? 0) + (ROLE_WEIGHTS[roleOf(p.def)][k] ?? 0);
-    st[k] = Math.round(Math.min(99, team.base + team.spread * need + (p.ace && need > 0 ? 8 : 0)));
+    st[k] = Math.round(Math.min(STAT_MAX, team.base + level + team.spread * need + (p.ace && need > 0 ? 8 : 0)));
   }
   return st;
 }
 
-export function opponentSheet(index: number): TeamSheet {
+/**
+ * A school as the match engine sees it. `league`: the standing of the tournament it is met in (an index into TIERS):
+ * the higher, the stronger every one of its players.
+ */
+export function opponentSheet(index: number, league = 0): TeamSheet {
   const team = OPPONENTS[index]!;
   const lineup: Lineup = { off: {} as Lineup['off'], def: {} as Lineup['def'] };
   for (const p of team.players) {
     lineup.off[p.off] = p.id;
     lineup.def[p.def] = p.id;
   }
-  const players = team.players.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p) }));
+  const players = team.players.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p, tierOf(league).level) }));
   // every school has somebody who can kick: its best foot
   lineup.k = bestKicker(players, lineup);
   return {

@@ -12,7 +12,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, learned, markMonth, member, nextMatch, plan, policyOpen,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, labelOf, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { OPPONENTS, aces } from '../game/teams';
@@ -30,6 +30,7 @@ import { show } from './nav';
 import { policyPanel } from './policy';
 import { reviewModal } from './review';
 import { memberModal, settingsModal } from './shared';
+import { standingChip } from './standing';
 import { titleScreen } from './title';
 
 /** The season whose opening meeting has been held (it opens by itself only once). */
@@ -51,7 +52,7 @@ const MUTTER: Record<Stat, string[]> = {
 };
 
 const rem = (): number => parseFloat(getComputedStyle(document.documentElement).fontSize) || 12;
-const shortLabel = (d: DayPlan): string => d.label.replace('地区大会 ', '');
+const shortLabel = (d: DayPlan): string => roundOf(d);
 
 // ------------------------------------------------------------------ what the manager says
 
@@ -126,7 +127,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     policyTag.hidden = !on;
   };
   const top = h('header.pg-top',
-    h('div.pg-school', h('b', TEAM_NAME), h('span', 'アメフト部')),
+    h('div.pg-school', h('b', TEAM_NAME), standingChip(s)),
     cal.el,
     h('nav.pg-menu',
       button('編成', () => show(lineupScreen(() => show(...clubScreen()))), 'alt'),
@@ -410,6 +411,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     });
     cardEls = next;
     cardRow.replaceChildren(...next.values());
+    root.dataset.cards = String(next.size);
     settle();
   };
 
@@ -427,7 +429,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       studied.length ? h('div.vs-warn', { role: 'alert' }, icon(ICON.warn), h('b', '研究されている！'),
         h('span', `「${studied.map((k) => hero(Number(k)).passive).join('」「')}」は、最初から少し読まれる`)) : null,
       h('div.vs-main',
-        h('span.vs-kind', p.label),
+        h('span.vs-kind', labelOf(s, p)),
         h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
         h('p.vs-style', opp.style),
         h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? '負けたら今年はここまで' : '負けても大会へ進める')),

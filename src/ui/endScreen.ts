@@ -6,7 +6,9 @@ import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero, talentOf } from '../game/heroes';
 import { OPPONENTS, opponentSheet } from '../game/teams';
-import { SCHEDULE, TEAM_COLOR, TEAM_NAME, clubSheet, learned, newSeason, type Season } from '../game/season';
+import { tierOf } from '../game/prestige';
+import { SCHEDULE, TEAM_COLOR, TEAM_NAME, clubSheet, cupOf, learned, nextYear, roundOf, type Season } from '../game/season';
+import { fameBar, tierPlate } from './standing';
 import { confetti, kinetic } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, portrait, speech, ticker } from './kit';
 import { route, show } from './nav';
@@ -27,11 +29,15 @@ export function endScreen(): [HTMLElement, () => void] {
   const champion = s.champion;
   playBgm(champion ? 'final' : 'club');
   const last = s.results[s.results.length - 1];
-  const where = last ? SCHEDULE[last.day]!.label.replace('地区大会 ', '') : '';
+  const where = last ? roundOf(SCHEDULE[last.day]!) : '';
+  const cup = cupOf(s);
+  const tier = tierOf(s.tier);
+  const room = tier.roster - s.members.length;
   let stadium: Stadium | null = null;
   let timer = 0;
+  /** the same club, one year on */
   const again = (): void => {
-    save().season = newSeason(newSeed());
+    nextYear(s, newSeed());
     storeMatch(null);
     commit();
     route();
@@ -40,13 +46,13 @@ export function endScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const sheet = champion ? sheetOf(s) : null;
   if (sheet) {
-    stadium = new Stadium(canvas, [sheet, opponentSheet(3)]);
+    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league)]);
     stadium.setMotion(save().prefs.motion);
     stadium.attract();
     stadium.setExcitement(1);
   }
   const say = speech('manager');
-  const team = h('div.end-team', s.members.map((m, i) => {
+  const team = h(s.members.length > 8 ? 'div.end-team.is-many' : 'div.end-team', s.members.map((m, i) => {
     const el = h('button.end-hero', { type: 'button', class: learned(m) ? 'on' : '', style: { '--i': String(i) } },
       portrait(m.id, { color: TALENT_COLOR[talentOf(m.stats).best] }), h('span', hero(m.id).name), m.captain ? h('i.label.hot', '主将') : null);
     el.addEventListener('click', () => {
@@ -63,23 +69,26 @@ export function endScreen(): [HTMLElement, () => void] {
     h('div.end-shade', { 'aria-hidden': 'true' }),
     h('div.end-main',
       h('span.label.dark', `${TEAM_NAME} アメフト部`),
-      h('h1', kinetic(champion ? '地区大会 優勝！' : `${where}で敗退`)),
-      h('p.end-sub', champion ? '弱小と呼ばれた7人が、頂点に立った。全国への道は、ここから。' : 'あと一歩。部員の顔ぶれと育て方を変えて、もう一度挑もう。'),
+      h('h1', kinetic(champion ? `${cup} 優勝！` : `${where}で敗退`)),
+      h('p.end-sub', champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
+      h('div.end-standing', h('span', `${s.year}年目をおえて`), tierPlate(s.tier), fameBar(s.fame),
+        h('i', s.tier !== s.league ? (s.tier > s.league ? `${tierOf(s.league).name}から昇格！` : `${tierOf(s.league).name}から降格…`) : ''),
+        h('em', room > 0 ? `来年の春、新しい部員を${room}人までむかえられる` : s.tier !== s.league ? `来年は${tier.cup}に出場` : '')),
       h('ol.end-results', s.results.map((r, i) => {
         const w = SCHEDULE[r.day]!;
         return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i) } },
-          h('span', w.label.replace('地区大会 ', '')),
+          h('span', roundOf(w)),
           h('b.led', `${r.us}-${r.them}`),
           h('span', `${r.win ? '○' : '●'} ${OPPONENTS[r.opp]!.name}`));
       })),
       team,
       h('div.end-actions',
-        button('新しいシーズンをはじめる', again, { cls: 'big go' }),
+        button(`${s.year + 1}年目へ`, again, { cls: 'big go' }),
         button('タイトルへ', () => show(...titleScreen()), { cls: 'alt', sound: 'back' }))),
     h('div.end-foot.pad', say.el),
     ticker(champion
-      ? [`${TEAM_NAME} 地区大会を制覇`, '次の舞台は全国大会（これからのアップデートで）', `優勝 ${save().titles} 回目`]
-      : ['シーズン終了', '説明会に来る9人は毎年変わる', '主将をだれにするかで序盤の戦い方が変わる'], champion ? '速報' : 'また来年'));
+      ? [`${TEAM_NAME} ${cup}を制覇`, `格：${tier.name}`, `優勝 ${save().titles} 回目`]
+      : ['シーズン終了', `格：${tier.name}`, '部員も、身につけた力も、来年にもちこせる'], champion ? '速報' : 'また来年'));
 
   root.addEventListener('shown', () => {
     if (champion) {
@@ -92,10 +101,10 @@ export function endScreen(): [HTMLElement, () => void] {
         stadium?.celebrate('td', 0);
         crowd.roar(0.5);
       }, 5200);
-      say.say('やりましたね、監督！！ 来年は全国大会ですよ！', 'cheer');
+      say.say(s.tier > s.league ? `やりましたね、監督！！ 来年は「${tier.name}」として挑めますよ！` : 'やりましたね、監督！！ 来年も勝ちましょう！', 'cheer');
     } else {
       sfx.lose();
-      say.say('くやしいです…。でも、次はきっと勝てます。もう一度、いきましょう！', 'cry');
+      say.say(s.tier < s.league ? 'くやしいです…。格は下がりましたが、相手も少しやさしくなります。立て直しましょう！' : 'くやしいです…。でも、みんな来年も残ります。もう一度、いきましょう！', 'cry');
     }
   }, { once: true });
   return [root, () => {
