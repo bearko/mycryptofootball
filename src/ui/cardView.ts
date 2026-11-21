@@ -53,7 +53,25 @@ export function diagram(type: OffType | DefType, side: 'off' | 'def'): HTMLEleme
 /** The picture on a kick card: the goal and the ball's flight (a punt: a long arc down the field). */
 function kickArt(type: KickType): HTMLElement {
   const box = h('span.card-art.art-kick');
-  box.innerHTML = type === 'punt'
+  box.innerHTML = type === 'kickoff'
+    // off the ground and far down the field, to the back who waits for it
+    ? `<svg viewBox="0 0 100 74" aria-hidden="true">
+        <path class="los" d="M3,62 H97"/>
+        ${line('pass', 'M14,58 Q52,-22 88,46')}${line('head', 'M79,42 L89,47 L90,36')}
+        <path class="post" d="M11,62 L14,57 L17,62"/>
+        <ellipse class="ball" cx="14" cy="53" rx="3.2" ry="5"/>
+        <circle class="o" cx="88" cy="56" r="3.8"/>
+      </svg>`
+    : type === 'onside'
+    // two hops along the ground, and everybody after it
+    ? `<svg viewBox="0 0 100 74" aria-hidden="true">
+        <path class="los" d="M3,62 H97"/>
+        ${line('pass', 'M14,58 Q30,26 44,58 Q54,40 64,58')}${line('head', 'M56,52 L64,59 L67,49')}
+        ${line('rush', 'M10,36 L52,48')}${line('rush', 'M10,20 L54,40')}
+        <path class="post" d="M11,62 L14,57 L17,62"/>
+        <ellipse class="ball" cx="14" cy="53" rx="3.2" ry="5"/>
+      </svg>`
+    : type === 'punt'
     ? `<svg viewBox="0 0 100 74" aria-hidden="true">
         <path class="los" d="M3,60 H97"/>
         ${line('pass', 'M14,58 Q46,-14 84,50')}${line('head', 'M75,45 L85,51 L87,40')}
@@ -127,7 +145,7 @@ export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): 
   } else if (isKick(pick.type)) {
     const [worth, odds] = opts.note ?? [];
     inner.append(
-      h('span.card-band', h(KICK_INFO[pick.type].name.length > 6 ? 'span.card-name.long' : 'span.card-name', KICK_INFO[pick.type].name)),
+      h('span.card-band', h(KICK_INFO[pick.type].name.length > 7 ? 'span.card-name.long.xlong' : KICK_INFO[pick.type].name.length > 6 ? 'span.card-name.long' : 'span.card-name', KICK_INFO[pick.type].name)),
       kickArt(pick.type),
       h('span.card-vs', h('i.good', worth ?? ''), h('i', odds ?? '')),
       h('span.card-kind', 'キック'),

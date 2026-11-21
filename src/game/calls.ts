@@ -4,7 +4,7 @@
 // (and nothing here touches the match's dice).
 
 import { FIELD, TWO_POINTS, type PlayResult } from './match';
-import { isKick, isRun, type OffType } from './cards';
+import { isKick, isKickoff, isRun, type OffType } from './cards';
 
 export type Beat = 'snap' | 'handoff' | 'throw' | 'catch' | 'drop' | 'break' | 'steal' | 'touchdown' | 'kick' | 'end';
 
@@ -42,6 +42,23 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
   const defName = names.teams[1 - res.off]!;
   const toGoal = FIELD - res.before.pos;
   const say = (head: string, tail?: string, side: Call['side'] = 'none', hot = false): Call => ({ head, tail, side, hot });
+
+  if (kick && isKickoff(kick.type)) {
+    // a kickoff: `off` is the team that kicks, the ball goes to the other one
+    const back = kick.returner != null ? names.hero(kick.returner) : defName;
+    const onside = kick.type === 'onside';
+    switch (beat) {
+      case 'snap': return onside ? say('オンサイドキック！', `${offName}、短く蹴って取り返しにいく！`) : say('キックオフ！', `${names.hero(kick.kicker)}が蹴る！`);
+      case 'kick': return onside ? say('転がした！', 'ボールはどっちだ！') : pick([say('高く上がった！', `${kick.dist}ヤードのキック！`), say('大きい！', `${defName}、落ちてくるのを待つ！`)], n, 9);
+      case 'catch': return onside ? say('押さえた！', `${defName}のボール！`, 'def') : kick.ret ? pick([say('とった！', `${back}が走りだす！`), say('キャッチ！', `${back}、どこまで戻せるか！`)], n, 4) : say('エンドゾーンでとった！', `${back}、ここは走らない`);
+      case 'steal': return say('取り返したぁ！！', `${offName}のボールだ！`, 'off', true);
+      case 'break': return say('抜けたぁ！', `${back}が止まらない！`);
+      case 'end':
+        if (onside) return kick.good ? null : say('失敗！', `${defName}、ゴールの近くから攻撃！`, 'def', true);
+        return kick.ret ? say(`${kick.ret}ヤードのリターン！`, `${defender}が止めた。自陣${kick.spot ?? 0}ヤードから`) : say('タッチバック！', `${defName}は自陣${kick.spot ?? 0}ヤードから`);
+      default: return null;
+    }
+  }
 
   switch (beat) {
     case 'snap': {

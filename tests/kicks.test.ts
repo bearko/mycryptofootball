@@ -1,6 +1,7 @@
+import { opened } from './open';
 import { describe, expect, it } from 'vitest';
 import {
-  FG_POINTS, FIELD, PAT_POINTS, PLAYS_PER_Q, START, TD_POINTS, TRY_YARDS, TWO_POINTS, autoPick, createMatch, deal, fgChance, huddle, keyHeroes,
+  FG_POINTS, FIELD, KICKOFF_FROM, PAT_POINTS, PLAYS_PER_Q, START, TD_POINTS, TRY_YARDS, TWO_POINTS, autoPick, createMatch, deal, fgChance, huddle, keyHeroes,
   kickBlock, kickPicks, kickerOf, outlook, patChance, resolvePlay, simulate, type MatchState, type Pick, type TeamSheet,
 } from '../src/game/match';
 import { bestKicker, bestLineup } from '../src/game/lineup';
@@ -24,7 +25,7 @@ const tuned = (t: TeamSheet, by: number): TeamSheet => ({
 });
 const noKicker = (t: TeamSheet): TeamSheet => ({ ...t, lineup: { ...t.lineup, k: null } });
 const match = (home: TeamSheet, seed = 7, pos = 30): MatchState => {
-  const st = createMatch(home, opponentSheet(1), seed);
+  const st = opened(home, opponentSheet(1), seed);
   st.poss = 0;
   st.pos = pos;
   deal(st);
@@ -81,18 +82,22 @@ describe('a field goal', () => {
       const res = resolvePlay(st, kick('fg'), call());
       expect(res.kick!.type).toBe('fg');
       expect(res.outcome).toBe('kick');
-      expect(st.poss).toBe(1);
       expect(st.left).toBe(left - 1);
       if (res.kick!.good) {
         made += 1;
         expect(st.score).toEqual([FG_POINTS, 0]);
         expect(res.points).toBe(FG_POINTS);
-        expect(st.pos).toBe(START);
+        // the team that scored kicks off next
+        expect(st.ko).toBe(true);
+        expect(st.poss).toBe(0);
+        expect(st.pos).toBe(KICKOFF_FROM);
         expect(res.turnover).toBeNull();
       } else {
         missed += 1;
         expect(st.score).toEqual([0, 0]);
         expect(res.turnover).toBe('miss');
+        expect(st.poss).toBe(1);
+        expect(st.ko).toBeFalsy();
         expect(st.pos).toBe(18);
       }
     }
@@ -156,7 +161,7 @@ describe('the try after a touchdown', () => {
     expect(seen).toBeGreaterThan(5);
   });
 
-  it('the kick is one point; made or missed, the other team attacks next and one play is gone', () => {
+  it('the kick is one point; made or missed, a kickoff to the other team comes next and one play is gone', () => {
     let made = 0;
     let n = 0;
     for (let seed = 1; seed <= 120; seed += 1) {
@@ -167,8 +172,9 @@ describe('the try after a touchdown', () => {
       const res = resolvePlay(st, kick('pat'), call());
       expect(res.tfp).toBe(true);
       expect(st.tfp).toBe(false);
-      expect(st.poss).toBe(1);
-      expect(st.pos).toBe(START);
+      expect(st.ko).toBe(true);
+      expect(st.poss).toBe(0);
+      expect(st.pos).toBe(KICKOFF_FROM);
       expect(st.left === left - 1 || st.left === PLAYS_PER_Q).toBe(true);
       expect(st.score[0]).toBe(TD_POINTS + (res.kick!.good ? PAT_POINTS : 0));
       if (res.kick!.good) made += 1;
@@ -187,8 +193,8 @@ describe('the try after a touchdown', () => {
       const res = resolvePlay(st, { type: 'inside', star: strong ? 3 : 1 }, { type: strong ? 'deep' : 'stuff', star: strong ? 1 : 3 });
       expect(res.tfp).toBe(true);
       expect(res.td).toBe(false);
-      expect(st.poss).toBe(1);
-      expect(st.pos).toBe(START);
+      expect(st.ko).toBe(true);
+      expect(st.poss).toBe(0);
       expect([0, TWO_POINTS]).toContain(res.points);
       expect(st.score[0]).toBe(TD_POINTS + res.points);
       if (res.points) two += 1;

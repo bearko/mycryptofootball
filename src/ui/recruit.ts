@@ -17,6 +17,8 @@ import { TALENT_COLOR, backdrop, button, cheerAt, genChip, modalOpen, portrait, 
 import { route } from './nav';
 import { bestRoles } from './shared';
 import { guideEvent } from './platform';
+import { lessonDue, markLesson } from '../game/tutorial';
+import { clearGoal, teach } from './tutor';
 
 const STAMP_INK = ['#e0261c', '#ff5a7a', '#fffbe8'];
 /** How many candidates stand on the back riser (the rest stand in front). */
@@ -385,6 +387,19 @@ export function recruitScreen(): HTMLElement {
     tell(founding ? `${hero(id).name}が主将ですね！ 特別作戦「${hero(id).passive}」を、最初から使えます。` : `${hero(id).name}が新しい主将ですね！ たのもしいです。`, 'cheer');
   };
 
+  /** The manager's lessons of the first briefing: after the captain, and when everybody is there. */
+  const lesson = (): void => {
+    if (!lessonDue(season, 'r3')) return;
+    clearGoal();
+    // (hands that are filling the places by themselves are not interrupted)
+    if (filling && !full()) {
+      markLesson(season, 'r2');
+      return;
+    }
+    const id = full() ? 'r3' : picked.length === 1 ? 'r2' : '';
+    if (id) setTimeout(() => root.isConnected && !leaving && void teach(season, id), full() ? 900 : 1100);
+  };
+
   const sign = (id: number): void => {
     const el = cands.get(id)!;
     const isCaptain = lead && picked.length === 0;
@@ -416,6 +431,7 @@ export function recruitScreen(): HTMLElement {
         burst(c.x, c.y, { color: [TALENT_COLOR[talent(id)], '#fffbe8'], count: 10, power: 0.6, shape: ['star', 'rect'] });
       }
       syncLamps();
+      lesson();
       if (isCaptain) crown(id, true);
       else {
         sfx.recruit();
@@ -452,6 +468,7 @@ export function recruitScreen(): HTMLElement {
   const unsign = (id: number): void => {
     const el = cands.get(id)!;
     const wasCaptain = lead && picked[0] === id;
+    clearGoal();
     picked.splice(picked.indexOf(id), 1);
     el.classList.remove('in');
     kick(el, 'out');
@@ -478,7 +495,7 @@ export function recruitScreen(): HTMLElement {
       tell(`部員は${NEED}人までです。入れかえるなら、先にだれかの入部をとりやめましょう。`, 'think');
     } else {
       sign(id);
-      guideEvent(save(), 'first_pick');
+      guideEvent(save(), 'captain');
     }
   };
 
@@ -534,6 +551,8 @@ export function recruitScreen(): HTMLElement {
       if (!root.isConnected) return;
       placeSpot();
       if (!picked.length) advise();
+      // a new coach: the manager introduces herself and the club
+      void teach(season, 'r1');
     }, 500);
   };
   root.addEventListener('shown', enter);

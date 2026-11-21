@@ -18,7 +18,8 @@ import { callFor, type Beat, type Call, type CallNames } from '../game/calls';
 import { hero } from '../game/heroes';
 import {
   FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
-  fgChance, halftimeTalk, huddle, keyHeroes, kickBlock, kickPicks, kickerOf, outlook, patChance, resolvePlay, senseHint, specialBlock, specialPick,
+  createStory, dropStory, storyFresh,
+  fgChance, halftimeTalk, huddle, keyHeroes, kickBlock, kickPicks, kickerOf, onsideChance, outlook, patChance, resolvePlay, senseHint, specialBlock, specialPick,
   usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
 import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
@@ -32,6 +33,9 @@ import { changeList, settingsModal } from './shared';
 import { fameReport } from './standing';
 import { Stadium } from './stadium';
 import { ROUTE_LABEL } from './stadium/choreo';
+import { lessonDue } from '../game/tutorial';
+import { guideEvent } from './platform';
+import { clearGoal, teach } from './tutor';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足' } as const;
 
@@ -48,6 +52,7 @@ const hintText = (hint: Hint, onOffense: boolean): string => {
 interface Snap {
   score: [number, number]; mom: [number, number]; poss: 0 | 1; down: number; toGo: number; pos: number; quarter: number; left: number; sudden: boolean;
   tfp: boolean;
+  ko: boolean;
 }
 
 export function matchScreen(): [HTMLElement, () => void] {
@@ -58,10 +63,34 @@ export function matchScreen(): [HTMLElement, () => void] {
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
-  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!), schoolId(s, p.opp)), newSeed());
+  const sheets = (): [typeof home, typeof away] => [clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!), schoolId(s, p.opp))];
+  // a new coach's very first match is a told story (the manager's lessons: game/tutorial.ts)
+  const told = s.results.length === 0 && lessonDue(s, 'm1');
+  const st: MatchState = loadMatch() ?? (told ? createStory(...sheets(), newSeed()) : createMatch(...sheets(), newSeed()));
   storeMatch(st);
   const [home, away] = st.teams;
-  const firstEver = save().seasons === 0 && s.results.length === 0;
+  /** The coach wants no story: an ordinary match from the first quarter if nothing has been played, else what is left of this one. */
+  const leaveStory = (): void => {
+    if (storyFresh(st)) {
+      const plain = createMatch(...sheets(), newSeed());
+      for (const k of Object.keys(st)) delete (st as unknown as Record<string, unknown>)[k];
+      Object.assign(st, plain);
+    } else dropStory(st);
+    storeMatch(st);
+    // (an ordinary first match: the booth gives its two short tips)
+    taughtOff = false;
+    taughtDef = false;
+  };
+  /** the manager's lesson that goes with the story's next play, and the one card it asks for */
+  const storyStep = (): { lesson: string; only?: OffType } | null => {
+    if (!st.script) return null;
+    if (storyFresh(st)) return { lesson: 'm1' };
+    if (st.ko) return { lesson: 'm2' };
+    return ({ 5: { lesson: 'm3', only: 'inside' }, 4: { lesson: 'm4', only: 'short' }, 3: { lesson: 'm5' } } as Record<number, { lesson: string; only?: OffType }>)[st.script.length] ?? null;
+  };
+  /** cards the coach has played in this match (the first ones are steps of the tutorial) */
+  let called = 0;
+  const firstEver = save().seasons === 0 && s.results.length === 0 && !st.script;
   let taughtOff = !firstEver;
   let taughtDef = !firstEver;
   let alive = true;
@@ -129,7 +158,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   // ------------------------------------------------------------------ scorebug
   const snap = (): Snap => ({
     score: [...st.score] as [number, number], mom: [...st.mom] as [number, number], poss: st.poss, down: st.down, toGo: st.toGo,
-    pos: st.pos, quarter: st.quarter, left: st.left, sudden: st.sudden, tfp: !!st.tfp,
+    pos: st.pos, quarter: st.quarter, left: st.left, sudden: st.sudden, tfp: !!st.tfp, ko: !!st.ko,
   });
   let shown: Snap | null = null;
   const scoreEls: HTMLElement[] = [];
@@ -158,7 +187,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       team(0),
       h('div.bug-mid',
         h('div.bug-clock', v.sudden ? h('b.hot', '延長') : h('b', `第${v.quarter}Q`), v.sudden ? h('span', '次の1点で決着') : h('span.plays', plays)),
-        v.tfp
+        v.ko ? h('div.bug-down', h('b', 'キックオフ'))
+          : v.tfp
           // the try after a touchdown: no downs, one chance
           ? h('div.bug-down.late', h('span.downs', h('i.now.tfp', 'TFP')), h('b', `キック${PAT_POINTS}点・プレー${TWO_POINTS}点`))
           : h('div.bug-down', { class: v.down >= 3 ? 'late' : '' },
@@ -171,7 +201,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     const x = (u: number): number => (v.poss === 0 ? u : FIELD - u) / FIELD * 100;
     map.replaceChildren(
       h('i.map-end.home', { style: { background: home.color } }), h('i.map-end.away', { style: { background: away.color } }),
-      h('i.map-go', { style: { left: `${Math.min(x(v.pos), x(Math.min(FIELD, v.pos + v.toGo)))}%`, width: `${Math.abs(x(Math.min(FIELD, v.pos + v.toGo)) - x(v.pos))}%` } }),
+      ...(v.ko ? [] : [h('i.map-go', { style: { left: `${Math.min(x(v.pos), x(Math.min(FIELD, v.pos + v.toGo)))}%`, width: `${Math.abs(x(Math.min(FIELD, v.pos + v.toGo)) - x(v.pos))}%` } })]),
       h('i.map-ball', { class: v.poss === 0 ? 'right' : 'left', style: { left: `${x(v.pos)}%`, '--team': st.teams[v.poss].color } }));
     // scores count up, new momentum announces itself
     ([0, 1] as const).forEach((t) => {
@@ -188,7 +218,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     const late = st.quarter >= QUARTERS ? 0.2 : st.quarter >= 3 ? 0.1 : 0;
     return Math.min(1, 0.25 + Math.max(st.mom[0], st.mom[1]) * 0.07 + close + late + (FIELD - st.pos <= 12 ? 0.15 : 0));
   };
-  const isClutch = (): boolean => !st.tfp && (st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3) || st.sudden);
+  const isClutch = (): boolean => !st.tfp && !st.ko && (st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3) || st.sudden);
 
   // ------------------------------------------------------------------ history (what each side has been calling)
   const history: { mine: boolean; name: string; result: string; special: boolean; good: boolean }[] = [];
@@ -213,6 +243,18 @@ export function matchScreen(): [HTMLElement, () => void] {
     stage.replaceChildren();
     // the play is over: the play-by-play clears the right side for the huddle
     casterEl.replaceChildren();
+    // the told story: the manager speaks before what happens by itself (their kick, the kickoff)
+    const step = storyStep();
+    if (step && !step.only && step.lesson !== 'm5' && lessonDue(s, step.lesson)) {
+      hand.classList.remove('in');
+      busy = true;
+      void teach(s, step.lesson).then((how) => {
+        if (!alive || how === 'none') return;
+        if (how === 'skipped') leaveStory();
+        turn();
+      });
+      return;
+    }
     const onOffense = st.poss === 0;
     const side = onOffense ? 'off' : 'def';
     const hot = isClutch();
@@ -222,11 +264,28 @@ export function matchScreen(): [HTMLElement, () => void] {
     stadium.setExcitement(mood());
     // the opponent chooses first, hidden; a sharp hero may sense what is coming
     const theirs = autoPick(st, 1);
-    const hint = senseHint(st, 0, theirs);
+    const ko = !!st.ko;
+    const hint = ko ? null : senseHint(st, 0, theirs);
     const readerPos = onOffense ? 'QB' : 'S';
     const reader = at(home, readerPos).id;
     const voices = huddle(st, 0);
     const tfp = !!st.tfp;
+    // a kickoff just happens, too: theirs always, ours unless there is something to decide (behind, late: the short kick)
+    if (ko && (!onOffense || kickPicks(st, 0).length < 2)) {
+      hand.classList.remove('in');
+      booth.say(onOffense ? `${home.short}のキックオフです` : `${away.short}のキックオフ。しっかり受けて、前へ戻しましょう`, 'idle');
+      busy = true;
+      void playOut(onOffense ? { type: 'kickoff', star: 1 } : theirs, { type: 'zone', star: 1 });
+      return;
+    }
+    // in the told story nobody calls the defense: their kick just happens
+    if (st.script && !onOffense && isKick(theirs.type)) {
+      hand.classList.remove('in');
+      booth.say(`${away.short}がフィールドゴールをねらいます！`, 'idle');
+      busy = true;
+      void playOut(theirs, { type: 'zone', star: 1 });
+      return;
+    }
     // the other team kicks for its extra point: there is nothing to choose, the kick just happens
     if (tfp && !onOffense && isKick(theirs.type)) {
       hand.classList.remove('in');
@@ -239,10 +298,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     let peeked: null | { ok: boolean } = null;
     let cards: Pick[] = [];
     let dealt = false;
+    /** the told story asks for one card: the others wait their turn */
+    const only = onOffense && !ko ? step?.only : undefined;
+    const lockOf = (c: Pick): boolean => !!only && c.type !== only;
 
     const theirName = (): string => cardName(theirs, onOffense ? 'def' : 'off');
     const prompt = (): void => {
-      if (peeked) booth.say(peeked.ok ? `見えた！ 相手は「${theirName()}」です！` : 'うーん、読めませんでした…。でも好きな作戦をえらべます', peeked.ok ? 'sparkle' : 'sad');
+      if (ko) booth.say('負けています。遠くへ蹴るか、オンサイドキックでボールを取り返しにいくか、えらべます', 'guts');
+      else if (peeked) booth.say(peeked.ok ? `見えた！ 相手は「${theirName()}」です！` : 'うーん、読めませんでした…。でも好きな作戦をえらべます', peeked.ok ? 'sparkle' : 'sad');
       else if (tfp && onOffense) booth.say(kickerOf(home) ? `タッチダウンのあとの追加点！ キックなら${PAT_POINTS}点、プレーで押しこめば${TWO_POINTS}点` : `追加点のチャンス！ キッカーがいないので、プレーで${TWO_POINTS}点をねらいます`, 'guts');
       else if (tfp) booth.say(`${away.short}が${TWO_POINTS}点をねらってきます。ここを止めましょう！`, 'guts');
       else if (onOffense && !taughtOff) booth.say('攻撃です！ カードの◎は得意な相手、×は苦手な相手。相手の守りを予想してえらびましょう', 'wave');
@@ -268,7 +331,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       h('span.voice-text', read ? hintText(hint, onOffense) : v.text));
     };
     const showHuddle = (): void => {
-      if (peeked) {
+      // (nothing to weigh before a kickoff, and in the told story the manager does the talking)
+      if (peeked || ko || st.script) {
         huddleEl.replaceChildren();
         return;
       }
@@ -302,6 +366,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     const playCardNow = (mine: Pick): void => {
       if (busy) return;
       busy = true;
+      clearGoal();
+      called += 1;
+      if (s.results.length === 0 && called <= 2) guideEvent(save(), called === 1 ? 'first_play' : 'second_play');
       unconsider = () => undefined;
       showKeys(null);
       if (mine.special && (mine.special.kind === 'peekOff' || mine.special.kind === 'peekDef')) {
@@ -360,10 +427,10 @@ export function matchScreen(): [HTMLElement, () => void] {
     unconsider = () => consider(null);
 
     const drawHand = (): void => {
-      const basics: Pick[] = peeked
+      const basics: Pick[] = ko ? [] : peeked
         ? (onOffense ? OFF_TYPES : DEF_TYPES).map((type) => cards.find((c) => c.type === type && c.peeked) ?? { type, star: 2, peeked: true })
         : (onOffense ? st.hand.off : st.hand.def);
-      const specials = peeked ? [] : home.specials.filter((sp) => KIND[sp.kind].side === side);
+      const specials = peeked || ko || st.script ? [] : home.specials.filter((sp) => KIND[sp.kind].side === side);
       // kicks: only with a kicker, only with the ball (after a touchdown: the kick for one point)
       const kicks = kickPicks(st, 0).map((k) => cards.find((c) => c.type === k.type) ?? k);
       cards = [...basics, ...kicks, ...specials.map((sp) => cards.find((c) => c.special === sp) ?? specialPick(sp))];
@@ -372,14 +439,16 @@ export function matchScreen(): [HTMLElement, () => void] {
       const nowReady = new Set<string>();
       const els = cards.map((c, i) => {
         const far = isKick(c.type) ? kickBlock(st, 0, c.type) : null;
-        const block = c.special ? specialBlock(st, 0, c.special) : far ? 'position' : null;
+        const block = c.special ? specialBlock(st, 0, c.special) : far ? 'position' : lockOf(c) ? 'side' : null;
         const pct = (v: number): string => `成功 ${Math.round(v * 100)}%`;
         const note = c.type === 'fg' ? [`${FG_POINTS}点`, far ? '遠すぎる' : pct(fgChance(st, 0))]
           : c.type === 'pat' ? [`${PAT_POINTS}点`, pct(patChance(home))]
-            : c.type === 'punt' ? ['陣地を回復', '相手を遠ざける'] : undefined;
+            : c.type === 'punt' ? ['陣地を回復', '相手を遠ざける']
+              : c.type === 'kickoff' ? ['遠くへ蹴る', '相手は自陣から']
+                : c.type === 'onside' ? ['取り返す', pct(onsideChance(home))] : undefined;
         const el = playCard(c, side, {
           note,
-          selected: selected === c, blocked: block ? (far ? '遠すぎる' : BLOCK_TEXT[block]) : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
+          selected: selected === c, blocked: block ? (far ? '遠すぎる' : BLOCK_TEXT[block] || 'あとで') : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
           mom: st.mom[0], index: i, key: true, deal: firstDeal, ev: block ? null : outlook(st, 0, c),
           onpick: () => {
             // a mouse has already looked (hovering): it plays. A finger looks first, and plays on the second tap
@@ -398,13 +467,16 @@ export function matchScreen(): [HTMLElement, () => void] {
           });
           el.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && selected === c && consider(null));
           el.addEventListener('focus', () => el.matches(':focus-visible') && consider(c, el));
+        } else if (lockOf(c)) {
+          el.addEventListener('click', () => booth.say(`いまは「${cardName(cards.find((x) => !lockOf(x))!, side)}」を出してみましょう`, 'idle'));
         } else if (far) {
           el.addEventListener('click', () => booth.say('ここからでは遠すぎて、フィールドゴールは届きません', 'sad'));
         } else if (c.special) {
           const why = BLOCK_TEXT[block];
           el.addEventListener('click', () => booth.say(`${hero(c.special!.owner).name}の「${c.special!.name}」は、いまは使えません（${why}）`, 'sad'));
         }
-        if (block) el.classList.add('spine');
+        // (a card the story keeps for later stays a whole card: it is only waiting)
+        if (block && !lockOf(c)) el.classList.add('spine');
         if (c.special && !block) {
           nowReady.add(c.special.key);
           if (!readyKeys.has(c.special.key)) el.classList.add('ready');
@@ -418,8 +490,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       }
       hand.replaceChildren(
         h('div.hand-side', { class: side },
-          h(tfp ? 'b.try' : 'b', tfp ? 'TFP' : onOffense ? '攻撃' : '守備'),
-          h('span', tfp ? (onOffense ? '追加点！' : '止めろ！') : onOffense ? '進めろ！' : '止めろ！'),
+          h(tfp || ko ? 'b.try' : 'b', ko ? 'キック' : tfp ? 'TFP' : onOffense ? '攻撃' : '守備'),
+          h('span', ko ? 'どう蹴る？' : tfp ? (onOffense ? '追加点！' : '止めろ！') : onOffense ? '進めろ！' : '止めろ！'),
           h('i', { 'aria-hidden': 'true' }, onOffense ? '▶▶▶' : '◆◆◆')),
         h('div.hand-cards', els),
         historyEl(),
@@ -427,7 +499,7 @@ export function matchScreen(): [HTMLElement, () => void] {
           h('p.hand-tip', touchy ? 'タップで下見、もう一度タップで勝負' : 'かざすと下見、クリックで勝負'),
           button('おまかせ', () => {
             if (busy) return;
-            const mine = !peeked ? autoPick(st, 0, theirs)
+            const mine = only ? cards.find((c) => !lockOf(c))! : !peeked ? autoPick(st, 0, theirs)
               : (peeked.ok ? cards.find((c) => c.type === bestAgainst(theirs, onOffense)) : null) ?? cards[0]!;
             playCardNow(mine);
           }, { cls: 'mini alt', key: 'A' })));
@@ -444,7 +516,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       if (n >= 1 && n <= cards.length) {
         const c = cards[n - 1]!;
         // a number looks at the card; the same number again plays it
-        if ((c.special && specialBlock(st, 0, c.special)) || (isKick(c.type) && kickBlock(st, 0, c.type))) sfx.deny();
+        if ((c.special && specialBlock(st, 0, c.special)) || (isKick(c.type) && kickBlock(st, 0, c.type)) || lockOf(c)) sfx.deny();
         else if (selected === c) playCardNow(c);
         else consider(c, hand.querySelectorAll<HTMLElement>('.hand-cards .card')[n - 1]);
       } else if (e.key === 'a' || e.key === 'A') hand.querySelector<HTMLElement>('.hand-go .btn')?.click();
@@ -456,6 +528,21 @@ export function matchScreen(): [HTMLElement, () => void] {
     prompt();
     setTimeout(() => alive && !busy && showHuddle(), 500);
     busy = false;
+    // the told story: the cards are on the table, the manager says what they are, then the coach plays
+    if (step && lessonDue(s, step.lesson)) {
+      busy = true;
+      setTimeout(() => {
+        if (!alive) return;
+        void teach(s, step.lesson).then((how) => {
+          if (!alive || how === 'none') return;
+          if (how === 'skipped') {
+            leaveStory();
+            turn();
+          } else busy = false;
+        });
+      }, 700);
+      return;
+    }
     if (debug.bot) {
       setTimeout(() => {
         if (!alive || busy) return;
@@ -607,7 +694,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         sfx.throwBall(true);
         vibrate(18);
         call('kick');
-        if (kick && kick.type !== 'punt') crowd.ooh();
+        if (kick && (kick.type === 'fg' || kick.type === 'pat')) crowd.ooh();
       },
       onCatch: () => {
         sfx.catchBall();
@@ -628,7 +715,8 @@ export function matchScreen(): [HTMLElement, () => void] {
         sfx.steal();
         flash('#ffffff', 200, 0.5);
         // our stand erupts; when it is our ball that is gone, their corner of the stadium does
-        if (mineOff) {
+        // (an onside kick won back is the kicking team's joy)
+        if (kick ? !mineOff : mineOff) {
           crowd.groan();
           crowd.roar(0.45);
         } else crowd.roar(1);
@@ -662,13 +750,17 @@ export function matchScreen(): [HTMLElement, () => void] {
 
     // ---- telop: what happened
     const tried = !!res.tfp && !kick;
-    const good = kick ? kick.good && kick.type !== 'punt' : tried ? res.points > 0 : res.td || res.firstDown || res.yards >= 5;
+    const koff = kick?.type === 'kickoff';
+    const onside = kick?.type === 'onside';
+    const good = kick ? kick.good && kick.type !== 'punt' && !koff : tried ? res.points > 0 : res.td || res.firstDown || res.yards >= 5;
     const forMe = kick ? (kick.type === 'punt' ? mineOff : kick.good === mineOff)
       : tried ? (res.points > 0) === mineOff
         : res.turnover ? !mineOff : mineOff ? good : !good && res.yards <= 2;
     let head: string;
     if (kick) {
       head = kick.type === 'punt' ? `パント ${kick.dist}ヤード`
+        : koff ? (kick.ret ? `${kick.ret}ヤードのリターン` : 'タッチバック')
+        : onside ? (kick.good ? 'オンサイドキック成功！' : 'オンサイドキック失敗')
         : kick.type === 'fg' ? (kick.good ? 'フィールドゴール！' : 'フィールドゴール失敗')
           : kick.good ? 'キック成功！' : 'キック失敗';
     } else if (tried) head = res.points ? `${TWO_POINTS}点成功！` : `${TWO_POINTS}点ならず`;
@@ -684,7 +776,8 @@ export function matchScreen(): [HTMLElement, () => void] {
     const extra = kick || tried;
     const yardsText = extra ? '' : res.outcome === 'incomplete' || res.turnover === 'int' ? '' : `${res.yards > 0 ? '+' : ''}${res.yards}`;
     const sack = !kick && !tried && res.outcome === 'sack';
-    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg') || sack;
+    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg') || !!onside || sack;
+    if (res.td && mineOff && s.results.length === 0) guideEvent(save(), 'first_td');
     if (res.td) {
       stadium.celebrate('td', res.off);
       if (mineOff) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);
@@ -693,8 +786,11 @@ export function matchScreen(): [HTMLElement, () => void] {
         sfx.firstDown();
         (mineOff ? () => crowd.roar(0.7) : crowd.groan)();
         stadium.celebrate('turnover', res.off);
-      } else if (kick?.type === 'punt') sfx.gain(6);
-      else sfx.stopped(forMe);
+      } else if (kick?.type === 'punt' || koff) sfx.gain(6);
+      else if (onside && kick!.good) {
+        sfx.turnover(forMe);
+        stadium.celebrate('turnover', res.off);
+      } else sfx.stopped(forMe);
     } else if (res.turnover) {
       stadium.celebrate('turnover', (1 - res.off) as 0 | 1);
       sfx.turnover(forMe);
@@ -709,9 +805,9 @@ export function matchScreen(): [HTMLElement, () => void] {
       const r = canvas.getBoundingClientRect();
       pop(r.left + who.x, r.top + who.y - 40 * who.scale, yardsText, res.yards > 0 ? (mineOff ? '' : 'bad') : mineOff ? 'bad' : 'cool');
     }
-    const telop = h('div.telop', { class: `${kick?.type === 'punt' ? 'plain' : forMe ? 'good' : mineOff || res.td || res.turnover || extra ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
+    const telop = h('div.telop', { class: `${kick?.type === 'punt' || koff ? 'plain' : forMe ? 'good' : mineOff || res.td || res.turnover || extra ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
       h('div.telop-band'),
-      big ? h('div.telop-hero', sprite(res.td || kick ? res.carrier : res.defender)) : null,
+      big ? h('div.telop-hero', sprite(onside ? (kick!.good ? res.defender : kick!.returner ?? res.defender) : res.td || kick ? res.carrier : res.defender)) : null,
       h('b', kinetic(head)),
       sack || res.turnover === 'int' || res.turnover === 'fumble' ? h('span.telop-who', hero(res.defender).name) : res.td ? h('span.telop-who', hero(res.carrier).name) : null,
       extra && res.points ? h('span.telop-yards', `+${res.points}`, h('i', '点')) : null,
@@ -721,15 +817,17 @@ export function matchScreen(): [HTMLElement, () => void] {
     root.classList.toggle('telop-up', true);
     booth.say(res.lines[res.lines.length - 1] ?? head, res.td ? (mineOff ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
 
-    const outcomeText = extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : '失敗')
+    const outcomeText = extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : onside && kick!.good ? '成功' : '失敗')
       : res.td ? 'TD' : res.turnover ? '交代' : res.outcome === 'incomplete' ? '失敗' : yardsText;
-    history.unshift({ mine: mineOff, name: tried ? `${TWO_POINTS}点ねらい` : cardName(off, 'off'), result: outcomeText, special: !!off.special, good: mineOff ? good : false });
+    // (an ordinary kickoff is nobody's call: it is not written down)
+    if (!koff) history.unshift({ mine: mineOff, name: tried ? `${TWO_POINTS}点ねらい` : cardName(off, 'off'), result: outcomeText, special: !!off.special, good: mineOff ? good : false });
     if (!kick) history.unshift({ mine: !mineOff, name: cardName(def, 'def'), result: '', special: !!def.special, good: false });
 
     await pause(big ? 900 : 500);
     if (!alive) return;
     // the scoreboard catches up: score rolls, momentum lights, the ball moves on the little map
-    drawBug({ ...snap(), quarter: before.quarter, left: Math.max(0, before.left - 1) });
+    // (a quarter that ended is shown with its last play gone; the next turn turns the page)
+    drawBug(res.period ? { ...snap(), quarter: before.quarter, left: Math.max(0, before.left - 1) } : snap());
     await pause(big ? 1500 : 900);
     if (!alive) return;
     telop.classList.add('out');

@@ -111,7 +111,8 @@ describe('the sideline sign', () => {
       const o = st.poss;
       const def = autoPick(st, (1 - o) as 0 | 1);
       const res = resolvePlay(st, autoPick(st, o, def), def);
-      expect(specOf(res).down).toBe(down);
+      // (a kickoff has no down: the sign stays away)
+      expect(specOf(res).down).toBe(res.kick?.type === 'kickoff' || res.kick?.type === 'onside' ? undefined : down);
     }
   });
 });

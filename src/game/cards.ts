@@ -11,13 +11,17 @@ export const DEF_TYPES: readonly DefType[] = ['stuff', 'contain', 'zone', 'deep'
 export const isRun = (t: OffType): boolean => t === 'inside' || t === 'outside';
 
 /** Kicks: cards a team only has when somebody is its kicker. 'pat' is the kick after a touchdown. */
-export type KickType = 'fg' | 'punt' | 'pat';
-export const KICK_TYPES: readonly KickType[] = ['fg', 'punt', 'pat'];
-export const isKick = (t: string): t is KickType => t === 'fg' || t === 'punt' || t === 'pat';
+export type KickType = 'fg' | 'punt' | 'pat' | 'kickoff' | 'onside';
+export const KICK_TYPES: readonly KickType[] = ['fg', 'punt', 'pat', 'kickoff', 'onside'];
+export const isKick = (t: string): t is KickType => (KICK_TYPES as readonly string[]).includes(t);
+/** the kicks that put the ball in play (after a score, and when a half begins) */
+export const isKickoff = (t: string): t is 'kickoff' | 'onside' => t === 'kickoff' || t === 'onside';
 export const KICK_INFO: Record<KickType, { name: string; text: string }> = {
   fg: { name: 'フィールドゴール', text: 'ゴールの間に蹴りこんで3点。外すと、その場所から相手の攻撃' },
   punt: { name: 'パント', text: '遠くへ蹴って、相手の攻撃を遠い場所から始めさせる' },
   pat: { name: 'キック', text: 'ゴールの間に蹴りこめば1点。プレーで押しこむより確実' },
+  kickoff: { name: 'キックオフ', text: '遠くへ蹴って、相手に自陣の深い所から攻めさせる' },
+  onside: { name: 'オンサイドキック', text: '短く蹴って、自分たちでボールを取り返しにいく。失敗すると相手はゴールの近くから' },
 };
 
 export interface CardInfo {

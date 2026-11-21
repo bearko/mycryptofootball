@@ -1,3 +1,4 @@
+import { opened } from './open';
 import { describe, expect, it } from 'vitest';
 import { KIND, MATCH, OFF_TYPES, DEF_TYPES, READ_POTENCY } from '../src/game/cards';
 import { FOUNDERS, RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
@@ -166,7 +167,7 @@ describe('match', () => {
 
   it('deals three plays and three calls', () => {
     const [a, b] = sheets();
-    const st = createMatch(a, b, 5);
+    const st = opened(a, b, 5);
     expect(st.hand.off).toHaveLength(3);
     expect(st.hand.def).toHaveLength(3);
     expect(new Set(st.hand.off.map((c) => c.type)).size).toBe(3);
@@ -175,7 +176,7 @@ describe('match', () => {
 
   it('four plays without ten yards hands the ball over where it is', () => {
     const [a, b] = sheets();
-    const st = createMatch(a, b, 9);
+    const st = opened(a, b, 9);
     const o = st.poss;
     // a long pass into deep coverage, four times
     let last;
@@ -201,7 +202,7 @@ describe('match', () => {
     const spot = positions.find((p) => !info.roles || info.roles.includes(roleOf(p)))!;
     s.lineup = place(s.lineup, info.side, spot, r.id);
     s.day = 6;
-    const st = createMatch(clubSheet(s), opponentSheet(0), seed);
+    const st = opened(clubSheet(s), opponentSheet(0), seed);
     const sp = st.teams[0].specials.find((x) => x.kind === kind)!;
     return { st, pick: specialPick(sp) };
   };

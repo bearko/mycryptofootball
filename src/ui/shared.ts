@@ -15,6 +15,7 @@ import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
 import { TALENT_COLOR, button, cheerAt, closeModal, gauge, genChip, gradeChip, modal, portrait, radar, trustGauge } from './kit';
 import { openChat, platformOn } from './platform';
+import { lessonsModal } from './tutor';
 
 /** Where a member plays: "QB / S", or "控え". */
 export function positions(s: Season, id: number): string {
@@ -96,6 +97,7 @@ export function helpModal(): void {
     ['格', '部の格は 素人・同好会・弱小・注目株・中堅・強豪・名門 の7段階。試合に勝つとゲージがたまり、いっぱいで昇格。負けると減って、空になると降格。格が上がると部員と練習カードがふえ、大会も相手も大きくなる（下がれば相手も弱くなる）。素人は1回戦に勝てば同好会。'],
     ['攻撃', '4回の攻撃で10ヤード進めば、また4回攻められる。相手側の端まで運べばタッチダウンで6点。'],
     ['キック', 'キッカー（編成でえらぶ）がいると、キックのカードが出る。フィールドゴールは3点、パントは相手を遠ざける。タッチダウンのあとはもう1プレー：キックなら1点、プレーで運べば2点。'],
+    ['キックオフ', '前半と後半のはじめと、得点のあとは、キックオフで相手にボールをわたす（得点したほうが蹴る）。第4クォーターで負けているときだけ、短く蹴って取り返しにいく「オンサイドキック」もえらべる。'],
     ['作戦カード', '攻撃も守備も、配られたカードから1枚えらぶ。相手のカードとの相性（◎と×）で結果が大きく変わる。'],
     ['ヒーロー', '全員が一芸もち。得意に合うポジションに置くと活躍する。地区大会は6人制、県大会から上は11人制。攻撃の組と守備の組は、べつべつに組める。'],
     ['卒業', '部員は3年で卒業する。年のおわりに3年生が部を去り、春の入部説明会で1年生をむかえる。卒業したヒーローの名前をつぐ後輩（2代目）が、しばらくして入ってくることもある。'],
@@ -151,6 +153,7 @@ export function settingsModal(): void {
   const row = (name: string, note: string, control: HTMLElement): HTMLElement => h('div.set-row', h('span', name, h('small', note)), control);
   const draw = (): void => {
     const rows: (HTMLElement | null)[] = [
+      row('チュートリアル', '説明をもう一度', h('div.seg', h('button', { type: 'button', onclick: lessonsModal }, '場面をえらぶ'))),
       row('音楽', '', slider(p.bgm, (v) => { p.bgm = v; }, () => undefined)),
       row('効果音', '歓声もふくむ', slider(p.se, (v) => { p.se = v; }, () => sfx.cardConfirm())),
       row('演出', 'ゆれ・光・スロー', seg(p.motion, [[true, 'フル'], [false, 'ひかえめ']], (v) => { p.motion = v; })),

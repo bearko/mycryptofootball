@@ -11,6 +11,7 @@ import './styles/policy.css';
 import './styles/lineup.css';
 import './styles/match.css';
 import './styles/end.css';
+import './styles/tutor.css';
 
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';

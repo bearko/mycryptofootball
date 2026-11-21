@@ -293,7 +293,7 @@ export class Guide {
       this.arc = { seg: throwSeg, pts, landed: -1 };
       // a pass that comes down in the end zone for the score, or a kick that is good: the arc itself is the golden road
       const sp = script.spec;
-      this.gold = sp.kick ? sp.kick.good && sp.kick.type !== 'punt' : sp.td && script.tTD > 0 && script.tTD - script.tCatch < 0.2;
+      this.gold = sp.kick ? sp.kick.good && (sp.kick.type === 'fg' || sp.kick.type === 'pat') : sp.td && script.tTD > 0 && script.tTD - script.tCatch < 0.2;
     }
   }
 

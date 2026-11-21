@@ -13,12 +13,14 @@ import { ICON, icon, shortName } from './ground/bits';
 import { TALENT_COLOR, button, closeModal, gradeChip, modal, portrait, rankChip, statIcon } from './kit';
 import { guideEvent } from './platform';
 import { positions } from './shared';
+import { clearGoal, teach } from './tutor';
 
 const PRESETS: Preset[] = ['talent', 'offense', 'defense'];
 
 export function policyPanel(s: Season, onClose: () => void): void {
   const open = policyOpen(s);
   const done = (): void => {
+    clearGoal();
     closeModal();
     onClose();
   };
@@ -109,4 +111,6 @@ export function policyPanel(s: Season, onClose: () => void): void {
         }, { cls: 'go big', sound: 'confirm' })
         : button('とじる', done, { sound: 'back' })));
   modal(body, { title: open ? 'ミーティング：練習の方針' : '練習の方針', cls: 'wide pol-panel', sticky: open });
+  // the first meeting of a new coach: the manager says what is decided here
+  if (open) setTimeout(() => body.isConnected && void teach(s, 'c2'), 500);
 }

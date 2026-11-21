@@ -17,6 +17,7 @@ import {
 import { asPlayer, clubSheet, learned, member } from '../game/season';
 import { burst, center, countUp, kick, motion, pop, ring, sparks } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, modalOpen, portrait, speech, statIcon } from './kit';
+import { teach } from './tutor';
 import { bestRoles } from './shared';
 
 type Unit = 'off' | 'def';
@@ -801,6 +802,8 @@ export function lineupScreen(back: () => void): HTMLElement {
       if (!root.isConnected) return;
       syncMeters(false);
       advise();
+      // the first visit of a new coach: the manager says what this board is
+      void teach(s, 'l1');
     }, 450);
   };
   root.addEventListener('shown', enter);

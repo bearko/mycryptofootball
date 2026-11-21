@@ -106,3 +106,4 @@
 .card.kick .card-art .pass, .card.kick .card-art .head { stroke: #0f7a44; }
 .card.kick .card-vs i:last-child { color: var(--ink); }
 .card-name.long { font-size: calc(var(--fs-s) * 0.74); letter-spacing: -0.08em; }
+.card-name.xlong { font-size: calc(var(--fs-s) * 0.62); letter-spacing: -0.1em; }
