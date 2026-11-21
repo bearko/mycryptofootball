@@ -34,7 +34,11 @@ export interface Recruit {
 const s = (spd: number, pas: number, cat: number, blk: number, tkl: number, iq: number): Stats =>
   ({ spd, pas, cat, blk, tkl, iq });
 
-/** Four heroes for each of the six abilities: the first twelve were there from the start, the rest came with the bigger clubs. */
+/**
+ * Everybody who may join the club. The first twenty-four (four for each of the six abilities, every special play twice)
+ * are the ones who come to the briefing of a new club; the others turn up in later springs, as the years go by
+ * and the first heroes graduate.
+ */
 export const RECRUITS: readonly Recruit[] = [
   { id: 5019, stats: s(72, 30, 42, 22, 34, 38), kind: 'powerRun', blurb: '崖も駆け下りる俊足。ボールを持たせれば誰にも止められない', line: '崖だろうと坂だろうと、まっすぐ駆け下りるのみ！' },
   { id: 3038, stats: s(66, 26, 46, 18, 36, 44), kind: 'trick', blurb: '煙にまぎれる忍び。相手の読みをすり抜けて走る', line: '煙が晴れたときには、もうゴールの向こうでござる。' },
@@ -60,7 +64,41 @@ export const RECRUITS: readonly Recruit[] = [
   { id: 5032, stats: s(44, 16, 26, 38, 68, 30), kind: 'rush', blurb: '二刀の剣豪。一直線に踏みこんで、かならずしとめる', line: '間合いに入れば、もう逃がさぬ。' },
   { id: 4050, stats: s(26, 44, 34, 16, 18, 72), kind: 'peekDef', blurb: '待って勝つ軍師。相手の攻めを見てから手を打つ', line: '急ぐことはありません。相手が動いてからで、間に合います。' },
   { id: 5002, stats: s(32, 42, 32, 20, 20, 70), kind: 'peekOff', blurb: '戦場を見わたす将軍。守りのうすい所を見つけて突く', line: '守りのうすい所は、かならずある。そこを突くのだ。' },
+  // ---- the later generations
+  { id: 1004, stats: s(67, 24, 42, 22, 34, 44), kind: 'trick', blurb: '動物を追いつづけた博物学者。けもの道をよく知っている', line: '足あとを見れば、どこが空いているか分かるんだ。' },
+  { id: 2030, stats: s(69, 26, 44, 16, 30, 40), kind: 'trick', blurb: '舞で都を驚かせた踊り手。ひらりとかわして走る', line: 'さあさあ、ごらんあれ。ひらりとかわしてみせましょう。' },
+  { id: 3006, stats: s(70, 22, 40, 26, 38, 30), kind: 'powerRun', blurb: '森のモンスター。はねるように外を駆けぬける', line: 'ピョーン！（走るのが大好き、と言っている）' },
+  { id: 3022, stats: s(71, 28, 40, 20, 32, 38), kind: 'powerRun', blurb: '森と川を駆けた少女。風のように外を走る', line: '風といっしょに走るの。だれにも追いつけないわ。' },
+  { id: 4015, stats: s(66, 30, 46, 14, 28, 42), kind: 'trick', blurb: '皇帝を夢中にさせた美女。見とれている間に走りぬける', line: '見とれているうちに、通りすぎてしまいますわよ。' },
+  { id: 2018, stats: s(34, 67, 34, 20, 26, 42), kind: 'sureShort', blurb: '戦国の姫。ねらった所へ、きっちり届ける', line: 'ねらいは外しませぬ。しっかり受けとりなさい。' },
+  { id: 3020, stats: s(40, 68, 36, 14, 20, 44), kind: 'sureShort', blurb: '国を動かした舞姫。思いどおりの所へボールを届ける', line: 'ねらった相手は、けっして外しませんわ。' },
+  { id: 3021, stats: s(32, 69, 30, 24, 22, 44), kind: 'sureLong', blurb: '想いを届けた聖人。遠くの仲間にも、まっすぐ届ける', line: '想いは、遠くまで届くものです。ボールも同じですよ。' },
+  { id: 3028, stats: s(36, 70, 32, 18, 18, 46), kind: 'sureLong', blurb: '光を追いかけた画家。遠くの景色までよく見えている', line: '遠くまで、よく見えるよ。あそこに投げよう。' },
+  { id: 3041, stats: s(38, 66, 38, 18, 20, 46), kind: 'sureShort', blurb: 'やさしい絵の名手。受けやすいボールを投げる', line: '受けやすいボールを投げるよ。安心して走って。' },
+  { id: 2016, stats: s(50, 24, 67, 16, 24, 42), kind: 'flyLong', blurb: '皇帝の末娘。高く上がったボールにも、しなやかに手が届く', line: 'どんなに高くても、あきらめません。' },
+  { id: 2024, stats: s(46, 22, 66, 20, 32, 40), kind: 'steal', blurb: '踊りで王をとりこにした姫。ほしいものは必ず手に入れる', line: 'ほしいものは、いただくわ。そのボールもね。' },
+  { id: 2032, stats: s(52, 26, 68, 14, 22, 44), kind: 'flyLong', blurb: '想像の翼をもつ作家。遠くへ飛んだボールを追いかける', line: '想像してみて。あのボールを、わたしが捕るところを！' },
+  { id: 3004, stats: s(48, 24, 69, 16, 30, 40), kind: 'steal', blurb: '伝説の踊り子。相手のふところから、するりと奪う', line: '秘密もボールも、気づいたときには私の手の中よ。' },
+  { id: 3035, stats: s(44, 28, 70, 14, 20, 46), kind: 'flyLong', blurb: '歌の名人。舞いおちるボールを、そっと受けとめる', line: '花が散るように落ちてくるボール。そっと受けとめましょう。' },
+  { id: 2007, stats: s(22, 16, 22, 69, 44, 34), kind: 'pushRun', blurb: '大きな袋をかつぐ力もち。雪の夜でも止まらない', line: 'ほっほっほ。重い荷物なら、毎年はこんでおるよ。' },
+  { id: 3005, stats: s(20, 14, 20, 71, 50, 28), kind: 'wall', blurb: '水のモンスター。大きな体で流れをせき止める', line: 'ザブーン！（ここは通さない、と言っている）' },
+  { id: 3024, stats: s(26, 18, 22, 68, 46, 32), kind: 'pushRun', blurb: '大きな絵を描きつづけた画家。どっしり構えて押しこむ', line: '大きく、力づよく。絵もブロックも同じことさ。' },
+  { id: 4011, stats: s(22, 18, 18, 70, 48, 36), kind: 'wall', blurb: '分厚い本を書いた思想家。肩を組んだ壁は破れない', line: '団結せよ！ 肩を組めば、この壁は破れない。' },
+  { id: 4034, stats: s(24, 20, 20, 67, 44, 40), kind: 'wall', blurb: '正体不明の発明家。くずれない仕組みで仲間を守る', line: 'この壁は、だれにも書きかえられない。' },
+  { id: 2028, stats: s(38, 16, 22, 42, 68, 26), kind: 'roar', blurb: '国を守って立ち上がった姉妹。2人がかりで相手を止める', line: '姉妹そろえば、こわいものなし！' },
+  { id: 3001, stats: s(42, 14, 20, 40, 70, 22), kind: 'rush', blurb: '炎のモンスター。まっすぐ突っこんで燃やしつくす', line: 'ガオーッ！（まっすぐ行くぞ、と言っている）' },
+  { id: 4002, stats: s(34, 18, 26, 44, 66, 34), kind: 'wall', blurb: 'ランプを手に夜も見回った看護師。守ると決めたら通さない', line: 'ここから先へは、一歩も通しません。' },
+  { id: 4021, stats: s(44, 16, 24, 36, 69, 24), kind: 'rush', blurb: '燃えるように描いた画家。情熱のままに飛びこむ', line: '燃えているんだ。止まってなんか、いられない！' },
+  { id: 4046, stats: s(32, 14, 18, 48, 71, 22), kind: 'roar', blurb: '何をされても倒れなかった怪僧。にらむだけで相手がすくむ', line: 'わしは倒れん。倒れるのは、おまえたちのほうだ。' },
+  { id: 1001, stats: s(28, 42, 34, 18, 20, 72), kind: 'peekDef', blurb: '名探偵の生みの親。相手の攻めを推理で見抜く', line: '初歩的なことだよ、監督。相手の次の手は、もう分かっている。' },
+  { id: 1007, stats: s(30, 40, 36, 16, 22, 68), kind: 'peekOff', blurb: '宮廷の料理人で医女。相手の様子をよく見ている', line: '顔色を見れば分かります。あそこが、いま弱っています。' },
+  { id: 2025, stats: s(26, 44, 32, 18, 18, 70), kind: 'peekDef', blurb: '正体不明の発明家。相手の動きをすべて記録している', line: '記録はうそをつかない。次の一手は、もう読めている。' },
+  { id: 2027, stats: s(32, 38, 36, 18, 20, 69), kind: 'peekOff', blurb: 'たとえ話の名人。相手のすきを、ちゃんと見ている', line: 'ウサギが寝ているうちに、カメは進むのです。' },
+  { id: 3017, stats: s(24, 44, 34, 20, 18, 73), kind: 'peekDef', blurb: 'はるか西へ旅した僧。相手の心の動きを見通す', line: 'あわてることはありません。相手の心が、よく見えます。' },
+  { id: 3030, stats: s(30, 46, 32, 14, 18, 71), kind: 'peekOff', blurb: '人の心を描いた劇作家。相手の次のせりふが分かる', line: '攻めるべきか、待つべきか。答えは相手の顔に書いてある。' },
 ];
+/** how many of them come to the briefing of a new club (the first ones in the list) */
+export const FOUNDERS = 24;
 
 export const recruit = (id: number): Recruit => {
   const r = RECRUITS.find((x) => x.id === id);

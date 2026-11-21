@@ -4,7 +4,7 @@ import { playBgm, sfx } from '../core/audio';
 import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
-import { RECRUITS, hero } from '../game/heroes';
+import { FOUNDERS, RECRUITS, hero } from '../game/heroes';
 import { bestLineup } from '../game/lineup';
 import type { TeamSheet } from '../game/match';
 import { tierOf } from '../game/prestige';
@@ -20,7 +20,7 @@ import { Stadium } from './stadium';
 
 /** A club made of the first six recruits, for scenes that need a team before a season exists. */
 export function demoSheet(): TeamSheet {
-  const players = RECRUITS.filter((_, i) => i % 2 === 0).map((r) => ({ id: r.id, name: hero(r.id).name, stats: r.stats }));
+  const players = RECRUITS.slice(0, FOUNDERS).filter((_, i) => i % 2 === 0).map((r) => ({ id: r.id, name: hero(r.id).name, stats: r.stats }));
   return { name: TEAM_NAME, short: TEAM_SHORT, color: TEAM_COLOR, players, lineup: bestLineup(players), specials: [], runBias: 0.5, smart: 0.5 };
 }
 

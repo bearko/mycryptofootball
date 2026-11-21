@@ -9,11 +9,11 @@ import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { ROLE_LABEL, STATS, STAT_LABEL, defPos, fit, offPos, roleOf, type Role, type Stats } from '../game/model';
 import {
-  STA_MAX, STA_TIRED, TRUST_BOOST, TRUST_LEARN, TRUST_MAX, boosted, learned, member, type Change, type Member, type Season,
+  GRADES, STA_MAX, STA_TIRED, TRUST_BOOST, TRUST_LEARN, TRUST_MAX, boosted, learned, member, type Change, type Member, type Season,
 } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
-import { TALENT_COLOR, button, cheerAt, closeModal, gauge, modal, portrait, radar, trustGauge } from './kit';
+import { TALENT_COLOR, button, cheerAt, closeModal, gauge, genChip, gradeChip, modal, portrait, radar, trustGauge } from './kit';
 import { openChat, platformOn } from './platform';
 
 /** Where a member plays: "QB / S", or "控え". */
@@ -77,7 +77,8 @@ export function memberModal(s: Season, m: Member): void {
     h('div.member-top',
       h('div.member-who',
         portrait(m.id, { color: TALENT_COLOR[best] }),
-        h('h3', hero(m.id).name, m.captain ? h('span.label.hot', '主将') : null)),
+        h('h3', hero(m.id).name, m.captain ? h('span.label.hot', '主将') : null),
+        h('p.member-year', gradeChip(m.grade), genChip(m.gen), m.grade >= GRADES ? h('span', '今年で卒業') : null)),
       h('div.member-say', h('p.member-line', `「${r.line}」`), h('p', r.blurb), h('p.dim', `いまは ${positions(s, m.id)}。${bestRoles(m.stats)}`),
         h('div.member-trust', h('span', `信頼 ${m.trust}`), trustGauge(m.trust)),
         h('div.member-trust', h('span', `体力 ${m.sta}`), gauge(m.sta / STA_MAX, { color: m.sta < STA_TIRED ? '#ff8a3d' : '#7dff8a' }),
@@ -91,12 +92,13 @@ export function memberModal(s: Season, m: Member): void {
 
 export function helpModal(): void {
   const rules: [string, string][] = [
-    ['目標', '春の大会で3回勝って優勝する。大会は負けたらその年はおしまい。部はそのまま次の年へつづく。'],
+    ['目標', '春の大会で3回勝って優勝する。大会は負けたらその年はおしまい。部はそのまま次の年へつづく（部員は入れかわっていく）。'],
     ['格', '部の格は 素人・同好会・弱小・注目株・中堅・強豪・名門 の7段階。試合に勝つとゲージがたまり、いっぱいで昇格。負けると減って、空になると降格。格が上がると部員と練習カードがふえ、大会も相手も大きくなる（下がれば相手も弱くなる）。素人は1回戦に勝てば同好会。'],
     ['攻撃', '4回の攻撃で10ヤード進めば、また4回攻められる。相手側の端まで運べばタッチダウンで6点。'],
     ['キック', 'キッカー（編成でえらぶ）がいると、キックのカードが出る。フィールドゴールは3点、パントは相手を遠ざける。タッチダウンのあとはもう1プレー：キックなら1点、プレーで運べば2点。'],
     ['作戦カード', '攻撃も守備も、配られたカードから1枚えらぶ。相手のカードとの相性（◎と×）で結果が大きく変わる。'],
     ['ヒーロー', '全員が一芸もち。得意に合うポジションに置くと活躍する。地区大会は6人制、県大会から上は11人制。攻撃の組と守備の組は、べつべつに組める。'],
+    ['卒業', '部員は3年で卒業する。年のおわりに3年生が部を去り、春の入部説明会で1年生をむかえる。卒業したヒーローの名前をつぐ後輩（2代目）が、しばらくして入ってくることもある。'],
     ['練習', '月〜土は練習カードを1枚えらぶと1日進む。ヒーローは経験を、育成方針で決めた能力に変える。日曜は試合。'],
     ['ランク', '能力の数字の目安。G・F・E・D・C・B・A・S・SS の順に高い（SSは100以上）。月がかわると先月の成長をふり返る。「成長」ボタンでいつでも見られる。'],
     ['体力', '練習すると減る。半分を切るとバテて、練習が身につきにくくなり、試合でも動きが落ちる。「休養」で戻る。'],

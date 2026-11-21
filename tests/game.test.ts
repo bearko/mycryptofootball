@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { KIND, MATCH, OFF_TYPES, DEF_TYPES, READ_POTENCY } from '../src/game/cards';
-import { RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
+import { FOUNDERS, RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
 import { bestLineup, fielded, place, unitsOf, validLineup } from '../src/game/lineup';
 import {
   FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, halftimeTalk, potency, resolvePlay, simulate, specialBlock, specialPick,
@@ -30,24 +30,39 @@ const basic = (key: (typeof PRACTICE_KEYS)[number], star = 2): PracticeCard => (
 
 describe('heroes', () => {
   it('each recruit is outstanding at exactly one thing', () => {
-    expect(RECRUITS).toHaveLength(24);
+    expect(RECRUITS.length).toBeGreaterThanOrEqual(48);
     const count: Record<string, number> = {};
-    for (const r of RECRUITS) {
+    const first: Record<string, number> = {};
+    RECRUITS.forEach((r, i) => {
       const { best } = talentOf(r.stats);
       count[best] = (count[best] ?? 0) + 1;
+      if (i < FOUNDERS) first[best] = (first[best] ?? 0) + 1;
       const sorted = STATS.map((k) => r.stats[k]).sort((a, b) => b - a);
-      expect(sorted[0]! - sorted[1]!).toBeGreaterThanOrEqual(14);
+      expect(sorted[0]! - sorted[1]!, hero(r.id).name).toBeGreaterThanOrEqual(14);
       expect(hero(r.id).passive.length).toBeGreaterThan(0);
-    }
-    expect(Object.values(count)).toEqual([4, 4, 4, 4, 4, 4]);
+      expect(r.blurb.length).toBeGreaterThan(5);
+      expect(r.line.length).toBeGreaterThan(5);
+      // the special play fits the talent: a runner runs, a passer passes
+      const talents: Record<string, string[]> = {
+        spd: ['powerRun', 'trick'], pas: ['sureLong', 'sureShort'], cat: ['flyLong', 'steal'],
+        blk: ['wall', 'pushRun'], tkl: ['roar', 'rush', 'wall'], iq: ['peekDef', 'peekOff'],
+      };
+      expect(talents[best], `${hero(r.id).name}: ${r.kind}`).toContain(r.kind);
+    });
+    // the heroes of a new club: four for each ability; over all, every ability has plenty
+    expect(Object.values(first)).toEqual([4, 4, 4, 4, 4, 4]);
+    for (const n of Object.values(count)) expect(n).toBeGreaterThanOrEqual(8);
     expect(new Set(RECRUITS.map((r) => r.id)).size).toBe(RECRUITS.length);
   });
 
-  it('every kind of special play belongs to two recruits', () => {
+  it('every kind of special play belongs to two of the heroes of a new club, and to more later', () => {
     const kinds = new Map<string, number>();
-    for (const r of RECRUITS) kinds.set(r.kind, (kinds.get(r.kind) ?? 0) + 1);
+    for (const r of RECRUITS.slice(0, FOUNDERS)) kinds.set(r.kind, (kinds.get(r.kind) ?? 0) + 1);
     expect(kinds.size).toBe(12);
     expect([...kinds.values()].every((n) => n === 2)).toBe(true);
+    const all = new Map<string, number>();
+    for (const r of RECRUITS) all.set(r.kind, (all.get(r.kind) ?? 0) + 1);
+    expect([...all.values()].every((n) => n >= 4)).toBe(true);
   });
 
   it('opponents field six heroes who are not recruits, with a full line-up', () => {

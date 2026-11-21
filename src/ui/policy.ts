@@ -10,7 +10,7 @@ import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import { PRESET_LABEL, applyPreset, policyOpen, presetFocus, setFocus, type Member, type Preset, type Season } from '../game/season';
 import { burst, center, kick, ring } from './fx';
 import { ICON, icon, shortName } from './ground/bits';
-import { TALENT_COLOR, button, closeModal, modal, portrait, rankChip, statIcon } from './kit';
+import { TALENT_COLOR, button, closeModal, gradeChip, modal, portrait, rankChip, statIcon } from './kit';
 import { guideEvent } from './platform';
 import { positions } from './shared';
 
@@ -31,7 +31,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
     const el = h('div.pol-col', { style: { '--i': String(i) } },
       h('div.pol-who',
         portrait(m.id, { color: TALENT_COLOR[best] }),
-        h('b', shortName(m.id)),
+        h('b', shortName(m.id), gradeChip(m.grade)),
         h('span', where.map((w) => h('i', w)))),
       h('div.pol-stats', STATS.map((k) => {
         const mark = k === best ? h('i.pol-rec', { title: '得意：少ない経験でのびる' }, 'おすすめ') : k === worst ? h('i.pol-hard', { title: '苦手：のびにくい' }, '△') : null;

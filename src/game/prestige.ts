@@ -22,11 +22,11 @@ export interface Tier {
 export const TIERS: readonly Tier[] = [
   { name: '素人', roster: 7, hand: 5, cup: '地区大会', level: 0, join: 0, size: 6 },
   { name: '同好会', roster: 9, hand: 5, cup: '地区大会', level: 7, join: 4, size: 6 },
-  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 11, join: 8, size: 11 },
-  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 17, join: 12, size: 11 },
-  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 23, join: 17, size: 11 },
-  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 30, join: 21, size: 11 },
-  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 36, join: 25, size: 11 },
+  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 9, join: 9, size: 11 },
+  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 15, join: 13, size: 11 },
+  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 21, join: 17, size: 11 },
+  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 28, join: 21, size: 11 },
+  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 32, join: 25, size: 11 },
 ];
 /** the tournaments, the smallest first */
 export const CUPS: readonly string[] = ['地区大会', '県大会', '地方大会', '全国大会'];

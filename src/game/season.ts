@@ -13,7 +13,7 @@
 
 import { Rng, clamp } from '../core/rng';
 import { READ_MAX } from './cards';
-import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
+import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { applyResult, tierOf, type FameChange } from './prestige';
@@ -112,7 +112,14 @@ export interface Member {
   sta: number;
   /** the training policy: the ability this hero is working on */
   focus: Stat;
+  /** the school year: 1 to GRADES. A hero in the last one leaves when the year is over */
+  grade: number;
+  /** 2 for a hero who carries on the name of one who graduated from this club ("2代目"), and so on (missing: the first) */
+  gen?: number;
 }
+
+/** how many years a hero stays */
+export const GRADES = 3;
 
 export const tired = (m: Member): boolean => m.sta < STA_TIRED;
 /** How much of a practice a hero takes in at this stamina (1 when fresh, down to 0.4 when spent). */
@@ -325,6 +332,10 @@ export interface Season {
   league: number;
   /** a new month has begun: the review of the last one is shown before the day's practice */
   review?: boolean;
+  /** everybody who has graduated from this club: how many of that name (`n`), and the year the last of them left */
+  alumni: Record<number, { n: number; year: number }>;
+  /** who left when the last year ended (for the spring's first words) */
+  left?: number[];
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -334,7 +345,7 @@ export function newSeason(seed: number): Season {
   // nine of the twelve come to the briefing; every ability is represented at least once
   let candidates: number[] = [];
   for (;;) {
-    candidates = rng.shuffle(RECRUITS.map((r) => r.id)).slice(0, CANDIDATES);
+    candidates = rng.shuffle(RECRUITS.slice(0, FOUNDERS).map((r) => r.id)).slice(0, CANDIDATES);
     const talents = new Set(candidates.map((id) => talentOf(recruit(id).stats).best));
     if (talents.size === STATS.length) break;
   }
@@ -342,7 +353,7 @@ export function newSeason(seed: number): Season {
   return {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
-    year: 1, tier: 0, fame: 0, league: 0, draw: [...FIRST_DRAW],
+    year: 1, tier: 0, fame: 0, league: 0, draw: [...FIRST_DRAW], alumni: {},
   };
 }
 
@@ -351,9 +362,18 @@ const keep = (s: Season, rng: Rng): void => {
   s.rs = rng.s;
 };
 
+/** Is the club being founded (its first briefing)? */
+export const founding = (s: Season): boolean => s.year === 1 && !s.members.length;
+/** Does the first hero signed at this briefing become captain? (a new club, or one whose heroes have all graduated) */
+export const needsCaptain = (s: Season): boolean => !s.members.some((m) => m.captain);
+/** The heroes in their last year: they leave when it is over. */
+export const graduating = (s: Season): Member[] => s.members.filter((m) => m.grade >= GRADES);
+/** Which of that name a hero would be if he joined now (2: the second to carry it in this club). */
+export const genOf = (s: Season, id: number): number => (s.alumni?.[id]?.n ?? 0) + 1;
+
 /** How many heroes sign at this briefing: seven when the club is founded, later as many as its standing has room for. */
 export function joinCount(s: Season): number {
-  if (!s.members.length) return ROSTER_SIZE;
+  if (founding(s)) return ROSTER_SIZE;
   return Math.max(0, Math.min(tierOf(s.tier).roster - s.members.length, s.candidates.length));
 }
 
@@ -368,6 +388,8 @@ export function fitLineup(s: Season): void {
   const size = clubSize(s);
   if (s.members.length < size) return;
   if (!s.lineup || !validLineup(s.lineup, s.members.map((m) => m.id), size)) s.lineup = bestLineup(s.members.map(asPlayer), size);
+  // the kicker may have graduated
+  else if (s.lineup.k != null && !s.members.some((m) => m.id === s.lineup!.k)) s.lineup.k = bestKicker(s.members.map(asPlayer), s.lineup);
 }
 
 /**
@@ -378,25 +400,30 @@ export function signRecruits(s: Season, ids: number[]): void {
   const want = joinCount(s);
   if (ids.length !== want) throw new Error(`pick ${want} heroes`);
   const rng = rngOf(s);
-  const founding = !s.members.length;
+  const first = founding(s);
+  // a club without a captain (a new one, or one whose heroes have all graduated): the first hero signed leads it
+  const lead = needsCaptain(s);
   // a school with a name draws better beginners
-  const plus = founding ? 0 : tierOf(s.tier).join;
+  const plus = first ? 0 : tierOf(s.tier).join;
   const joined: Member[] = ids.map((id, i) => {
     const base = recruit(id).stats;
     const stats = { ...base };
     for (const k of STATS) stats[k] = clamp(base[k] + plus, 1, STAT_MAX);
+    const gen = genOf(s, id);
     return {
       id, stats,
-      trust: founding && i === 0 ? TRUST_LEARN : rng.int(5, 15),
-      captain: founding && i === 0,
+      trust: first && i === 0 ? TRUST_LEARN : rng.int(5, 15),
+      captain: lead && i === 0,
       xp: noXp(),
       sta: STA_MAX,
       focus: talentOf(base).best,
+      grade: 1,
+      ...(gen > 1 ? { gen } : {}),
     };
   });
   s.members = [...s.members, ...joined];
   s.candidates = [];
-  if (founding) s.lineup = null;
+  if (first) s.lineup = null;
   fitLineup(s);
   s.phase = 'club';
   s.day = 0;
@@ -413,6 +440,17 @@ export function signRecruits(s: Season, ids: number[]): void {
 export function nextYear(s: Season, seed: number): void {
   if (s.phase !== 'done') throw new Error('the season is not over');
   const rng = new Rng(seed);
+  // graduation: the heroes in their last year leave, everybody else moves up a year
+  const leaving = graduating(s);
+  s.alumni ??= {};
+  for (const m of leaving) s.alumni[m.id] = { n: (s.alumni[m.id]?.n ?? 0) + 1, year: s.year };
+  s.left = leaving.map((m) => m.id);
+  s.members = s.members.filter((m) => m.grade < GRADES);
+  for (const m of s.members) m.grade += 1;
+  // the captain has gone: the oldest of those who stay takes over (between equals, the one who trusts the coach most)
+  if (s.members.length && !s.members.some((m) => m.captain)) {
+    [...s.members].sort((a, b) => b.grade - a.grade || b.trust - a.trust)[0]!.captain = true;
+  }
   s.seed = seed;
   s.year += 1;
   s.league = s.tier;
@@ -427,10 +465,28 @@ export function nextYear(s: Season, seed: number): void {
   for (const m of s.members) m.sta = STA_MAX;
   const room = tierOf(s.tier).roster - s.members.length;
   const have = new Set(s.members.map((m) => m.id));
-  const pool = rng.shuffle(RECRUITS.map((r) => r.id).filter((id) => !have.has(id)));
+  // who may come to the briefing: nobody who is in the club, and nobody whose namesake left only last spring
+  // (unless there would not be enough heroes otherwise)
+  const all = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
+  const rested = all.filter((id) => !s.alumni[id] || s.year - s.alumni[id]!.year >= 2);
+  const shown = (n: number): number => n + Math.min(3, Math.max(1, Math.round(n / 2)));
+  const pool = rng.shuffle(rested.length >= shown(room) ? rested : all);
   if (room > 0 && pool.length) {
-    // a few more come to the briefing than there is room for, so there is a choice to make
-    s.candidates = pool.slice(0, Math.min(pool.length, room + Math.min(3, Math.max(1, Math.round(room / 2)))));
+    // a few more come to the briefing than there is room for, so there is a choice to make;
+    // and they come from every ability in turn, so a club can fill whatever its graduates left open
+    const by = new Map<Stat, number[]>();
+    for (const id of pool) {
+      const t = talentOf(recruit(id).stats).best;
+      by.set(t, [...(by.get(t) ?? []), id]);
+    }
+    const turns = rng.shuffle([...by.keys()]);
+    const want = Math.min(pool.length, shown(room));
+    const picked: number[] = [];
+    for (let k = 0; picked.length < want; k += 1) {
+      const next = by.get(turns[k % turns.length]!)!.shift();
+      if (next !== undefined) picked.push(next);
+    }
+    s.candidates = picked;
     s.candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
     s.phase = 'recruit';
     s.draw = drawSchools(s.league, rng);
@@ -872,6 +928,17 @@ export function mend(s: Season): Season {
   if (typeof s.tier !== 'number') s.tier = 0;
   if (typeof s.fame !== 'number') s.fame = 0;
   if (typeof s.league !== 'number') s.league = s.tier;
+  // school years came later. Nobody is sent away at once: the oldest third of an old club is in its last year
+  // (in a club's first two years everybody still has time), the heroes who joined last are first-years
+  s.alumni ??= {};
+  if (s.members.some((m) => typeof m.grade !== 'number')) {
+    const n = s.members.length;
+    s.members.forEach((m, i) => {
+      if (typeof m.grade === 'number') return;
+      const founders = i < ROSTER_SIZE;
+      m.grade = s.year <= 2 ? (founders ? s.year : 1) : Math.max(1, GRADES - Math.floor((i * GRADES) / n));
+    });
+  }
   // the yearly draw came later: a district club keeps the four schools it knew, the others get a draw of their tournament
   if (!Array.isArray(s.draw) || s.draw.length !== 4) s.draw = tierOf(s.league).cup === tierOf(0).cup ? [...FIRST_DRAW] : drawSchools(s.league, new Rng(s.seed));
   // eleven a side came later: a club that plays in the prefecture or above gets a line-up of eleven
