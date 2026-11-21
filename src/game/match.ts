@@ -312,6 +312,208 @@ export function senseHint(st: MatchState, t: 0 | 1, oppPick: Pick): Hint {
   return isRun(oppPick.type as OffType) ? 'run' : 'pass';
 }
 
+// ------------------------------------------------------------------ what the player is shown before choosing
+
+/** What losing the ball is counted as, in yards, when a card's outlook is worked out. */
+const TURNOVER_COST = 12;
+/** A normal curve in seven steps (value, weight): enough for an estimate. */
+const BELL: readonly [number, number][] = [[-1.8, 0.05], [-1.2, 0.1], [-0.6, 0.2], [0, 0.3], [0.6, 0.2], [1.2, 0.1], [1.8, 0.05]];
+
+/**
+ * The yards a play of this quality is worth on average (a lost ball counts against it).
+ * It follows resolvePlay() without rolling any dice: an estimate for the number on the cards, never the result.
+ */
+function worth(type: OffType, q: number, blitz: boolean, room: number, safe = false): number {
+  const lose = safe ? 0 : TURNOVER_COST;
+  let y: number;
+  if (type === 'inside') y = clamp(Math.round(3.5 + 2 * q), -2, 9) + (q > 2.4 ? 5 : 0) - (q < -2.3 ? 0.15 * lose : 0);
+  else if (type === 'outside') y = clamp(Math.round(3 + 3.2 * q), -5, 14) + (q > 1.9 ? 0.55 * 15 : 0) - (q < -2.4 ? 0.12 * lose : 0);
+  else if (type === 'short') {
+    if (q < -2.3) y = -0.45 * lose + (blitz ? 0.55 * -5.5 : 0);
+    else if (blitz && q < -1.6) y = -5.5;
+    else if (q < -0.9) y = 0;
+    else y = clamp(Math.round(5 + 2.2 * q), 2, 13) + (q > 2.2 ? 0.4 * 10.5 : 0);
+  } else if (blitz && q < 0) y = -6.5;
+  else if (q < -1.5) y = -0.5 * lose;
+  else if (q < 1) y = 0;
+  else y = clamp(Math.round(17 + 6 * (q - 1)), 15, 40);
+  return Math.min(y, room);
+}
+
+/**
+ * A rough 1..10 for a card in team t's hand, not knowing what the other side will call:
+ * the abilities of the heroes involved against the ones across from them, the card's stars, a special's push.
+ * On offense it is the ground the play should gain; on defense, how little it should give up.
+ * A guide, not a promise: the other side's card still decides most of it. null for a "look first" special.
+ */
+export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
+  const me = st.teams[t];
+  const opp = st.teams[1 - t];
+  const onOffense = st.poss === t;
+  const room = FIELD - st.pos;
+  const sp = pick.special;
+  if (sp && isPeek(sp)) return null;
+  const pot = sp ? potency(st, t, sp) : 0;
+  const star = 0.3 * (pick.star - 1);
+  // the other side's card is unknown: its stars count as the average deal
+  const THEIR_STARS = 0.2;
+  if (onOffense) {
+    const type = pick.type as OffType;
+    const kind = sp?.kind as OffKind | undefined;
+    const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE;
+    const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3 : 0;
+    let sum = 0;
+    for (const d of DEF_TYPES) {
+      let m = MATCH[type][d];
+      if (kind === 'trick') m = Math.max(m, m + (1 - m) * Math.min(1, pot));
+      for (const [z, w] of BELL) {
+        const q = adv + m + star - THEIR_STARS + push * pot + z * SD[type];
+        let y = worth(type, q, d === 'blitz', room, kind === 'sureLong' || kind === 'sureShort');
+        if (kind === 'flyLong' && q >= 1) y = Math.min(room, y + 8 * pot);
+        if ((kind === 'powerRun' || kind === 'pushRun') && q > -2.3) y = Math.max(y, (kind === 'powerRun' ? 4 : 3) * Math.min(1, pot));
+        sum += w * y;
+      }
+    }
+    return clamp(Math.round(1 + (sum / DEF_TYPES.length) * 0.75), 1, 10);
+  }
+  // defense: what the other side's plays should gain against this call, weighted by how much they like to run
+  const call = pick.type as DefType;
+  const kind = sp?.kind as DefKind | undefined;
+  let sum = 0;
+  for (const type of OFF_TYPES) {
+    const share = (isRun(type) ? opp.runBias : 1 - opp.runBias) / 2;
+    const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE;
+    let m = kind && kind !== 'peekDef' ? DEF_SPECIAL_MATCH[kind][type] : MATCH[type][call];
+    if (kind === 'roar') m -= 1.6 * pot;
+    if (kind === 'rush' && type !== 'outside') m -= 0.9 * pot;
+    if (kind === 'wall' && type !== 'long') m -= 0.8 * pot;
+    const blitz = call === 'blitz' && kind !== 'steal' && kind !== 'wall' && kind !== 'roar';
+    for (const [z, w] of BELL) {
+      let y = worth(type, adv + m - star + THEIR_STARS + z * SD[type], blitz, room);
+      if (kind === 'wall' && type !== 'long') y = Math.min(y, 1 + (1 - Math.min(1, pot)) * 5);
+      if (kind === 'steal') y -= (isRun(type) ? 0.12 : type === 'short' ? 0.55 : 0.7) * pot * TURNOVER_COST;
+      sum += share * w * y;
+    }
+  }
+  return clamp(Math.round(10 - sum * 0.9), 1, 10);
+}
+
+/** The heroes a card is about, the one who matters most first (at most three). */
+export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; pos: OffPos | DefPos }[] {
+  const me = st.teams[t];
+  const onOffense = st.poss === t;
+  let order: (OffPos | DefPos)[];
+  if (onOffense) {
+    const type = pick.type as OffType;
+    if (type === 'inside') order = ['RB', 'OL1', 'OL2'];
+    else if (type === 'outside') order = ['RB', 'OL1', 'OL2'];
+    else {
+      const [best, other] = receivers(me, type as 'short' | 'long');
+      order = type === 'short' ? ['QB', best, other] : ['QB', best, 'OL1'];
+    }
+  } else {
+    const call = pick.type as DefType;
+    order = ({
+      stuff: ['DL1', 'DL2', 'LB'], contain: ['LB', 'CB1', 'CB2'], zone: ['CB1', 'CB2', 'LB'], deep: ['S', 'CB1', 'CB2'], blitz: ['DL1', 'DL2', 'LB'],
+    } as Record<DefType, DefPos[]>)[call];
+  }
+  const out = order.map((pos) => ({ id: at(me, pos).id, pos }));
+  const sp = pick.special;
+  if (sp) {
+    // the hero whose play it is comes first, wherever they line up
+    const i = out.findIndex((k) => k.id === sp.owner);
+    const own = i >= 0 ? out.splice(i, 1)[0]! : { id: sp.owner, pos: ownerPos(me, sp) ?? out[0]!.pos };
+    out.unshift(own);
+  }
+  return out.slice(0, 3);
+}
+
+// ---- the huddle: before each play the heroes on the field say how their own match-up looks
+
+/** What a hero talks about: one of the four ways to attack, or where the whole thing is weakest ("gap"). */
+export type Topic = OffType | 'gap';
+export interface Voice {
+  id: number;
+  pos: OffPos | DefPos;
+  /** the speaker's judgment: the higher, the more their word is worth */
+  iq: number;
+  topic: Topic;
+  /** for a "gap": the way to attack the speaker points at */
+  points?: OffType;
+  text: string;
+  /** how it sounds for the speaker's own team */
+  tone: 'good' | 'bad' | 'even' | 'vague';
+}
+
+const OFF_LINES: Record<OffType, [string, string, string, string, string]> = {
+  inside: ['中央は押しこめます！', '中央は少し押せてます', '中央は五分五分です', '相手のDLが重い…中央は苦しいです', '中央は完全に押し負けてます'],
+  outside: ['外なら走り勝てる！', '外は少し分がある', '外は五分だな', '相手のLBが速い、外はきつい', '外は追いつかれる…'],
+  short: ['CBには勝ってる、短いのください！', '短いパスなら通りそう', 'マークは五分です', 'CBが離れない…短いのは厳しい', '完全に張りつかれてます'],
+  long: ['奥、抜けます！', '奥は少し空きそうです', '奥は五分です', 'Sが深い…奥は厳しい', '奥は完全に見張られてます'],
+};
+const DEF_LINES: Record<OffType, [string, string, string, string, string]> = {
+  inside: ['中央は止められます！', '中央は少し分があります', '中央は五分です', '相手のOLが強い…中央は押されます', '中央は割られます…'],
+  outside: ['外は任せろ！', '外は少し分がある', '外は五分だ', '相手のRBが速い、外が怖い', '外は走り負ける…'],
+  short: ['WRは抑えてます！', '短いパスは少し分があります', 'マークは五分です', 'WRが速い…短いのは通されそう', 'WRに振り切られてます…'],
+  long: ['奥は通さない！', '奥は少し分があります', '奥は五分です', '奥を狙われると危ない', '奥は走り負けてます…'],
+};
+const VAGUE = ['うーん…よくわかりません', 'やってみないとわからん！', 'とにかく全力でいきます！', '…気合いです！'];
+const PLAY_NAME: Record<OffType, string> = { inside: '中央ラン', outside: '外ラン', short: 'ショートパス', long: 'ロングパス' };
+
+/**
+ * The huddle before a play: two heroes of the unit on the field say how their own match-up looks,
+ * and now and then somebody says where the whole thing is weakest.
+ * They judge the real difference in ability, and the sharper the hero (judgment), the closer they get:
+ * a dull one is often wrong, or has nothing to say. Rolls its own dice: the match does not change.
+ */
+export function huddle(st: MatchState, t: 0 | 1): Voice[] {
+  const me = st.teams[t];
+  const opp = st.teams[1 - t];
+  const onOffense = st.poss === t;
+  const rng = new Rng((st.rng.s ^ Math.imul(st.n + 1, 0x9e3779b1)) >>> 0);
+  /** how far ahead the speaker's own side really is, for one way to attack */
+  const real = (type: OffType): number => (onOffense ? offRating(me, type) - defRating(opp, type) : defRating(me, type) - offRating(opp, type));
+  const seen = (iq: number, type: OffType): number => real(type) + rng.normal() * (100 - iq) * 0.2;
+  const speak = (pos: OffPos | DefPos, topic: Topic): Voice => {
+    const hero = at(me, pos);
+    const iq = hero.stats.iq;
+    const base = { id: hero.id, pos, iq, topic };
+    if (iq < 40 && rng.chance((40 - iq) / 50)) return { ...base, text: rng.pick(VAGUE), tone: 'vague' };
+    if (topic === 'gap') {
+      const view = OFF_TYPES.map((type) => [type, seen(iq, type)] as const).sort((a, b) => b[1] - a[1]);
+      const [best, worst] = [view[0]!, view[view.length - 1]!];
+      if (onOffense) {
+        return {
+          ...base, points: best[0], tone: best[1] >= 3 ? 'good' : 'even',
+          text: best[1] - worst[1] < 4 ? 'どこも同じくらいだ。読み合いで勝とう' : `狙い目は${PLAY_NAME[best[0]]}。${PLAY_NAME[worst[0]]}は固いぞ`,
+        };
+      }
+      return {
+        ...base, points: worst[0], tone: worst[1] <= -3 ? 'bad' : 'even',
+        text: best[1] - worst[1] < 4 ? 'どこも同じくらいです。読み合いで止めましょう' : `${PLAY_NAME[worst[0]]}を狙われそうです。${PLAY_NAME[best[0]]}は怖くない`,
+      };
+    }
+    const v = seen(iq, topic);
+    const i = v >= 8 ? 0 : v >= 3 ? 1 : v > -3 ? 2 : v > -8 ? 3 : 4;
+    return { ...base, text: (onOffense ? OFF_LINES : DEF_LINES)[topic][i], tone: i < 2 ? 'good' : i === 2 ? 'even' : 'bad' };
+  };
+  // who talks about what; the round changes with every play
+  let table: [OffPos | DefPos, Topic][];
+  if (onOffense) {
+    const [short] = receivers(me, 'short');
+    const [long, other] = receivers(me, 'long');
+    table = [[st.n % 2 ? 'OL1' : 'OL2', 'inside'], ['RB', 'outside'], [short, 'short'], [long === short ? other : long, 'long'], ['QB', 'gap']];
+  } else {
+    table = [[st.n % 2 ? 'DL1' : 'DL2', 'inside'], ['LB', 'outside'], [st.n % 2 ? 'CB1' : 'CB2', 'short'], ['S', 'long'], ['S', 'gap']];
+  }
+  const a = st.n % table.length;
+  let b = (st.n * 2 + 2) % table.length;
+  if (b === a) b = (b + 1) % table.length;
+  // nobody speaks twice in one huddle
+  if (table[b]![0] === table[a]![0]) b = (b + 1) % table.length;
+  return [speak(...table[a]!), speak(...table[b]!)];
+}
+
 // ------------------------------------------------------------------ the computer's play calling
 
 const keyMoment = (st: MatchState): boolean =>
