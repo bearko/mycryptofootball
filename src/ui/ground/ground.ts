@@ -5,7 +5,7 @@
 import { h } from '../../core/dom';
 import { prefs } from '../../core/save';
 import { fielded } from '../../game/lineup';
-import { DEF_POS, OFF_POS, roleOf, type Role } from '../../game/model';
+import { defPos, offPos, roleOf, type Role } from '../../game/model';
 import { TEAM_COLOR, clubSheet, type PracticeKey, type Season } from '../../game/season';
 import { Stadium } from '../stadium';
 import { fallbackGround } from './fallback';
@@ -53,8 +53,8 @@ export function postsOf(s: Season): Record<number, { off: Role | null; def: Role
   const out: Record<number, { off: Role | null; def: Role | null; k?: boolean }> = {};
   const l = s.lineup;
   for (const m of s.members) {
-    const off = l ? OFF_POS.find((p) => l.off[p] === m.id) : undefined;
-    const def = l ? DEF_POS.find((p) => l.def[p] === m.id) : undefined;
+    const off = l ? offPos(l).find((p) => l.off[p] === m.id) : undefined;
+    const def = l ? defPos(l).find((p) => l.def[p] === m.id) : undefined;
     out[m.id] = { off: off ? roleOf(off) : null, def: def ? roleOf(def) : null, k: l?.k === m.id };
   }
   return out;

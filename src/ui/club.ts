@@ -10,9 +10,9 @@ import { h, wait } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
-import { STATS, STAT_LABEL, type Stat } from '../game/model';
+import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, labelOf, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, labelOf, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { OPPONENTS, aces } from '../game/teams';
@@ -72,6 +72,7 @@ function contextLine(s: Season): Line {
       ? [`${OPPONENTS[last.opp]!.name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
+  if (s.day === 0 && s.year > 1 && sizeOf(s.lineup!) === 11) return [`今年は${cupOf(s)}。試合は11人制です！ 「編成」で、11人の並びを見ておきましょう。`, 'point'];
   if (s.day === 0) return ['下のカードが今日の練習メニュー。1枚えらぶと1日進みます。', 'wave'];
   const worn = s.members.filter(tired);
   if (worn.length >= 3) return [`${worn.length}人がバテ気味です。バテると練習が身につきにくい…「休養」も立派な練習ですよ。`, 'think'];

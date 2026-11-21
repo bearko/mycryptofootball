@@ -16,7 +16,7 @@ import {
   DEF_SPECIAL_MATCH, DEF_TYPES, KICK_INFO, KIND, MATCH, OFF_TYPES, READ_MAX, READ_POTENCY, isKick, isRun,
   type DefKind, type DefType, type KickType, type OffKind, type OffType, type SpecialCard,
 } from './cards';
-import { fit, kickFit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
+import { defPos, fit, kickFit, offPos, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Role } from './model';
 
 export const FIELD = 50;
 export const START = 15;
@@ -189,20 +189,35 @@ export const at = (t: TeamSheet, pos: OffPos | DefPos): Player =>
   byId(t, pos in t.lineup.off ? t.lineup.off[pos as OffPos] : t.lineup.def[pos as DefPos]);
 const r = (t: TeamSheet, pos: OffPos | DefPos): number => fit(at(t, pos).stats, roleOf(pos));
 const avg = (a: number, b: number): number => (a + b) / 2;
+/** The positions of one kind in a team's line-up, in order (two linemen six a side, five when it is eleven). */
+export function group<P extends OffPos | DefPos = OffPos | DefPos>(t: TeamSheet, ...roles: Role[]): P[] {
+  return ([...offPos(t.lineup), ...defPos(t.lineup)] as (OffPos | DefPos)[]).filter((p) => roles.includes(roleOf(p))) as P[];
+}
+/** How good a team is at one kind of position: the mean over everybody who plays it. */
+const rr = (t: TeamSheet, ...roles: Role[]): number => {
+  const g = group(t, ...roles);
+  let v = 0;
+  for (const p of g) v += r(t, p);
+  return v / g.length;
+};
 
-/** The better and the other of the two receivers for a throw of this depth. */
+/** The best and the second best target for a throw of this depth (a tight end is thrown short passes too). */
 function receivers(t: TeamSheet, type: 'short' | 'long'): [OffPos, OffPos] {
   const val = (pos: OffPos): number => {
     const s = at(t, pos).stats;
     return type === 'long' ? 0.5 * s.spd + 0.5 * s.cat : r(t, pos);
   };
-  return val('WR1') >= val('WR2') ? ['WR1', 'WR2'] : ['WR2', 'WR1'];
+  const g = type === 'long' ? group<OffPos>(t, 'WR') : group<OffPos>(t, 'WR', 'TE');
+  const sorted = g.map((p, i) => ({ p, i, v: val(p) })).sort((a, b) => b.v - a.v || a.i - b.i);
+  return [sorted[0]!.p, sorted[1]!.p];
 }
 
 export function offRating(t: TeamSheet, type: OffType, target?: OffPos): number {
-  const line = avg(r(t, 'OL1'), r(t, 'OL2'));
-  if (type === 'inside') return 0.45 * r(t, 'RB') + 0.55 * line;
-  if (type === 'outside') return 0.8 * r(t, 'RB') + 0.2 * line;
+  const line = rr(t, 'OL');
+  // on a run the tight end is one more blocker
+  const push = isRun(type) ? rr(t, 'OL', 'TE') : line;
+  if (type === 'inside') return 0.45 * r(t, 'RB') + 0.55 * push;
+  if (type === 'outside') return 0.8 * r(t, 'RB') + 0.2 * push;
   const [best, other] = receivers(t, type);
   const a = target ?? best;
   const b = a === best ? other : best;
@@ -212,12 +227,14 @@ export function offRating(t: TeamSheet, type: OffType, target?: OffPos): number 
 }
 
 export function defRating(t: TeamSheet, type: OffType): number {
-  const dl = avg(r(t, 'DL1'), r(t, 'DL2'));
-  const cb = avg(r(t, 'CB1'), r(t, 'CB2'));
-  if (type === 'inside') return 0.65 * dl + 0.35 * r(t, 'LB');
-  if (type === 'outside') return 0.55 * r(t, 'LB') + 0.45 * cb;
-  if (type === 'short') return 0.6 * cb + 0.25 * r(t, 'LB') + 0.15 * r(t, 'S');
-  return 0.5 * r(t, 'S') + 0.35 * cb + 0.15 * dl;
+  const dl = rr(t, 'DL');
+  const cb = rr(t, 'CB');
+  const lb = rr(t, 'LB');
+  const sf = rr(t, 'S');
+  if (type === 'inside') return 0.65 * dl + 0.35 * lb;
+  if (type === 'outside') return 0.55 * lb + 0.45 * cb;
+  if (type === 'short') return 0.6 * cb + 0.25 * lb + 0.15 * sf;
+  return 0.5 * sf + 0.35 * cb + 0.15 * dl;
 }
 
 /** Four numbers that sum a team up, for the line-up screen. */
@@ -478,8 +495,7 @@ export function keyHeroes(st: MatchState, t: 0 | 1, pick: Pick): { id: number; p
   let order: (OffPos | DefPos)[];
   if (onOffense) {
     const type = pick.type as OffType;
-    if (type === 'inside') order = ['RB', 'OL1', 'OL2'];
-    else if (type === 'outside') order = ['RB', 'OL1', 'OL2'];
+    if (isRun(type)) order = ['RB', 'OL1', 'OL2'];
     else {
       const [best, other] = receivers(me, type as 'short' | 'long');
       order = type === 'short' ? ['QB', best, other] : ['QB', best, 'OL1'];
@@ -572,12 +588,17 @@ export function huddle(st: MatchState, t: 0 | 1): Voice[] {
   };
   // who talks about what; the round changes with every play
   let table: [OffPos | DefPos, OffType | 'gap'][];
+  // the speaker for a kind of position changes from play to play (six a side: the first of two on odd plays)
+  const turn = <P extends OffPos | DefPos>(...roles: Role[]): P => {
+    const g = group<P>(me, ...roles);
+    return g[(st.n + 1) % g.length]!;
+  };
   if (onOffense) {
     const [short] = receivers(me, 'short');
     const [long, other] = receivers(me, 'long');
-    table = [[st.n % 2 ? 'OL1' : 'OL2', 'inside'], ['RB', 'outside'], [short, 'short'], [long === short ? other : long, 'long'], ['QB', 'gap']];
+    table = [[turn('OL'), 'inside'], ['RB', 'outside'], [short, 'short'], [long === short ? other : long, 'long'], ['QB', 'gap']];
   } else {
-    table = [[st.n % 2 ? 'DL1' : 'DL2', 'inside'], ['LB', 'outside'], [st.n % 2 ? 'CB1' : 'CB2', 'short'], ['S', 'long'], ['S', 'gap']];
+    table = [[turn('DL'), 'inside'], [turn('LB'), 'outside'], [turn('CB'), 'short'], [turn('S'), 'long'], ['S', 'gap']];
   }
   const a = st.n % table.length;
   let b = (st.n * 2 + 2) % table.length;
@@ -897,12 +918,16 @@ export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayR
   let targetPos: OffPos = 'RB';
   if (!isRun(type)) {
     const [best, other] = receivers(O, type as 'short' | 'long');
-    targetPos = rng.chance(0.75) ? best : other;
+    // eleven a side, every other short pass that does not go to the first choice goes to the tight end
+    const second = type === 'short' && st.n % 2 && O.lineup.off.TE != null && best !== 'TE' ? 'TE' : other;
+    targetPos = rng.chance(0.75) ? best : second;
     if (ok === 'flyLong') targetPos = ownerPos(O, osp!) as OffPos;
   }
   const carrier = isRun(type) ? O.lineup.off.RB : O.lineup.off[targetPos];
+  // who can be the one to make the stop: the kinds of defender the play runs into
+  const dg = (...roles: Role[]): DefPos[] => roles.flatMap((role) => group<DefPos>(D, role));
   const defPool: Record<OffType, DefPos[]> = {
-    inside: ['DL1', 'DL2', 'LB'], outside: ['LB', 'CB1', 'CB2'], short: ['CB1', 'CB2', 'LB'], long: ['S', 'CB1', 'CB2'],
+    inside: dg('DL', 'LB'), outside: dg('LB', 'CB'), short: dg('CB', 'LB'), long: dg('S', 'CB'),
   };
   let defender = D.lineup.def[rng.weighted(defPool[type], (p) => 10 + r(D, p))];
   if (dsp) defender = dsp.owner;

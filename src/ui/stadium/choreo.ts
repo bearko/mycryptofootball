@@ -6,7 +6,7 @@
 
 import { KIND, isRun, type DefType, type KickType, type OffType } from '../../game/cards';
 import { FIELD, type Outcome, type PlayResult, type TeamSheet } from '../../game/match';
-import { DEF_POS, OFF_POS, type DefPos, type OffPos } from '../../game/model';
+import { DEF_POS_OF, OFF_POS_OF, defPos, offPos, roleOf, sizeOf, type DefPos, type OffPos, type Size } from '../../game/model';
 import { END, WIDTH } from './assets';
 import { clamp, lerp } from './math';
 
@@ -212,22 +212,53 @@ export function specOf(res: PlayResult): PlaySpec {
   };
 }
 
-export function formation(los: number, call?: DefType): { off: Record<OffPos, UV>; def: Record<DefPos, UV> } {
-  const off: Record<OffPos, UV> = {
+/**
+ * Where everybody lines up. Six a side: two linemen, two receivers out wide. Eleven a side: a line of five with
+ * a tight end beside it, a third receiver in the slot; four down linemen, three linebackers, two safeties.
+ * (The six-a-side positions keep their places: the other five fill in around them.)
+ */
+export function formation(los: number, call?: DefType, size: Size = 6): { off: Record<OffPos, UV>; def: Record<DefPos, UV> } {
+  const off = {
     OL1: [los - 1.9, 8.5], OL2: [los - 1.9, 15.5], QB: [los - 5, 12], RB: [los - 8.2, 12.8],
     WR1: [los - 1.9, 2.6], WR2: [los - 1.9, 21.4],
-  };
-  const def: Record<DefPos, UV> = {
+  } as Record<OffPos, UV>;
+  const def = {
     DL1: [los + 1.9, 8.5], DL2: [los + 1.9, 15.5], LB: [los + 5.6, 12], CB1: [los + 4.6, 3], CB2: [los + 4.6, 21], S: [los + 11, 12],
-  };
+  } as Record<DefPos, UV>;
   if (call === 'stuff') { def.LB = [los + 3.6, 12]; def.CB1 = [los + 4, 6]; def.CB2 = [los + 4, 18]; def.S = [los + 8, 12]; }
   if (call === 'contain') { def.CB1 = [los + 2.6, 2.4]; def.CB2 = [los + 2.6, 21.6]; def.LB = [los + 5, 12]; }
   if (call === 'zone') { def.CB1 = [los + 5.8, 4.5]; def.CB2 = [los + 5.8, 19.5]; def.LB = [los + 6.6, 12]; }
   if (call === 'deep') { def.CB1 = [los + 9, 4.5]; def.CB2 = [los + 9, 19.5]; def.S = [los + 15, 12]; }
   if (call === 'blitz') { def.LB = [los + 2.4, 12]; def.S = [los + 7, 12]; def.CB1 = [los + 3.2, 4.5]; def.CB2 = [los + 3.2, 19.5]; }
+  if (size === 11) {
+    // the line closes up around a center, the tight end stands beside it, the third receiver in the slot
+    off.OL1 = [los - 1.9, 8.8];
+    off.OL3 = [los - 1.9, 10.4];
+    off.OL5 = [los - 1.9, 12];
+    off.OL4 = [los - 1.9, 13.6];
+    off.OL2 = [los - 1.9, 15.2];
+    off.TE = [los - 1.9, 16.9];
+    off.WR3 = [los - 3, 5.7];
+    def.DL1 = [los + 1.9, 8.2];
+    def.DL3 = [los + 1.9, 10.8];
+    def.DL4 = [los + 1.9, 13.2];
+    def.DL2 = [los + 1.9, 15.8];
+    // two more linebackers on the wings, the safeties split the deep field
+    const lu = def.LB[0];
+    def.LB2 = [lu - 0.3, 7.2];
+    def.LB3 = [lu - 0.3, 16.8];
+    const su = def.S[0];
+    def.S = [su, 9.2];
+    def.S2 = [su + 0.6, 14.8];
+    if (call === 'stuff') { def.LB2 = [los + 3.3, 8.4]; def.LB3 = [los + 3.3, 15.6]; }
+    if (call === 'contain') { def.LB2 = [los + 3.4, 5.4]; def.LB3 = [los + 3.4, 18.6]; }
+    if (call === 'zone') { def.LB2 = [los + 6.2, 7]; def.LB3 = [los + 6.2, 17]; def.S = [los + 12, 9.4]; def.S2 = [los + 12, 14.6]; }
+    if (call === 'deep') { def.S = [los + 15, 8.6]; def.S2 = [los + 15.5, 15.4]; def.LB2 = [los + 6.4, 6.6]; def.LB3 = [los + 6.4, 17.4]; }
+    if (call === 'blitz') { def.LB2 = [los + 2.7, 6.6]; def.LB3 = [los + 2.7, 17.4]; }
+  }
   // nobody lines up behind the back of an end zone
-  for (const p of DEF_POS) def[p][0] = Math.min(def[p][0], FIELD + 3.6);
-  for (const p of OFF_POS) off[p][0] = Math.max(off[p][0], -3.8);
+  for (const p of DEF_POS_OF[size]) def[p][0] = Math.min(def[p][0], FIELD + 3.6);
+  for (const p of OFF_POS_OF[size]) off[p][0] = Math.max(off[p][0], -3.8);
   return { off, def };
 }
 
@@ -237,11 +268,11 @@ export const worldX = (offense: 0 | 1, u: number): number => (offense === 0 ? u 
 export interface Spot extends Ref { pos: OffPos | DefPos; x: number; z: number; offense: boolean }
 
 export function lineUp(teams: [TeamSheet, TeamSheet], offense: 0 | 1, los: number, call?: DefType): Spot[] {
-  const f = formation(los, call);
   const d = (1 - offense) as 0 | 1;
+  const f = formation(los, call, sizeOf(teams[offense].lineup));
   const out: Spot[] = [];
-  for (const p of OFF_POS) out.push({ team: offense, id: teams[offense].lineup.off[p], pos: p, x: worldX(offense, f.off[p][0]), z: f.off[p][1], offense: true });
-  for (const p of DEF_POS) out.push({ team: d, id: teams[d].lineup.def[p], pos: p, x: worldX(offense, f.def[p][0]), z: f.def[p][1], offense: false });
+  for (const p of offPos(teams[offense].lineup)) out.push({ team: offense, id: teams[offense].lineup.off[p], pos: p, x: worldX(offense, f.off[p][0]), z: f.off[p][1], offense: true });
+  for (const p of defPos(teams[d].lineup)) out.push({ team: d, id: teams[d].lineup.def[p], pos: p, x: worldX(offense, f.def[p][0]), z: f.def[p][1], offense: false });
   return out;
 }
 
@@ -315,8 +346,14 @@ export function buildScript(
   const D = teams[d];
   const los = sp.los;
   const type = sp.type;
-  const base = formation(los);
-  const called = formation(los, sp.call);
+  const size = sizeOf(O.lineup);
+  const OFFP = offPos(O.lineup);
+  const DEFP = defPos(D.lineup);
+  /** the positions of some kinds, in the line-up's order */
+  const og = (...roles: string[]): OffPos[] => OFFP.filter((p) => roles.includes(roleOf(p)));
+  const dg = (...roles: string[]): DefPos[] => DEFP.filter((p) => roles.includes(roleOf(p)));
+  const base = formation(los, undefined, size);
+  const called = formation(los, sp.call, size);
   const special = sp.offStar !== null || sp.defStar !== null;
   const s = fast ? 0.06 : special ? 1.02 : 0.62;
 
@@ -329,9 +366,9 @@ export function buildScript(
     uv.set(p, [at[0], at[1]]);
     return p;
   };
-  for (const p of OFF_POS) mk(o, O.lineup.off[p], p, base.off[p]);
-  for (const p of DEF_POS) mk(d, D.lineup.def[p], p, base.def[p]);
-  const find = (team: 0 | 1, id: number): Plan => plans.find((p) => p.team === team && p.id === id) ?? plans[team === o ? 0 : 6]!;
+  for (const p of OFFP) mk(o, O.lineup.off[p], p, base.off[p]);
+  for (const p of DEFP) mk(d, D.lineup.def[p], p, base.def[p]);
+  const find = (team: 0 | 1, id: number): Plan => plans.find((p) => p.team === team && p.id === id) ?? plans[team === o ? 0 : OFFP.length]!;
   const a = (pos: OffPos): Plan => find(o, O.lineup.off[pos]);
   const b = (pos: DefPos): Plan => find(d, D.lineup.def[pos]);
   const go = (p: Plan, t: number, u: number, v: number, hard = false): void => {
@@ -371,8 +408,8 @@ export function buildScript(
   };
 
   // before the snap: everybody gets set, the defense shows its call
-  for (const p of OFF_POS) go(a(p), s * 0.72, base.off[p][0], base.off[p][1]);
-  for (const p of DEF_POS) go(b(p), s * 0.86, called.def[p][0], called.def[p][1]);
+  for (const p of OFFP) go(a(p), s * 0.72, base.off[p][0], base.off[p][1]);
+  for (const p of DEFP) go(b(p), s * 0.86, called.def[p][0], called.def[p][1]);
   for (const p of plans) {
     // hold still until the ball is snapped
     const last = p.keys[p.keys.length - 1]!;
@@ -392,19 +429,20 @@ export function buildScript(
 
   // the two lines push each other
   const push = sp.outcome === 'gain' ? clamp(sp.yards * 0.3, 0.3, 1.8) : -0.9;
-  for (const p of ['OL1', 'OL2'] as const) {
+  // (on a run the tight end blocks with the line; on a pass he goes out for the ball)
+  for (const p of og('OL', ...(isRun(type) || sp.kick ? ['TE'] : []))) {
     const pl = a(p);
     const [u, v] = base.off[p];
     go(pl, s + 0.26, u + 0.95, v);
     go(pl, s + 1.0, u + 0.9 + push, v + (v < 12 ? -0.3 : 0.3));
   }
-  for (const p of ['DL1', 'DL2'] as const) {
+  for (const p of dg('DL')) {
     const pl = b(p);
     const [u, v] = called.def[p];
     go(pl, s + 0.26, u - 0.95, v);
     go(pl, s + 1.0, u - 0.9 + push, v + (v < 12 ? -0.3 : 0.3));
   }
-  cues.push({ t: s + 0.25, c: 'clash', at: [[X(los), 8.5], [X(los), 15.5]] });
+  cues.push({ t: s + 0.25, c: 'clash', at: size === 11 ? [[X(los), 8.5], [X(los), 12], [X(los), 15.5]] : [[X(los), 8.5], [X(los), 15.5]] });
 
   const qb = a('QB');
   const rb = a('RB');
@@ -458,7 +496,7 @@ export function buildScript(
     }
     cues.push({ t: tK, c: 'kick' });
     // the rush comes anyway, and somebody leaps at the ball
-    for (const p of ['DL1', 'DL2'] as const) go(b(p), tK + 0.1, los - 3.2, called.def[p][1] + (called.def[p][1] < 12 ? 0.8 : -0.8), true);
+    for (const p of dg('DL')) go(b(p), tK + 0.1, los - 3.2, called.def[p][1] + (called.def[p][1] < 12 ? 0.8 : -0.8), true);
     cues.push({ t: tK - 0.05, c: 'jump', who: ref(b('DL1')), h: 0.9, dur: 0.5 });
     const goalU = FIELD + END + 0.1;
     let landU: number;
@@ -565,7 +603,7 @@ export function buildScript(
       ball.push({ t0: tHand - 0.14, t1: tHand + 0.04, kind: 'air', from: [from.x, 1.3, from.z], to: [to.x, 1.3, to.z], h: 0.5, spiral: false });
     }
     cues.push({ t: tHand, c: 'handoff' });
-    for (const p of ['WR1', 'WR2'] as const) {
+    for (const p of og('WR')) {
       const pl = a(p);
       const [u, v] = base.off[p];
       go(pl, s + 0.9, u + 3.5, v);
@@ -625,9 +663,11 @@ export function buildScript(
     const int = sp.outcome === 'int';
     const caught = sp.outcome === 'gain' || sp.outcome === 'nogain' || sp.outcome === 'loss';
     const deep = long ? 18 : 5;
-    const recvPos: OffPos = carrier.pos === 'WR1' || carrier.pos === 'WR2' ? carrier.pos : 'WR1';
+    const targets = og('WR', 'TE');
+    const recvPos: OffPos = targets.includes(carrier.pos as OffPos) ? (carrier.pos as OffPos) : 'WR1';
     const recv = a(recvPos);
-    const other = a(recvPos === 'WR1' ? 'WR2' : 'WR1');
+    /** everybody else who goes out for a pass (six a side: the one other receiver) */
+    const others = targets.filter((p) => p !== recvPos).map((p) => a(p));
     const rv0 = base.off[recvPos][1];
     const inward = rv0 < 12 ? 1 : -1;
     const maxDepth = FIELD - los + 2.6;
@@ -674,17 +714,18 @@ export function buildScript(
         go(pl, s + (t1 - s) * (run / Math.max(0.1, total)), corners[i]![0], corners[i]![1]);
       }
     };
-    {
-      // the other receiver runs a route of his own (it takes his corner with him)
+    others.forEach((other, k) => {
+      // every other receiver runs a route of his own (it takes his defender with him)
       const [u, v] = base.off[other.pos as OffPos];
       const inw = v < 12 ? 1 : -1;
-      const d2 = Math.max(1, Math.min(long ? (sp.n % 2 ? 17 : 12) : sp.n % 3 ? 5.5 : 2.5, maxDepth - 1.5));
+      const n2 = sp.n + k;
+      const d2 = Math.max(1, Math.min(long ? (n2 % 2 ? 17 : 12) : n2 % 3 ? 5.5 : 2.5, maxDepth - 1.5));
       const menu2 = routesFor(long, d2).filter((r) => r !== routeName);
-      const w2 = routeWay(menu2[(pickAt + sp.n) % menu2.length]!, los, v, d2, inw, maxDepth);
+      const w2 = routeWay(menu2[(pickAt + sp.n + k * 2) % menu2.length]!, los, v, d2, inw, maxDepth);
       for (const c of w2) c[1] = clamp(c[1], 1, WIDTH - 1);
       runRoute(other, [u, v], w2, tCatch + 0.25, w2.length);
       draw(other, 'decoy', [[u, v], ...w2]);
-    }
+    });
     // the receiver the ball goes to: every corner but the last, which the outcome decides below
     runRoute(recv, base.off[recvPos], way, tCatch, way.length - 1);
     draw(recv, 'route', [base.off[recvPos], ...way]);
@@ -693,10 +734,11 @@ export function buildScript(
       go(lb, s + 0.75, los - 2.4, 12.6 + (sp.n % 2 ? 1.5 : -1.5));
       moved.add(lb);
     }
-    // the other corner stays with the other receiver
-    {
-      const cb = b(recvPos === 'WR1' ? 'CB2' : 'CB1');
-      if (cb !== defender) {
+    // each of them is covered: the corners on the wide receivers, linebackers on the slot and the tight end
+    const COVER: Partial<Record<OffPos, DefPos>> = { WR1: 'CB1', WR2: 'CB2', WR3: 'LB2', TE: 'LB3' };
+    for (const other of others) {
+      const cb = b(COVER[other.pos as OffPos]!);
+      if (cb !== defender && !moved.has(cb)) {
         go(cb, tCatch + 0.25, U(other) + 1.4, V(other) + (V(other) < 12 ? 0.8 : -0.8));
         moved.add(cb);
       }
@@ -837,12 +879,13 @@ export function buildScript(
   }
 
   // defenders who are not making the play drift toward where it ends
-  for (const p of ['LB', 'CB1', 'CB2', 'S'] as const) {
+  for (const p of dg('LB', 'CB', 'S')) {
     const pl = b(p);
     if (moved.has(pl)) continue;
     const [u, v] = called.def[p];
     go(pl, s + 0.25, u, v);
-    go(pl, Math.max(tEnd, s + 0.6), u + (endU + 1.5 - u) * 0.55, v + (endV - v) * 0.45);
+    // (eleven a side they keep more of their shape: twenty-two heroes in one heap is no picture)
+    go(pl, Math.max(tEnd, s + 0.6), u + (endU + 1.5 - u) * (size === 11 ? 0.34 : 0.55), v + (endV - v) * (size === 11 ? 0.26 : 0.45));
   }
 
   cues.push({ t: endT, c: 'end' });

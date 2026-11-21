@@ -92,11 +92,11 @@ export const KIND: Record<Kind, KindInfo> = {
     text: '外さないショートパス。奪われない。あと少しを確実に取りたいときに',
   },
   flyLong: {
-    side: 'off', cost: 2, base: 'long', roles: ['WR'], tag: '飛距離アップ',
+    side: 'off', cost: 2, base: 'long', roles: ['WR', 'TE'], tag: '飛距離アップ',
     text: 'このヒーローへのロングパス。通りやすく、捕れば普段よりさらに進む',
   },
   pushRun: {
-    side: 'off', cost: 1, base: 'inside', roles: ['OL', 'RB'], tag: '押しこみ',
+    side: 'off', cost: 1, base: 'inside', roles: ['OL', 'TE', 'RB'], tag: '押しこみ',
     text: '中央ランで必ず数ヤード押しこむ。あと少しのときの切り札',
   },
   peekOff: {

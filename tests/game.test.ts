@@ -6,7 +6,7 @@ import {
   FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, halftimeTalk, potency, resolvePlay, simulate, specialBlock, specialPick,
   usePeek, usableSpecials, type MatchState, type Pick,
 } from '../src/game/match';
-import { DEF_POS, OFF_POS, STATS, fit, roleOf } from '../src/game/model';
+import { DEF_POS_OF, OFF_POS_OF, STATS, fit, roleOf } from '../src/game/model';
 import { OPPONENTS, opponentSheet } from '../src/game/teams';
 import {
   CANDIDATES, EVENTS, HAND_SIZE, PRACTICE, PRACTICE_KEYS, REST_STA, ROSTER_SIZE, SCHEDULE, STA_MAX, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
@@ -89,11 +89,11 @@ describe('line-up', () => {
     expect(swapped.off.RB).toBe(l.off.QB);
     expect(swapped.def).toEqual(l.def);
     // somebody who is not on the offense takes a spot there: only that spot changes
-    const sub = ids.find((id) => !OFF_POS.some((p) => l.off[p] === id))!;
+    const sub = ids.find((id) => !OFF_POS_OF[6].some((p) => l.off[p] === id))!;
     const out = l.off.WR1;
     const subbed = place(l, 'off', 'WR1', sub);
     expect(subbed.off.WR1).toBe(sub);
-    expect(OFF_POS.map((p) => subbed.off[p])).not.toContain(out);
+    expect(OFF_POS_OF[6].map((p) => subbed.off[p])).not.toContain(out);
     expect(subbed.def).toEqual(l.def);
     expect(validLineup(subbed, ids)).toBe(true);
     expect(fielded(subbed)).toContain(sub);
@@ -105,23 +105,21 @@ describe('line-up', () => {
 
   it('the best line-up is the best offense and the best defense, each on its own, however big the club', () => {
     const players = RECRUITS.map((r) => ({ id: r.id, name: '', stats: r.stats }));
-    const t0 = Date.now();
-    const l = bestLineup(players);
-    expect(Date.now() - t0).toBeLessThan(500);
-    expect(validLineup(l, players.map((p) => p.id))).toBe(true);
-    const total = (unit: 'off' | 'def'): number =>
-      (unit === 'off' ? OFF_POS : DEF_POS).reduce((v, p) => v + fit(players.find((q) => q.id === (l[unit] as Record<string, number>)[p])!.stats, roleOf(p)), 0);
-    // no single change of one hero makes either unit better
-    for (const unit of ['off', 'def'] as const) {
-      const base = total(unit);
-      for (const pos of unit === 'off' ? OFF_POS : DEF_POS) {
-        for (const q of players) {
-          const alt = place(l, unit, pos, q.id);
-          const v = (unit === 'off' ? OFF_POS : DEF_POS).reduce((sum, p) => sum + fit(players.find((x) => x.id === (alt[unit] as Record<string, number>)[p])!.stats, roleOf(p)), 0);
-          expect(v).toBeLessThanOrEqual(base + 1e-6);
-        }
+    for (const size of [6, 11] as const) {
+      const t0 = Date.now();
+      const l = bestLineup(players, size);
+      expect(Date.now() - t0).toBeLessThan(500);
+      expect(validLineup(l, players.map((p) => p.id), size)).toBe(true);
+      const positions = (unit: 'off' | 'def') => (unit === 'off' ? OFF_POS_OF[size] : DEF_POS_OF[size]);
+      const sum = (x: typeof l, unit: 'off' | 'def'): number =>
+        positions(unit).reduce((v: number, p) => v + fit(players.find((q) => q.id === (x[unit] as Record<string, number>)[p])!.stats, roleOf(p)), 0);
+      // no single change of one hero makes either unit better
+      for (const unit of ['off', 'def'] as const) {
+        const base = sum(l, unit);
+        for (const pos of positions(unit)) for (const q of players) expect(sum(place(l, unit, pos, q.id), unit)).toBeLessThanOrEqual(base + 1e-6);
       }
     }
+    const l = bestLineup(players);
     // with twenty-four to choose from, nobody has to play both ways
     expect(fielded(l).length).toBeGreaterThanOrEqual(10);
   });
@@ -184,7 +182,7 @@ describe('match', () => {
     s.lineup = bestLineup(s.members.map((m) => ({ id: m.id, name: '', stats: m.stats })));
     // and lines up where the play needs them
     const info = KIND[kind];
-    const positions = info.side === 'off' ? OFF_POS : DEF_POS;
+    const positions = info.side === 'off' ? OFF_POS_OF[6] : DEF_POS_OF[6];
     const spot = positions.find((p) => !info.roles || info.roles.includes(roleOf(p)))!;
     s.lineup = place(s.lineup, info.side, spot, r.id);
     s.day = 6;

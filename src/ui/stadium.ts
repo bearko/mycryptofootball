@@ -9,7 +9,7 @@
 
 import { KIND, isKick, type DefType, type OffType } from '../game/cards';
 import { FIELD, type MatchState, type Pick, type PlayResult, type TeamSheet } from '../game/match';
-import { OFF_POS } from '../game/model';
+import { offPos, sizeOf } from '../game/model';
 import {
   ART, ART_PAD, BANDS, CHALK, CROWD_ROWS, END, FX0, FX1, FZ0, FZ1, RIBBON_H, RIBBON_PPY, SURROUND, WIDTH,
   bakeCrowd, bakeField, bakeRibbon, bakeSprites, heroArt, ledColor, loadFonts, tinted, zoneColor,
@@ -73,6 +73,7 @@ export interface StadiumStats {
 
 /** height of a hero sprite (all 64 texels) in yards: bigger than life so faces read on a phone */
 const HERO_H = 3.0;
+const HERO_H_ELEVEN = 2.35;
 // the apron around the field and the bowl of stands that rises from it
 const AX0 = -11;
 const AX1 = FIELD + 11;
@@ -288,6 +289,11 @@ function resample(way: [number, number][], arc: number): number[] {
 
 
 export class Stadium {
+  /** how tall a hero is drawn, in yards: eleven a side they are a size smaller, or the line would be one heap */
+  private get heroH(): number {
+    return this.groundOn || sizeOf(this.teams[0].lineup) !== 11 ? HERO_H : HERO_H_ELEVEN;
+  }
+
   private ctx: CanvasRenderingContext2D;
   private cam = new Camera();
   private observer: ResizeObserver | null = null;
@@ -551,7 +557,7 @@ export class Stadium {
       // the kicker comes on where the running back stands (for this play only: the next scene puts the line-up back)
       const t = this.teams[res.off];
       const off = { ...t.lineup.off };
-      const at = OFF_POS.find((p) => off[p] === res.kick!.kicker);
+      const at = offPos(t.lineup).find((p) => off[p] === res.kick!.kicker);
       if (at) off[at] = off.RB;
       off.RB = res.kick.kicker;
       const sheet: TeamSheet = { ...t, lineup: { ...t.lineup, off } };
@@ -809,7 +815,7 @@ export class Stadium {
   screenPos(team: 0 | 1, heroId: number): { x: number; y: number; scale: number; h: number } | null {
     const ac = this.actors.find((a) => a.team === team && a.id === heroId);
     if (!ac || !ac.vis || this.dpr <= 0) return null;
-    const h = (HERO_H * ac.ss) / this.dpr;
+    const h = (this.heroH * ac.ss) / this.dpr;
     return { x: ac.sx / this.dpr, y: ac.sy / this.dpr, scale: h / ART, h };
   }
 
@@ -1891,8 +1897,10 @@ export class Stadium {
         const qb = this.find(this.offense, this.teams[this.offense].lineup.off.QB);
         const qx = qb ? qb.x : L - dir * 5;
         const sz = sc ? sc.spotZ : 12;
-        ex = qx - dir * 8.5; ey = 4.3; ez = 12 + this.camSide * 2.7;
-        tx = L + dir * 13; ty = 1.9; tz = 12 + (sz - 12) * 0.4; fov = 0.8; om = 6;
+        // eleven a side there is a line of five and a back between the lens and the play: it looks over their heads
+        const big = this.heroH < HERO_H ? 1 : 0;
+        ex = qx - dir * (8.5 + 3.2 * big); ey = 4.3 + 3.4 * big; ez = 12 + this.camSide * 2.7;
+        tx = L + dir * (13 - 3 * big); ty = 1.9 - 1.2 * big; tz = 12 + (sz - 12) * 0.4; fov = 0.8; om = 6;
         break;
       }
       case 'ball': {
@@ -3207,7 +3215,7 @@ export class Stadium {
       if (art.ready && art.dark && this.groundOn && this.g) {
         // one long shadow, away from the low sun
         const l = this.g.light;
-        const k = HERO_H / ART;
+        const k = this.heroH / ART;
         const len = l.shLen * 0.74;
         const ux = (gxx * l.shX + gzx * l.shZ) * k * len;
         const uy = (gxy * l.shX + gzy * l.shZ) * k * len;
@@ -3219,7 +3227,7 @@ export class Stadium {
         ctx.drawImage(art.dark, -ART / 2, -art.foot);
         ctx.globalAlpha = 1;
       } else if (art.ready && art.dark) {
-        const k = HERO_H / ART;
+        const k = this.heroH / ART;
         ctx.globalAlpha = 0.15;
         for (const [lx, lz] of TOWERS) {
           let ax = ac.x - lx;
@@ -3339,7 +3347,7 @@ export class Stadium {
     const ctx = this.ctx;
     const art = ac.art;
     const ss = ac.ss;
-    const sc = (HERO_H * ss) / ART;
+    const sc = (this.heroH * ss) / ART;
     const now = this.clock;
     const run = ac.run;
     let lift = (ac.y + run * Math.abs(Math.sin(ac.cyc)) * 0.34) * ss;
@@ -3426,7 +3434,7 @@ export class Stadium {
         ctx.imageSmoothingEnabled = false;
         for (let i = 0; i < n; i += 1) {
           if (!cam.project(ac.trail[i * 3]!, 0, ac.trail[i * 3 + 2]!)) continue;
-          const s2 = (HERO_H * cam.ss) / ART;
+          const s2 = (this.heroH * cam.ss) / ART;
           ctx.globalAlpha = 0.07 + 0.3 * ((i + 1) / n);
           ctx.setTransform(-look * s2, 0, 0, s2, cam.sx, cam.sy - ac.trail[i * 3 + 1]! * cam.ss);
           ctx.drawImage(tint, -ART / 2, -art.foot);
@@ -3490,7 +3498,7 @@ export class Stadium {
     const ctx = this.ctx;
     const px = this.dpr;
     const ss = ac.ss;
-    const h = HERO_H * ss * ((ac.art.ready ? ac.art.foot - ac.art.top : ART) / ART) * (1 - 0.2 * ac.crouch);
+    const h = this.heroH * ss * ((ac.art.ready ? ac.art.foot - ac.art.top : ART) / ART) * (1 - 0.2 * ac.crouch);
     const bounce = Math.abs(Math.sin(this.clock * 5.5)) * Math.min(0.28 * ss, 9 * px);
     const x = ac.sx;
     const y = ac.sy - h - ac.y * ss - Math.min(0.45 * ss, 14 * px) - bounce;
@@ -3746,7 +3754,7 @@ export class Stadium {
     const d = (1 - o) as 0 | 1;
     const X = (u: number): number => worldX(o, u);
     const los = this.los;
-    const f = formation(los);
+    const f = formation(los, undefined, sizeOf(this.teams[o].lineup));
     const lines: ChalkLine[] = [];
     const zones: ChalkZone[] = [];
     const sp = pick.special;
@@ -3783,7 +3791,8 @@ export class Stadium {
       } else if (type === 'inside') {
         const lane = 12 + ((n % 3) - 1) * 0.8;
         path([rb, [X(los - 4.6), 12.2], [X(los - 0.8), lane], [X(los + 7.5), lane]], { width: 0.36 });
-        for (const p of ['OL1', 'OL2'] as const) {
+        // the whole line pushes (two linemen six a side, five and the tight end when it is eleven)
+        for (const p of offPos(O.lineup).filter((q) => q.startsWith('OL') || q === 'TE')) {
           const a = at(o, O.lineup.off[p], f.off[p]);
           path([a, [a[0] + (X(1) - X(0)) * 2.4, a[1] + (a[1] < 12 ? -1.1 : 1.1)]], { delay: 0.12, width: 0.24, alpha: 0.7 });
         }
@@ -3797,7 +3806,8 @@ export class Stadium {
         const long = type === 'long';
         const drop: [number, number] = [X(long ? los - 8.6 : los - 7.2), 12];
         path([qb, drop], { width: 0.22, alpha: 0.65, arrow: false });
-        (['WR1', 'WR2'] as const).forEach((p, i) => {
+        // everybody who goes out for the ball (the slot receiver too; the tight end on short passes)
+        offPos(O.lineup).filter((q) => q.startsWith('WR') || (q === 'TE' && !long)).forEach((p, i) => {
           const a = at(o, O.lineup.off[p], f.off[p]);
           const inward = f.off[p][1] < 12 ? 1 : -1;
           const depth = long ? 20 : 5.5;

@@ -21,7 +21,7 @@ import {
   fgChance, halftimeTalk, huddle, keyHeroes, kickBlock, kickPicks, kickerOf, outlook, patChance, resolvePlay, senseHint, specialBlock, specialPick,
   usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
-import { ROLE_LABEL, fit, kickFit, roleOf, type DefPos, type OffPos } from '../game/model';
+import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
 import { opponentSheet } from '../game/teams';
 import { SCHEDULE, clubSheet, finishMatch, labelOf, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
@@ -58,7 +58,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
-  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league), newSeed());
+  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!)), newSeed());
   storeMatch(st);
   const [home, away] = st.teams;
   const firstEver = save().seasons === 0 && s.results.length === 0;
@@ -844,7 +844,7 @@ export function matchScreen(): [HTMLElement, () => void] {
           row('タッチダウン', totals[0].td, totals[1].td, 2),
           row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
         fameReport(fame)),
-      changes.length ? h('div.fulltime-changes', { class: changes.length > 9 ? 'is-many' : '' }, changeList(s, changes)) : null,
+      changes.length ? h('div.fulltime-changes', { class: changes.length > 12 ? 'is-crowd' : changes.length > 9 ? 'is-many' : '' }, changeList(s, changes)) : null,
       h('div.modal-actions', button(ended ? '結果を見る' : 'グラウンドへもどる', () => {
         closeModal();
         route();

@@ -241,6 +241,13 @@
 .fulltime-changes.is-many .changes { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem 0.5rem; }
 .fulltime-changes.is-many .change .portrait { width: 2.4rem; }
 .fulltime-changes.is-many .change { padding: 0.05rem 0.4rem; }
+/* eleven a side with two units: up to twenty-two took part. A face and the numbers each, no names, no gauges */
+.fulltime-changes.is-crowd .changes { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.25rem 0.4rem; }
+.fulltime-changes.is-crowd .change { grid-template-columns: auto minmax(0, 1fr); gap: 0 0.35rem; padding: 0.05rem 0.3rem; border-left-width: 0.3rem; }
+.fulltime-changes.is-crowd .change .portrait { width: 2.3rem; grid-row: auto; }
+.fulltime-changes.is-crowd .change-main { gap: 0 0.35rem; line-height: 1.2; letter-spacing: -0.06em; }
+.fulltime-changes.is-crowd .change-main b, .fulltime-changes.is-crowd .change .gauge { display: none; }
+.fulltime-changes.is-crowd .change em { font-size: var(--fs-xs); padding: 0 0.3rem; margin-top: 0.1rem; clip-path: none; }
 .fulltime-changes.is-many .change-main { letter-spacing: -0.05em; }
 
 .talks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-self: stretch; margin-top: 0.4rem; }

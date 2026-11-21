@@ -10,6 +10,7 @@ import {
   STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, asPlayer, cardInfo, clubSheet, costOf, finishMatch, intake, joinCount, needOf, newSeason,
   nextMatch, nextYear, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
+  clubSize,
 } from '../src/game/season';
 
 export type Style = 'sensible' | 'careless';
@@ -101,8 +102,8 @@ function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): voi
       train(s, pick);
     } else {
       // a sensible coach looks at the line-up again before every match
-      if (style === 'sensible') s.lineup = bestLineup(s.members.map(asPlayer));
-      const st = simulate(clubSheet(s), opponentSheet(p.opp, s.league), rng.int(1, 2 ** 31 - 1));
+      if (style === 'sensible') s.lineup = bestLineup(s.members.map(asPlayer), clubSize(s));
+      const st = simulate(clubSheet(s), opponentSheet(p.opp, s.league, clubSize(s)), rng.int(1, 2 ** 31 - 1));
       matches.push(st);
       finishMatch(s, st);
     }

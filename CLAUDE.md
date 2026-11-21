@@ -6,14 +6,15 @@
 - サイトを開くと `index.html` → `src/main.ts`。公開は Cloudflare Workers の静的配信（`wrangler.jsonc`）。本番のブランチは `main`。
 - 構成：
   - `src/core/` 乱数（`rng.ts`）、セーブ（`save.ts`）、音（`audio.ts` と `audio/`）、DOM の小道具（`dom.ts`）、デバッグ用 URL（`debug.ts`）、アプリとして入れる案内（`install.ts`）
-  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 24 人）、`teams.ts`（対戦校）、`lineup.ts`（編成。攻撃の 6 人と守備の 6 人はべつべつ：`bestLineup`・`place`・`fielded`・`unitsOf`）、`prestige.ts`（部の格とゲージ：`TIERS`・`applyResult`）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`calls.ts`（実況のことば）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会・次の年へ `nextYear`）
+  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 24 人）、`teams.ts`（対戦校）、`lineup.ts`（編成。攻撃の組と守備の組はべつべつ：`bestLineup`・`place`・`fielded`・`unitsOf`）、`prestige.ts`（部の格とゲージ：`TIERS`・`applyResult`）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`calls.ts`（実況のことば）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会・次の年へ `nextYear`）
   - `src/ui/` 画面：`title.ts`、`recruit.ts`（入部説明会）、`club.ts` と `ground/`（練習グラウンド。ふだんいる画面）、`policy.ts`（育成方針）、`lineupScreen.ts`（編成）、`matchScreen.ts`（試合）、`endScreen.ts`、`standing.ts`（格の札・ゲージ・一覧・試合後の増減）。共通の部品は `kit.ts`・`shared.ts`・`cardView.ts`、演出は `fx.ts`、画面の切り替えは `nav.ts`
   - `src/ui/stadium.ts` と `stadium/`：試合のスタジアムと練習グラウンドを描く Canvas の描画（疑似 3D）。画面からは `Stadium` クラスだけを使う。プレーの台本は `stadium/choreo.ts`（`Script`。作戦として描いた道すじは `design`。パスコースは `routeWay`・`routesFor` の 16 種類）、プレー中に重ねる中継の補助表示（作戦の線・ボールの帯・パスの軌道・ゴールまでの道・獲得ヤード）は `stadium/guide.ts`、サイドラインの標識（「2nd & 7」と「1st」の棒）は `stadium/sticks.ts`。リプレイは `Stadium.replay()`（同じ台本を別のカメラで。出すかどうかは `matchScreen.ts` と設定の `prefs().replay`）
   - `src/styles/` 画面ごとの CSS。共通は `base.css` と `cards.css`
   - `lab/`：描画と音を単体で試すページ（`/lab/stadium.html`・`/lab/audio.html`。開発サーバーでだけ開ける）
 - 見た目と部品の決まりは `docs/UI_STYLE.md`。画面を作る・直すときは先に読む。
 - **余計なタップをさせない**。作戦カードも練習カードも「かざす（スマホは 1 回目のタップ）で下見・予測 → クリック（同じカードをもう一度タップ）で決定」。確認のボタンや、閉じるだけのポップアップを足さない（決まりは `docs/GAME_DESIGN.md` の「操作の決まり」）。
-- ポジションは略称（QB・RB・WR・OL／DL・LB・CB・S）で書く（`model.ts` の `ROLE_LABEL`。正式名は `ROLE_FULL`）。練習グラウンドはポジションごとの組で動かす：持ち場は `stadium/ground.ts` の `stationsFor`、練習カードごとの動きは `buildDrill`（`tests/drills.test.ts` が、どの編成でも台本が破綻しないことを確かめる）。
+- 試合は 6 人制（地区大会）と 11 人制（県大会から上。`prestige.ts` の `Tier.size`、その年の人数は `season.ts` の `clubSize`）。11 人制のポジションの名前は 6 人制のものを含む（`model.ts` の `OFF_POS_OF`・`DEF_POS_OF`）ので、`OL1`・`WR1`・`LB`・`S` のような名前は両方にある。編成にある位置を回すときは `offPos(l)`・`defPos(l)`、同じ種類をまとめるときは `match.ts` の `group` を使う（全ポジションを決め打ちで回さない）。位置の絵は `stadium/choreo.ts` の `formation(los, call, size)` と `lineupScreen.ts` の `OFF_AT_OF`・`DEF_AT_OF`。人数にかかわる所を直したら `tests/eleven.test.ts` と、`?tier=2`（11 人が全員兼任）・`?tier=4`（22 人）の画面で確かめる。
+- ポジションは略称（QB・RB・WR・TE・OL／DL・LB・CB・S）で書く（`model.ts` の `ROLE_LABEL`。正式名は `ROLE_FULL`）。練習グラウンドはポジションごとの組で動かす：持ち場は `stadium/ground.ts` の `stationsFor`、練習カードごとの動きは `buildDrill`（`tests/drills.test.ts` が、どの編成でも台本が破綻しないことを確かめる）。
 - 練習カードに書くのは絵と名前だけ。効果は予測（カードの上の帯とヒーローの頭上）で見せる。ふつうの練習の絵はエクステンションの画像で、どれを使うかは `scripts/sync-assets.mjs` の `DRILL_ART`。
 - リンクを共有したときの見出し・説明文・画像は `index.html` の `<head>`（`og:` と `twitter:`）。画像は `public/og.jpg`（1200×630。タイトル画面からボタンを外し、ヒーローを並べて撮ったもの）。本番の URL（`https://football.bearko.games/`）を絶対パスで書いているので、ドメインを変えたらここも直す。
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。手元にサブモジュールがないときは `MCH_ASSETS_DIR=/path/to/mycryptoheroes` を付けて動かす。

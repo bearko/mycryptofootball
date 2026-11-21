@@ -7,7 +7,7 @@ import { canFullscreen, goFullscreen, installWay, onInstallChange, promptInstall
 import { commit, prefs, save } from '../core/save';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
-import { DEF_POS, OFF_POS, ROLE_LABEL, STATS, STAT_LABEL, fit, roleOf, type Role, type Stats } from '../game/model';
+import { ROLE_LABEL, STATS, STAT_LABEL, defPos, fit, offPos, roleOf, type Role, type Stats } from '../game/model';
 import {
   STA_MAX, STA_TIRED, TRUST_BOOST, TRUST_LEARN, TRUST_MAX, boosted, learned, member, type Change, type Member, type Season,
 } from '../game/season';
@@ -20,8 +20,8 @@ export function positions(s: Season, id: number): string {
   const l = s.lineup!;
   const k = l.k === id;
   if (!isStarter(l, id)) return k ? 'K（キッカー）' : '控え';
-  const off = OFF_POS.find((p) => l.off[p] === id);
-  const def = DEF_POS.find((p) => l.def[p] === id);
+  const off = offPos(l).find((p) => l.off[p] === id);
+  const def = defPos(l).find((p) => l.def[p] === id);
   const where = off && def ? `${ROLE_LABEL[roleOf(off)]} / ${ROLE_LABEL[roleOf(def)]}` : off ? `攻撃の${ROLE_LABEL[roleOf(off)]}` : `守備の${ROLE_LABEL[roleOf(def!)]}`;
   return `${where}${k ? ' ・ K' : ''}`;
 }
@@ -95,7 +95,7 @@ export function helpModal(): void {
     ['攻撃', '4回の攻撃で10ヤード進めば、また4回攻められる。相手側の端まで運べばタッチダウンで6点。'],
     ['キック', 'キッカー（編成でえらぶ）がいると、キックのカードが出る。フィールドゴールは3点、パントは相手を遠ざける。タッチダウンのあとはもう1プレー：キックなら1点、プレーで運べば2点。'],
     ['作戦カード', '攻撃も守備も、配られたカードから1枚えらぶ。相手のカードとの相性（◎と×）で結果が大きく変わる。'],
-    ['ヒーロー', '全員が一芸もち。得意に合うポジションに置くと活躍する。試合は6人。攻撃の6人と守備の6人は、べつべつに組める。'],
+    ['ヒーロー', '全員が一芸もち。得意に合うポジションに置くと活躍する。地区大会は6人制、県大会から上は11人制。攻撃の組と守備の組は、べつべつに組める。'],
     ['練習', '月〜土は練習カードを1枚えらぶと1日進む。ヒーローは経験を、育成方針で決めた能力に変える。日曜は試合。'],
     ['ランク', '能力の数字の目安。G・F・E・D・C・B・A・S・SS の順に高い（SSは100以上）。月がかわると先月の成長をふり返る。「成長」ボタンでいつでも見られる。'],
     ['体力', '練習すると減る。半分を切るとバテて、練習が身につきにくくなり、試合でも動きが落ちる。「休養」で戻る。'],
