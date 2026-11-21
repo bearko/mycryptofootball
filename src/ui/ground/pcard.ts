@@ -1,59 +1,61 @@
-// Practice cards: the same family as the play cards of a match (sheets from the playbook, foil for the special ones).
-// A card says what it hands out in shapes and colours: ■ power, ▶ speed, ● technique, ◆ brains, ♥ trust.
+// Practice cards: a picture and a name, nothing else. What a card does is shown when it is considered
+// (the effect bar over the hand, and the numbers over the heroes' heads).
+// The frame and the background say what kind of card it is: paper for the ordinary drills, red for one-on-one,
+// dark foil with a gold frame for a hero's special practice, green for the day off.
 
+import catalog from '../../generated/catalog.json';
 import { h } from '../../core/dom';
 import { hero, recruit, talentOf } from '../../game/heroes';
 import { STAT_LABEL } from '../../game/model';
-import { XPS, cardInfo, member, type CardInfo, type PracticeCard, type Season } from '../../game/season';
+import { XPS, cardInfo, member, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
 import { tilt } from '../fx';
-import { stars, statIcon } from '../kit';
-import { DRILL_STAT, ICON, icon, shortName, xpChip } from './bits';
+import { stars } from '../kit';
+import { DRILL_STAT, shortName, xpChip } from './bits';
 import type { DrillKind } from './ground';
 
-export const drillKind = (card: PracticeCard): DrillKind => (card.kind === 'basic' ? card.key : card.kind);
+/** The picture of each ordinary drill (and the day off): an Extension, by star level. */
+const ART = ((catalog as { drills?: unknown }).drills ?? {}) as Record<string, { name: string; img: string }[]>;
+const artOf = (key: PracticeKey | 'rest', star: number): string => {
+  const set = ART[key] ?? [];
+  return (set[Math.min(set.length, Math.max(1, star)) - 1] ?? set[0])?.img ?? '';
+};
 
-const xpRow = (info: CardInfo, word: boolean): HTMLElement =>
-  h('span.pgc-xp', { class: word ? 'is-wordy' : '' }, XPS.filter((k) => info.xp[k]).map((k) => xpChip(k, info.xp[k]!, word)));
-
-const heart = (n: number, who = ''): HTMLElement | null =>
-  (n > 0 ? h('span.pgc-heart', { title: `信頼 +${n}` }, `♥${who}+${n}`) : null);
+/** The drill the heroes perform for a card (the day off has none). */
+export const drillKind = (card: PracticeCard): DrillKind | null =>
+  (card.kind === 'basic' ? card.key : card.kind === 'rest' ? null : card.kind);
 
 /** One card of the hand. `index` only numbers the key hint; the caller wires the pointer. */
 export function practiceCard(s: Season, card: PracticeCard, index: number): HTMLButtonElement {
   const info = cardInfo(s, card);
   const inner = h('span.card-in');
   const key = h('span.card-key', String(index + 1));
-  let cls = 'is-basic';
+  let cls: string;
   let label = `${info.name}：${info.text}`;
   if (card.kind === 'basic') {
     const stat = DRILL_STAT[card.key];
-    const kinds = XPS.filter((k) => info.xp[k]).length;
-    cls = `is-basic ${stat ? `t-${stat}` : 't-all'}`;
+    cls = `is-basic ${stat ? `t-${stat}` : 't-all'} star${card.star}`;
     label = `${info.name} ★${card.star}：${info.text}`;
     inner.append(
-      h('span.card-band', h('span.card-name', info.name)),
-      h('span.pgc-art', stat ? statIcon(stat) : icon(ICON.all, 'ticon'), stars(card.star)),
-      xpRow(info, kinds <= 2),
-      h('span.pgc-foot', h('u', '全員'), heart(info.trust)));
-  } else if (card.kind === 'solo') {
-    const m = member(s, card.hero);
-    cls = `is-solo t-${m.focus}`;
+      h('span.pgc-art', h('img.px', { src: artOf(card.key, card.star), alt: '', draggable: false }), stars(card.star)),
+      h('span.pgc-name', info.name));
+  } else if (card.kind === 'rest') {
+    cls = 'is-rest';
     inner.append(
-      h('span.card-band', h('span.card-name', 'マンツーマン')),
-      h('span.pgc-art.is-hero', h('img.px', { src: hero(card.hero).img, alt: '', draggable: false }), h('b', shortName(card.hero))),
-      h('span.pgc-aim', statIcon(m.focus), `${STAT_LABEL[m.focus]}を特訓`),
-      xpRow(info, false),
-      h('span.pgc-foot', h('u', 'ひとり'), heart(info.heroTrust)));
+      h('span.pgc-art', h('img.px', { src: artOf('rest', 1), alt: '', draggable: false })),
+      h('span.pgc-name', info.name));
+  } else if (card.kind === 'solo') {
+    cls = `is-solo t-${member(s, card.hero).focus}`;
+    label = `マンツーマン（${hero(card.hero).name}）：${info.text}`;
+    inner.append(
+      h('span.pgc-art.is-hero', h('img.px', { src: hero(card.hero).img, alt: '', draggable: false }), h('b.pgc-who', shortName(card.hero))),
+      h('span.pgc-name', info.name));
   } else {
-    const talent = talentOf(recruit(card.hero).stats).best;
-    cls = `special is-special t-${talent}`;
+    cls = `is-special t-${talentOf(recruit(card.hero).stats).best}`;
+    label = `特別練習「${info.name}」（${hero(card.hero).name}）：${info.text}`;
     inner.append(
       h('span.foil'),
-      h('span.sp-name', `特別練習「${info.name}」`),
-      h('span.sp-hero', h('img.px', { src: hero(card.hero).img, alt: '', draggable: false })),
-      h('span.sp-tag', `${shortName(card.hero)}の${STAT_LABEL[talent]}`),
-      xpRow(info, false),
-      h('span.pgc-foot', h('u', '全員'), heart(info.trust)));
+      h('span.pgc-art.is-hero', h('img.px', { src: hero(card.hero).img, alt: '', draggable: false }), h('b.pgc-who', '特別練習')),
+      h('span.pgc-name', `「${info.name}」`));
   }
   inner.append(h('span.card-glare'));
   const btn: HTMLButtonElement = h('button.card.pgc', { class: cls, type: 'button', 'aria-label': label, data: { uid: String(card.uid) }, style: { '--i': '0' } }, inner, key);
@@ -61,9 +63,39 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
   return btn;
 }
 
-/** What the manager says about a card that is being considered. */
-export function cardLine(s: Season, card: PracticeCard): string {
-  const info = cardInfo(s, card);
-  if (card.kind === 'basic') return `「${info.name}」★${card.star}：${info.text}。`;
-  return `${info.text}。`;
+const signed = (n: number): string => `${n > 0 ? '+' : '−'}${Math.abs(n)}`;
+
+/** A stamina chip: "体力 −14". */
+export function staChip(n: number, who = ''): HTMLElement {
+  return h('span.fx-sta', { class: n < 0 ? 'is-loss' : 'is-gain' }, h('u', `${who}体力`), h('b', signed(n)));
+}
+
+/** What a card is expected to do, for the effect bar over the hand. */
+export function cardEffect(s: Season, card: PracticeCard): { title: HTMLElement; text: string; chips: HTMLElement[] } {
+  const info: CardInfo = cardInfo(s, card);
+  const xp = XPS.filter((k) => info.xp[k]).map((k) => xpChip(k, info.xp[k]!, true));
+  const heart = (n: number, who: string): HTMLElement => h('span.fx-heart', h('u', `${who}信頼`), h('b', `+${n}`));
+  const who = (text: string): HTMLElement => h('span.fx-who', text);
+  if (card.kind === 'basic') {
+    return {
+      title: h('b.fx-name', info.name, stars(card.star)), text: info.text,
+      chips: [who('全員'), ...xp, staChip(info.sta), ...(info.trust ? [heart(info.trust, '')] : [])],
+    };
+  }
+  if (card.kind === 'rest') {
+    return { title: h('b.fx-name', info.name), text: info.text, chips: [who('全員'), staChip(info.sta)] };
+  }
+  const name = shortName(card.hero);
+  if (card.kind === 'solo') {
+    const m = member(s, card.hero);
+    return {
+      title: h('b.fx-name', `マンツーマン：${name}`), text: `${STAT_LABEL[m.focus]}を特訓`,
+      chips: [who(`${name}だけ`), ...xp, staChip(info.sta), heart(info.heroTrust, ''), staChip(info.others, 'ほかは')],
+    };
+  }
+  const talent = talentOf(recruit(card.hero).stats).best;
+  return {
+    title: h('b.fx-name', `特別練習「${info.name}」`), text: `${name}が教える${STAT_LABEL[talent]}の練習`,
+    chips: [who('全員'), ...xp, staChip(info.sta), heart(info.trust, ''), heart(info.trust + info.heroTrust, name)],
+  };
 }

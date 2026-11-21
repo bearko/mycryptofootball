@@ -7,8 +7,8 @@ import { simulate, type MatchState } from '../src/game/match';
 import { STATS, type Stat } from '../src/game/model';
 import { opponentSheet } from '../src/game/teams';
 import {
-  ROSTER_SIZE, STAT_COST, TRUST_LEARN, answerEvent, cardInfo, clubSheet, costOf, finishMatch, needOf, newSeason, plan, policyOpen,
-  setFocus, signRecruits, train,
+  ROSTER_SIZE, STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, cardInfo, clubSheet, costOf, finishMatch, intake, needOf, newSeason,
+  nextMatch, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
 } from '../src/game/season';
 
@@ -33,13 +33,20 @@ function pickRecruits(s: Season, rng: Rng, style: Style): number[] {
 /** How much a practice card is worth to the club today. */
 function value(s: Season, card: PracticeCard): number {
   const info = cardInfo(s, card);
+  const next = nextMatch(s);
+  const eve = !!next && next.n - s.day === 1;
   let v = 0;
   for (const m of s.members) {
     const weight = isStarter(s.lineup!, m.id) ? 1 : 0.4;
     const mine = info.hero === m.id;
-    if (card.kind !== 'solo' || mine) {
-      for (const [c, amount] of Object.entries(info.xp)) v += weight * (amount as number) * (c in STAT_COST[m.focus] ? 1 : 0.45);
+    const takesPart = card.kind !== 'solo' || mine;
+    if (takesPart) {
+      for (const [c, amount] of Object.entries(info.xp)) v += weight * (amount as number) * intake(m.sta) * (c in STAT_COST[m.focus] ? 1 : 0.45);
     }
+    // stamina: worth little while fresh, a lot once a hero would be tired (and most of all the day before a match)
+    const after = Math.max(0, Math.min(STA_MAX, m.sta + (takesPart ? info.sta : info.others)));
+    const short = (x: number): number => Math.max(0, STA_TIRED + 10 - x);
+    v += weight * (short(m.sta) - short(after)) * (eve ? 1.2 : 0.55);
     const trust = info.trust + (mine ? info.heroTrust : 0);
     v += weight * trust * (m.trust < TRUST_LEARN ? 1.5 : 0.3);
   }

@@ -3,7 +3,7 @@
    the calendar strip across the top, and along the bottom the hand of practice cards (or the opponent on a match day).
    Class names are prefixed (pg-, pgf-, pgc-, cal-, vs-, ev-, ci-) and so are the keyframes (pg-/cr-). */
 
-.club { --hand: 12.4rem; --cards: 46.2rem; }
+.club { --hand: 12.9rem; --cards: 48.1rem; }
 
 /* ---------- living sprites (also used by the practice screen) ---------- */
 .herofig { position: relative; display: block; width: 6.4rem; height: 6.4rem; flex: none; }
@@ -98,13 +98,14 @@
 
 /* the calendar: tiles on a track, today big in the middle */
 .cal { position: relative; flex: 1; min-width: 0; height: 6.6rem; }
-.cal-window { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent); }
+.cal { --tile: 5.1rem; --today: 9.6rem; }
+.cal-window { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent); mask-image: linear-gradient(90deg, #000 0, #000 93%, transparent); }
 .cal-window::before { /* the track */ content: ''; position: absolute; left: 0; right: 0; top: 3.1rem; height: 1.7rem; background: rgba(6, 8, 26, 0.8); border-top: 0.14rem solid rgba(255, 251, 232, 0.4); border-bottom: 0.14rem solid rgba(255, 251, 232, 0.4); }
-.cal-days { position: absolute; left: 50%; top: 1.2rem; display: flex; align-items: flex-start; gap: 0.3rem; transform: translateX(calc(var(--d) * -4.9rem - 5rem)); transition: transform 0.6s cubic-bezier(0.3, 1.25, 0.4, 1); }
-.cal-day { position: relative; flex: none; width: 4.6rem; height: 4.7rem; margin-top: 0.35rem; display: flex; flex-direction: column; align-items: center; color: var(--chalk); background: linear-gradient(180deg, #232a78, #141846); border: 0.18rem solid var(--ink); box-shadow: inset 0 0.14rem 0 rgba(255, 255, 255, 0.2); overflow: hidden; transition: width 0.6s cubic-bezier(0.3, 1.25, 0.4, 1), height 0.3s, margin 0.3s, filter 0.3s; }
+.cal-days { position: absolute; left: 0.3rem; top: 1.2rem; display: flex; align-items: flex-start; gap: 0.3rem; transform: translateX(calc(var(--o, 0) * -1 * (var(--tile) + 0.3rem))); transition: transform 0.6s cubic-bezier(0.3, 1.25, 0.4, 1); }
+.cal-day { position: relative; flex: none; width: var(--tile); height: 4.7rem; margin-top: 0.35rem; display: flex; flex-direction: column; align-items: center; color: var(--chalk); background: linear-gradient(180deg, #232a78, #141846); border: 0.18rem solid var(--ink); box-shadow: inset 0 0.14rem 0 rgba(255, 255, 255, 0.2); overflow: hidden; transition: width 0.6s cubic-bezier(0.3, 1.25, 0.4, 1), height 0.3s, margin 0.3s, filter 0.3s; }
 .cal-date { display: flex; align-items: baseline; gap: 0.15rem; line-height: 1.25; white-space: nowrap; }
-.cal-date b { font-family: var(--display); font-weight: 400; font-size: var(--fs-m); }
-.cal-date i { font-style: normal; font-size: var(--fs-xs); }
+.cal-date b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); line-height: 1.15; }
+.cal-date i { font-style: normal; font-size: var(--fs-s); }
 .cal-full { display: none; font-family: var(--display); font-size: var(--fs-s); line-height: 1.45; letter-spacing: -0.03em; white-space: nowrap; }
 .cal-day.is-sat .cal-date, .cal-day.is-sat .cal-full { color: var(--cyan); }
 .cal-day.is-sun .cal-date, .cal-day.is-sun .cal-full { color: #ff8a66; }
@@ -116,9 +117,11 @@
 .cal-note.is-lose { background: var(--paper2); }
 .cal-day.is-past { filter: saturate(0.5) brightness(0.72); }
 .cal-day.is-past .cal-mark { display: none; }
+.cal-day:not(.is-today):not(.is-past) .cal-mark { display: none; }
+.cal-day:not(.is-today):not(.is-past).is-train { justify-content: center; }
 .cal-day.is-past .cal-note { color: var(--lime); font-size: var(--fs-m); line-height: 1.2; }
 .cal-day.is-past .cal-note.is-win, .cal-day.is-past .cal-note.is-lose { color: var(--ink); font-size: var(--fs-xs); line-height: 1.3; }
-.cal-day.is-today { width: 10rem; height: 5.4rem; margin-top: 0; color: var(--ink); background: linear-gradient(180deg, #fff3a0, var(--yellow)); box-shadow: inset 0 0.18rem 0 rgba(255, 255, 255, 0.7), 0.3rem 0.3rem 0 var(--ink); z-index: 2; }
+.cal-day.is-today { width: var(--today); height: 5.4rem; margin-top: 0; color: var(--ink); background: linear-gradient(180deg, #fff3a0, var(--yellow)); box-shadow: inset 0 0.18rem 0 rgba(255, 255, 255, 0.7), 0.3rem 0.3rem 0 var(--ink); z-index: 2; }
 .cal-day.is-today .cal-date { display: none; }
 .cal-day.is-today .cal-full { display: block; color: var(--ink); }
 .cal-day.is-today.is-sat .cal-full { color: #0b5f8a; }
@@ -127,7 +130,8 @@
 .cal-day.is-today .cal-mark::after { content: '練習の日'; font-family: var(--display); font-size: var(--fs-xs); line-height: 1.45; padding: 0 0.8rem; color: var(--chalk); background: var(--ink); clip-path: polygon(0.3rem 0, 100% 0, calc(100% - 0.3rem) 100%, 0 100%); }
 .cal-day.is-today .cal-flag { font-size: var(--fs-s); letter-spacing: 0; }
 .cal-day.is-today .cal-note { color: var(--ink); line-height: 1.5; }
-.cal-ball { position: absolute; left: 50%; top: 0.05rem; z-index: 3; margin-left: -0.95rem; filter: drop-shadow(0.15rem 0.2rem 0 var(--ink)); animation: pg-ball-in 0.5s 0.4s var(--spring) backwards, pg-bob 0.8s 0.9s ease-in-out infinite alternate; }
+.cal-ball { position: absolute; left: calc(0.6rem + var(--tile) + var(--today) / 2); top: 0.05rem; z-index: 3; margin-left: -0.95rem; transition: left 0.5s; filter: drop-shadow(0.15rem 0.2rem 0 var(--ink)); animation: pg-ball-in 0.5s 0.4s var(--spring) backwards, pg-bob 0.8s 0.9s ease-in-out infinite alternate; }
+.cal.is-first .cal-ball { left: calc(0.3rem + var(--today) / 2); }
 .cal-ball.is-roll { animation: pg-roll 0.6s cubic-bezier(0.3, 0, 0.3, 1), pg-bob 0.8s 0.6s ease-in-out infinite alternate; }
 @keyframes pg-ball-in { from { transform: translateY(-3rem) rotate(-200deg); opacity: 0; } }
 @keyframes pg-bob { from { transform: translateY(0) rotate(-8deg); } to { transform: translateY(0.25rem) rotate(6deg); } }
@@ -147,7 +151,18 @@
 .pg-state { display: inline-flex; align-items: center; color: var(--dim); font-size: 0.9rem; line-height: 1; }
 .pg-state .cico { width: 0.85rem; height: 0.85rem; }
 .pg-state.is-on { color: var(--yellow); letter-spacing: -0.12em; }
-.pg-tag .gauge { height: 0.5rem; background: #2c3182; border-width: 0.1rem; }
+.pg-tag .gauge { height: 0.45rem; background: #2c3182; border-width: 0.1rem; }
+/* stamina: green while fresh, orange when tired, red when spent; the striped piece is what a considered card would cost or give */
+.pg-sta { position: relative; display: block; height: 0.45rem; overflow: hidden; background: #1d3a2a; border: 0.1rem solid var(--ink); }
+.pg-sta > i { display: block; height: 100%; background: var(--lime); transition: width 0.5s var(--spring), background 0.3s; }
+.pg-tag.is-tired .pg-sta > i { background: var(--orange); }
+.pg-tag.is-spent .pg-sta > i { background: #ff3b30; }
+.pg-sta > u { position: absolute; top: 0; bottom: 0; display: none; }
+.pg-sta > u.is-loss { display: block; background: repeating-linear-gradient(135deg, #ff3b30 0 0.18rem, #5a0c08 0.18rem 0.36rem); animation: pg-blink 0.6s steps(2) infinite; }
+.pg-sta > u.is-gain { display: block; background: repeating-linear-gradient(135deg, #fffbe8 0 0.18rem, var(--lime) 0.18rem 0.36rem); animation: pg-blink 0.6s steps(2) infinite; }
+.pg-worn { display: none; font-style: normal; font-family: var(--display); font-size: 0.8rem; line-height: 1.3; padding: 0 0.3rem; color: var(--ink); background: var(--orange); }
+.pg-tag.is-tired .pg-worn { display: inline-block; }
+.pg-tag.is-spent .pg-worn { color: var(--chalk); background: #d0261c; }
 @media (hover: hover) { .pg-hero:hover .pg-tag { background: var(--yellow); color: var(--ink); } .pg-hero:hover .pg-state { color: var(--ink); } }
 .pg-hero:focus-visible { outline: 0; }
 .pg-hero:focus-visible .pg-tag { box-shadow: 0 0 0 0.25rem var(--cyan); clip-path: none; }
@@ -163,12 +178,18 @@
 .pg-badge .ticon svg { width: 1.15rem; height: 1.15rem; }
 .pg-badge u { text-decoration: none; font-family: var(--body); font-size: var(--fs-xs); margin-left: 0.15rem; }
 .pg-badge > i.is-heart { background: var(--pink); padding: 0 0.5rem; }
+.pg-badge > i.is-sta { font-size: var(--fs-xs); line-height: 1.4; padding: 0 0.45rem; color: var(--chalk); background: var(--ink); border-color: var(--lime); }
+.pg-badge > i.is-sta.is-loss { border-color: #ff8a66; color: #ffb39c; }
+.pg-badge > i.is-sta.is-gain { color: var(--lime); font-size: var(--fs-s); }
+.pg-badge > i.is-sta u { margin: 0 0.2rem 0 0; color: var(--chalk); }
+.pg-badge > i.is-sta em { font-style: normal; margin-left: 0.3rem; padding: 0 0.25rem; color: var(--ink); background: var(--orange); }
 .pg-badge > i.is-save { font-family: var(--body); font-size: var(--fs-xs); color: var(--chalk); background: rgba(6, 8, 26, 0.85); gap: 0.3rem; padding: 0 0.5rem; }
 .pg-say { left: 0; bottom: calc(var(--h) + 0.2rem); padding: 0.05rem 0.7rem; font-size: var(--fs-xs); line-height: 1.45; white-space: nowrap; color: var(--ink); background: var(--chalk); border: 0.16rem solid var(--ink); border-radius: 0.9rem 0.9rem 0.9rem 0.15rem; box-shadow: 0.16rem 0.16rem 0 var(--ink); transform: translateX(-30%) scale(0); transform-origin: 20% 100%; opacity: 0; pointer-events: none; }
 .pg-hero.is-say .pg-say { animation: pg-say 2.4s var(--spring); }
 @keyframes pg-say { 0% { transform: translateX(-30%) scale(0); opacity: 0; } 8%, 86% { transform: translateX(-30%) scale(1); opacity: 1; } 100% { transform: translateX(-30%) translateY(-0.5rem) scale(0.9); opacity: 0; } }
 .fx-pop.pg-pop { color: var(--tc, var(--yellow)); }
 .fx-pop.is-heart { color: var(--pink); }
+.fx-pop.is-sta { color: var(--lime); }
 .pg-xp { position: absolute; left: 0; top: 0; z-index: 8; margin: -0.8rem 0 0 -0.8rem; font-style: normal; font-size: 1.6rem; line-height: 1; color: var(--xc); -webkit-text-stroke: 0.3rem var(--ink); paint-order: stroke fill; pointer-events: none; }
 
 /* ---------- the manager, bottom-left, beside the hand ---------- */
@@ -178,44 +199,57 @@
 .club.is-matchday .pg-coach { right: 51%; bottom: calc(var(--hand) + 0.2rem); }
 
 /* ---------- the hand of practice cards ---------- */
-.pg-hand { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: flex; justify-content: flex-end; align-items: flex-end; padding: 0 max(0.8rem, env(safe-area-inset-right)) 0.55rem 0; background: linear-gradient(transparent, rgba(6, 8, 26, 0.86) 28%, rgba(6, 8, 26, 0.96)); pointer-events: none; }
-.pg-side { display: none; }
-.pg-cards { display: flex; gap: 0.6rem; justify-content: flex-end; width: var(--cards); pointer-events: auto; }
-.card.pgc { width: 8.76rem; height: 11rem; touch-action: none; }
+.pg-hand { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: flex; justify-content: flex-end; align-items: flex-end; padding: 0 max(0.8rem, env(safe-area-inset-right)) 0.5rem 0; background: linear-gradient(transparent, rgba(6, 8, 26, 0.86) 24%, rgba(6, 8, 26, 0.96)); pointer-events: none; }
+.pg-deck { display: grid; gap: 0.55rem; width: var(--cards); }
+.pg-cards { display: flex; gap: 0.5rem; justify-content: flex-end; pointer-events: auto; }
+
+/* the effect bar: what the considered card is expected to do */
+.pg-fx { display: flex; align-items: center; gap: 0.6rem; height: 2.3rem; padding: 0 0.9rem 0 0.7rem; overflow: hidden; white-space: nowrap; font-size: var(--fs-xs); line-height: 1.3; color: var(--dim); background: rgba(6, 8, 26, 0.72); border: 0.14rem solid rgba(255, 251, 232, 0.22); clip-path: polygon(0.5rem 0, 100% 0, calc(100% - 0.5rem) 100%, 0 100%); pointer-events: auto; }
+.pg-fx.is-on { color: var(--ink); background: var(--yellow); border-color: var(--ink); animation: pg-fx-in 0.16s var(--spring); }
+@keyframes pg-fx-in { from { transform: translateY(0.4rem) scaleY(0.7); } }
+.fx-tip { margin: 0 auto; }
+.fx-name { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; font-family: var(--display); font-weight: 400; font-size: var(--fs-s); }
+.fx-name .stars { position: static; color: #c2360a; font-size: var(--fs-xs); }
+.fx-name .stars i { opacity: 0.25; font-style: normal; }
+.fx-chips { flex: 0 1 auto; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; gap: 0.3rem; }
+.fx-chips > * { flex: none; }
+.fx-chips > * { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0 0.45rem; line-height: 1.5; color: var(--chalk); background: var(--ink); }
+.fx-chips u { text-decoration: none; }
+.fx-chips b { font-family: var(--display); font-weight: 400; }
+.fx-chips .fx-who { color: var(--ink); background: none; border: 0.12rem solid var(--ink); line-height: 1.3; }
+.fx-sta.is-loss b { color: #ff8a66; }
+.fx-sta.is-gain b { color: var(--lime); }
+.fx-heart b { color: var(--pink); }
+.fx-text { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #3a3520; }
+.fx-go { flex: none; margin-left: auto; font-family: var(--display); padding: 0 0.6rem; line-height: 1.5; color: var(--yellow); background: var(--ink); animation: pg-blink 0.9s steps(2) infinite; }
+@keyframes pg-blink { 50% { opacity: 0.55; } }
+
+/* the cards: a picture and a name; the frame and the background say what kind */
+.card.pgc { width: 7.6rem; height: 9.2rem; }
 .card.pgc.is-played { visibility: hidden; }
-.card.pgc.is-off { filter: grayscale(0.6) brightness(0.8); }
 .club.is-busy .card.pgc { pointer-events: none; }
 .club.is-busy .card.pgc:not(.deal) { filter: brightness(0.8); }
-.pgc .card-in { background: linear-gradient(90deg, var(--tc, var(--chalk)) 0 0.4rem, transparent 0.4rem), repeating-linear-gradient(0deg, transparent 0 1.3rem, rgba(40, 60, 140, 0.1) 1.3rem 1.38rem), var(--paper); }
-.pgc.t-all { --tc: var(--chalk); }
-.pgc .card-band { justify-content: center; padding: 0.15rem 0.3rem; }
-.pgc .card-name { letter-spacing: -0.03em; }
-.pgc-art { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.1rem; padding-left: 1.4rem; }
-.pgc-art.is-hero { align-items: center; padding-left: 0; }
-.pgc-art .ticon, .pgc-art > .cico { width: 2.5rem; height: 2.5rem; padding: 0.35rem; color: var(--tc, var(--chalk)); background: var(--ink); border-radius: 50%; }
-.pgc-art .ticon svg, .pgc-art > .cico svg { width: 100%; height: 100%; }
-.pgc .stars { top: 2.3rem; right: 0.35rem; font-size: var(--fs-xs); }
-.pgc-art.is-hero img { height: 3.9rem; width: 3.9rem; object-fit: contain; transform-origin: 50% 100%; animation: breathe 1.3s steps(2) infinite; }
-.pgc-art.is-hero b { font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.2; white-space: nowrap; margin-top: -0.2rem; }
-.pgc-aim { display: flex; align-items: center; justify-content: center; gap: 0.2rem; font-size: var(--fs-xs); line-height: 1.35; white-space: nowrap; color: var(--ink); background: var(--tc); border-top: 0.12rem solid var(--ink); border-bottom: 0.12rem solid var(--ink); }
-.pgc-aim .ticon { color: var(--ink); }
-.pgc-aim .ticon svg { width: 1.1rem; height: 1.1rem; }
-.pgc-xp { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.45rem; padding: 0.15rem 0.3rem 0 0.6rem; }
-.pgc-xp.is-wordy { flex-direction: column; align-items: flex-start; padding-left: 0.75rem; }
-.pgc-xp.is-wordy .xp u { letter-spacing: -0.08em; }
-.pgc-xp.is-wordy .xp b { margin-left: 0.2rem; }
-.pgc-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.3rem; padding: 0.05rem 0.4rem 0.15rem 0.7rem; font-size: var(--fs-xs); line-height: 1.35; white-space: nowrap; background: rgba(255, 255, 255, 0.5); border-top: 0.12rem dashed rgba(6, 8, 26, 0.3); }
-.pgc-foot u { text-decoration: none; color: #55597a; }
-.pgc-heart { font-family: var(--display); color: #c2274a; }
-.pgc.is-solo .card-band { background: #c2274a; }
-.pgc.is-special .sp-name { min-height: 2.4em; padding: 0.3rem 0.4rem 0; }
-.pgc.is-special .sp-hero img { max-height: 4rem; }
-.pgc.is-special .sp-tag { background: var(--tc); }
-.pgc.is-special .xp { color: var(--chalk); }
-.pgc.is-special .pgc-xp { padding: 0.2rem 0.3rem 0; position: relative; }
-.pgc.is-special .pgc-foot { position: relative; background: none; border-top-color: rgba(255, 251, 232, 0.3); color: var(--chalk); padding-left: 0.5rem; }
-.pgc.is-special .pgc-foot u { color: var(--dim); }
-.pgc.is-special .pgc-heart { color: var(--pink); }
+.pgc .card-in { align-items: stretch; text-align: center; --frame: var(--ink); --bg1: var(--paper); --bg2: #e9dfbd; --band: var(--ink); --ink2: var(--chalk); border-color: var(--frame); background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.75), transparent 62%), repeating-linear-gradient(0deg, transparent 0 1.3rem, rgba(40, 60, 140, 0.1) 1.3rem 1.38rem), linear-gradient(180deg, var(--bg1), var(--bg2)); }
+.pgc-art { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; }
+.pgc-art img { width: 5rem; height: 5rem; object-fit: contain; filter: drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
+.pgc-art.is-hero img { width: 5.6rem; height: 5.6rem; transform-origin: 50% 100%; animation: breathe 1.3s steps(2) infinite; }
+.pgc .stars { position: absolute; top: auto; right: 0.25rem; bottom: 0.05rem; font-size: var(--fs-xs); line-height: 1; color: #c2360a; text-shadow: 0.06rem 0.06rem 0 var(--paper); }
+.pgc .stars i { opacity: 0.22; font-style: normal; }
+.pgc-who { position: absolute; left: 50%; bottom: -0.1rem; transform: translateX(-50%) rotate(-3deg); font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.35; padding: 0 0.5rem; white-space: nowrap; color: var(--ink2); background: var(--band); }
+.pgc-name { flex: none; display: grid; place-items: center; height: 2.1rem; padding: 0 0.2rem; font-family: var(--display); font-size: var(--fs-s); line-height: 1.1; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink2); background: var(--band); }
+.pgc.selected .card-in { box-shadow: 0 0 0 0.3rem var(--yellow), 0.5rem 0.8rem 0 rgba(6, 8, 26, 0.8); }
+/* one-on-one: red */
+.pgc.is-solo .card-in { --frame: #8f1233; --bg1: #ffe1e6; --bg2: #ffb9c6; --band: #c2274a; }
+.pgc.is-solo .pgc-who { --band: var(--ink); }
+/* a hero's special practice: dark foil, gold frame */
+.pgc.is-special .card-in { --frame: var(--yellow); --band: var(--yellow); --ink2: var(--ink); color: var(--chalk); background: radial-gradient(circle at 50% 40%, rgba(255, 225, 74, 0.5), transparent 60%), linear-gradient(160deg, #3a1d7a, #0e0b33 65%); box-shadow: 0 0 0 0.14rem var(--ink), 0.3rem 0.3rem 0 var(--ink), 0 0 1rem rgba(255, 225, 74, 0.55); }
+.pgc.is-special .pgc-art, .pgc.is-special .pgc-name { position: relative; }
+.pgc.is-special .pgc-who { --band: var(--ink); --ink2: var(--yellow); }
+/* the day off: green */
+.pgc.is-rest .card-in { --frame: #0a5c33; --bg1: #dcffe2; --bg2: #a5eeb4; --band: #0f7a44; }
+/* better drills shine a little */
+.pgc.star3 .card-in { --frame: #a85a00; --bg2: #ffe08a; }
+.pgc.star3 .pgc-art img { filter: drop-shadow(0 0 0.35rem rgba(255, 190, 40, 0.9)) drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
 
 /* ---------- match day: the opponent and one button ---------- */
 .pg-vs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.4rem; padding: 0.8rem max(1.2rem, env(safe-area-inset-right)) 0.7rem max(1.2rem, env(safe-area-inset-left)); color: var(--chalk); background: repeating-linear-gradient(-60deg, transparent 0 2.2rem, rgba(255, 255, 255, 0.035) 2.2rem 4.4rem), linear-gradient(180deg, rgba(6, 8, 26, 0.9), var(--ink)); border-top: 0.3rem solid var(--oc); animation: pg-vs-in 0.5s var(--spring) backwards; }
@@ -316,3 +350,8 @@
 .ci-mark { position: absolute; right: 2rem; top: 1.4rem; width: 4rem; height: 4rem; color: var(--yellow); animation: cr-rock 0.5s ease-in-out infinite alternate; }
 
 .calm .sky-cloud, .calm .sky-bird { animation: none !important; }
+.ci-flip .pgc-art.is-hero img { width: 7.6rem; height: 7.6rem; }
+.ci-flip .pgc-name { height: 2.8rem; font-size: var(--fs-m); }
+/* a considered card rises only a little: the effect bar sits right above the hand */
+.card.pgc.selected { transform: translateY(-0.45rem) rotate(-1deg); }
+@media (hover: hover) { .card.pgc:hover { transform: translateY(-0.45rem); } }

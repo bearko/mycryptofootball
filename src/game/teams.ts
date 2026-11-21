@@ -67,7 +67,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '青龍大付属', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
-    base: 41, spread: 25, runBias: 0.5, smart: 0.8,
+    base: 38, spread: 25, runBias: 0.5, smart: 0.8,
     players: [
       { id: 5001, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4012, off: 'RB', def: 'CB2', ace: 'powerRun' },

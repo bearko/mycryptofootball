@@ -1,23 +1,27 @@
 // The practice ground: the hub of the season and the practice itself, on one screen.
 // Back to front: the ground with the heroes on it, the calendar strip across the top, a small tag pinned to
 // every hero, and along the bottom the hand of practice cards (or, on a match day, the opponent and one button).
-// One tap on a card plays the day: the heroes run the drill, numbers pop out of them, the calendar slides on.
+// Considering a card (the mouse over it, or a first tap) shows what it would do: the effect bar over the hand,
+// and over every hero's head the abilities, trust and stamina they would gain or lose.
+// Playing it (a click, or a second tap on the same card) runs the day: the drill, the numbers, the next date.
 
 import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero } from '../game/heroes';
+import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import {
-  SCHEDULE, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, learned, member, nextMatch, plan, policyOpen, previewTrain,
-  scoutedKeys, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, learned, member, nextMatch, plan, policyOpen,
+  previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { OPPONENTS, aces } from '../game/teams';
 import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
 import { calendar } from './ground/calendar';
+import type { PracticeCard } from '../game/season';
 import { makeGround } from './ground/ground';
-import { cardLine, drillKind, practiceCard } from './ground/pcard';
+import { cardEffect, drillKind, practiceCard } from './ground/pcard';
 import { cutIn, eventScene, type Prize } from './ground/scenes';
 import { button, gauge, modalOpen, speech, sprite, statIcon } from './kit';
 import { lineupScreen } from './lineupScreen';
@@ -54,6 +58,8 @@ function contextLine(s: Season): Line {
   const p = plan(s);
   const last = s.results[s.results.length - 1];
   if (p.t === 'match') {
+    const worn = s.members.filter((m) => tired(m) && isStarter(s.lineup!, m.id));
+    if (worn.length) return [`${worn.slice(0, 2).map((m) => shortName(m.id)).join('と')}${worn.length > 2 ? 'たち' : ''}がバテ気味です…。試合では少し動きが落ちます。`, 'think'];
     if (s.day >= SCHEDULE.length - 1) return ['ついに決勝です！ ここまで来たら、あとは思いきりぶつかるだけ！', 'cheer'];
     if (p.cup) return [`今日は${shortLabel(p)}。負けたら今年はここまで…！ いざ、試合へ！`, 'cheer'];
     return ['今日は練習試合です。負けても大会には出られます。思いきり試しましょう！', 'point'];
@@ -65,6 +71,8 @@ function contextLine(s: Season): Line {
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
   if (s.day === 0) return ['下のカードが今日の練習メニュー。1枚えらぶと1日進みます。', 'wave'];
+  const worn = s.members.filter(tired);
+  if (worn.length >= 3) return [`${worn.length}人がバテ気味です。バテると練習が身につきにくい…「休養」も立派な練習ですよ。`, 'think'];
   const next = nextMatch(s);
   if (next && next.n - s.day === 1) return [`あしたは${shortLabel(next)}！ 仕上げの1枚をえらびましょう。`, 'cheer'];
   const near = s.members.filter((m) => !learned(m)).sort((a, b) => b.trust - a.trust)[0];
@@ -130,7 +138,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       }, { cls: 'alt', sound: 'back' })));
 
   // ---- a tag pinned to every hero on the ground
-  interface Tag { el: HTMLButtonElement; tag: HTMLElement; aim: HTMLElement; state: HTMLElement; fill: HTMLElement; badge: HTMLElement; say: HTMLElement; step: number; home: number; dx: number; bx: number }
+  interface Tag { el: HTMLButtonElement; tag: HTMLElement; aim: HTMLElement; state: HTMLElement; fill: HTMLElement; sta: HTMLElement; ghost: HTMLElement; badge: HTMLElement; say: HTMLElement; step: number; home: number; dx: number; bx: number }
   const tags = new Map<number, Tag>();
   const drawTag = (m: Member): void => {
     const t = tags.get(m.id)!;
@@ -141,16 +149,22 @@ export function clubScreen(): [HTMLElement, () => void] {
     t.state.replaceChildren(boosted(m) ? '★★' : learned(m) ? '★' : icon(ICON.lock));
     t.state.title = learned(m) ? '特別作戦を習得ずみ' : `信頼${TRUST_LEARN}で特別作戦を覚える（いま${m.trust}）`;
     t.fill.style.width = `${(m.trust / TRUST_MAX) * 100}%`;
-    t.el.setAttribute('aria-label', `${hero(m.id).name}（方針：${STAT_LABEL[m.focus]}、信頼${m.trust}）`);
+    t.sta.style.width = `${(m.sta / STA_MAX) * 100}%`;
+    t.tag.classList.toggle('is-tired', tired(m));
+    t.tag.classList.toggle('is-spent', m.sta < STA_TIRED / 2);
+    t.el.setAttribute('aria-label', `${hero(m.id).name}（方針：${STAT_LABEL[m.focus]}、信頼${m.trust}、体力${m.sta}）`);
   };
   const heroes = h('div.pg-heroes', s.members.map((m) => {
     const g = gauge(m.trust / TRUST_MAX, { cls: 'trust', marks: [TRUST_LEARN / TRUST_MAX] });
     const t: Tag = {
       el: h('button.pg-hero', { type: 'button', hidden: true }), tag: h('span.pg-tag'),
-      aim: h('span.pg-aim'), state: h('span.pg-state'), fill: g.firstElementChild as HTMLElement, badge: h('span.pg-badge'), say: h('span.pg-say'),
+      aim: h('span.pg-aim'), state: h('span.pg-state'), fill: g.firstElementChild as HTMLElement, sta: h('i'), ghost: h('u'),
+      badge: h('span.pg-badge'), say: h('span.pg-say'),
       step: 0, home: 0, dx: 0, bx: 0,
     };
-    t.tag.append(h('span.pg-line', t.aim, h('span.pg-name', shortName(m.id)), t.state), g);
+    g.title = '信頼';
+    t.tag.append(h('span.pg-line', t.aim, h('span.pg-name', shortName(m.id)), h('em.pg-worn', 'バテ'), t.state), g,
+      h('span.pg-sta', { title: '体力' }, t.sta, t.ghost));
     t.el.append(h('span.pg-hit'), t.say, t.badge, t.tag);
     t.el.addEventListener('click', (ev) => {
       if (busy) return;
@@ -233,7 +247,10 @@ export function clubScreen(): [HTMLElement, () => void] {
 
   // ---- considering a card: who would gain what
   const clearBadges = (): void => {
-    for (const t of tags.values()) t.badge.classList.remove('is-on');
+    for (const t of tags.values()) {
+      t.badge.classList.remove('is-on');
+      t.ghost.className = '';
+    }
   };
   const showBadges = (changes: Change[], info: CardInfo, solo: boolean): void => {
     for (const c of changes) {
@@ -243,7 +260,17 @@ export function clubScreen(): [HTMLElement, () => void] {
       const parts: HTMLElement[] = STATS.filter((k) => c.stats[k]).map((k) => h('i', { class: `t-${k}` }, statIcon(k), `+${c.stats[k]}`, h('u', STAT_LABEL[k])));
       if (c.trust >= 2 || (c.trust > 0 && info.hero === c.id)) parts.push(h('i.is-heart', `♥+${c.trust}`));
       // nothing turns into an ability yet: the experience is being saved up
-      if (!parts.length && gets) parts.push(h('i.is-save', { title: '経験がたまる' }, XPS.filter((k) => info.xp[k]).map((k) => xpChip(k, info.xp[k]!))));
+      if (!parts.length && gets && XPS.some((k) => info.xp[k])) parts.push(h('i.is-save', { title: '経験がたまる' }, XPS.filter((k) => info.xp[k]).map((k) => xpChip(k, info.xp[k]!))));
+      // stamina: what it costs or gives back, and a warning when the hero would end the day tired
+      const m = member(s, c.id);
+      const after = m.sta + c.sta;
+      if (c.sta) {
+        const worn = c.sta < 0 && after < STA_TIRED;
+        parts.push(h('i.is-sta', { class: `${c.sta < 0 ? 'is-loss' : 'is-gain'} ${worn ? 'is-worn' : ''}` }, h('u', '体力'), `${c.sta > 0 ? '+' : '−'}${Math.abs(c.sta)}`, worn ? h('em', 'バテる') : null));
+        t.ghost.className = c.sta < 0 ? 'is-loss' : 'is-gain';
+        t.ghost.style.left = `${(Math.min(m.sta, after) / STA_MAX) * 100}%`;
+        t.ghost.style.width = `${(Math.abs(c.sta) / STA_MAX) * 100}%`;
+      } else t.ghost.className = '';
       t.badge.replaceChildren(...parts);
       t.badge.classList.toggle('is-on', parts.length > 0);
     }
@@ -255,6 +282,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     clearTimeout(talk);
     const i = uid === null ? -1 : s.hand.findIndex((c) => c.uid === uid);
     const card = s.hand[i];
+    drawEffect(card ?? null);
     if (!card) {
       ground.hint(null);
       clearBadges();
@@ -263,9 +291,6 @@ export function clubScreen(): [HTMLElement, () => void] {
     const info = cardInfo(s, card);
     ground.hint(drillKind(card), info.hero ?? undefined);
     showBadges(previewTrain(s, i), info, card.kind === 'solo');
-    talk = window.setTimeout(() => {
-      if (alive && hot === uid) coach.say(cardLine(s, card), 'point');
-    }, 180);
   };
 
   // ---- what a hero gets: experience flies in, numbers pop out
@@ -296,6 +321,8 @@ export function clubScreen(): [HTMLElement, () => void] {
     const stats = STATS.filter((k) => c.stats[k]);
     const lines: [string, string][] = stats.map((k) => [`${c.stats[k]! > 0 ? '+' : ''}${c.stats[k]} ${STAT_LABEL[k]}`, `small pg-pop t-${k}`]);
     if (c.trust >= 2 || c.trust < 0 || (c.trust > 0 && loud)) lines.push([`♥${c.trust > 0 ? '+' : ''}${c.trust}`, `small pg-pop ${c.trust > 0 ? 'is-heart' : 'bad'}`]);
+    // stamina spent shows on the tag's bar; stamina that comes back is worth a number
+    if (c.sta > 0) lines.push([`体力 +${c.sta}`, 'small pg-pop is-sta']);
     lines.forEach(([text, cls], j) => setTimeout(() => {
       if (alive) pop(head.x, head.y - j * u * 1.9, text, cls);
     }, (from ? 240 : 0) + j * 110));
@@ -307,64 +334,44 @@ export function clubScreen(): [HTMLElement, () => void] {
   // ---- the hand of practice cards
   let cardEls = new Map<number, HTMLButtonElement>();
   const cardRow = h('div.pg-cards');
-  const handSide = h('div.pg-side', h('b', '練習'), h('span', 'メニュー'), h('i', '1枚で1日'));
-  const hand = h('footer.pg-hand', handSide, cardRow);
+  const touchy = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+  const effect = h('div.pg-fx', { 'aria-live': 'polite' });
+  /** The effect bar: what the considered card is expected to do (or how to look at one). */
+  const drawEffect = (card: PracticeCard | null): void => {
+    effect.classList.toggle('is-on', !!card);
+    if (!card) {
+      effect.replaceChildren(h('span.fx-tip', touchy ? 'カードをタップすると予測が出ます。もう一度タップで練習開始' : 'カードにかざすと予測が出ます。クリックで練習開始'));
+      return;
+    }
+    const fx = cardEffect(s, card);
+    effect.replaceChildren(fx.title, h('span.fx-chips', fx.chips), h('span.fx-text', fx.text));
+    if (touchy) effect.append(h('span.fx-go', 'もう一度タップ ▶'));
+  };
+  drawEffect(null);
+  const hand = h('footer.pg-hand', h('div.pg-deck', effect, cardRow));
 
   const wire = (el: HTMLButtonElement, uid: number): void => {
-    let touch = false;
-    let inside = false;
-    let lastTouch = 0;
-    const within = (e: PointerEvent): boolean => {
-      const r = el.getBoundingClientRect();
-      const pad = rem() * 1.6;
-      return e.clientX > r.left - pad && e.clientX < r.right + pad && e.clientY > r.top - pad && e.clientY < r.bottom + pad * 2;
-    };
+    /** how the card was last pressed: a mouse plays at once, a finger (or a key) looks first */
+    let by = '';
     el.addEventListener('pointerenter', (e) => {
       if (e.pointerType === 'mouse') setHot(uid);
     });
     el.addEventListener('pointerleave', (e) => {
       if (e.pointerType === 'mouse' && hot === uid) setHot(null);
     });
-    // touch: press considers, release on the card plays, sliding off cancels
     el.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'mouse' || busy) return;
-      touch = true;
-      inside = true;
-      try {
-        el.setPointerCapture(e.pointerId);
-      } catch {
-        /* not every browser lets a button capture */
-      }
-      sfx.cardPick();
-      vibrate(8);
-      setHot(uid);
-    });
-    el.addEventListener('pointermove', (e) => {
-      if (!touch) return;
-      const now = within(e);
-      if (now === inside) return;
-      inside = now;
-      el.classList.toggle('is-off', !now);
-      setHot(now ? uid : null);
-    });
-    el.addEventListener('pointerup', () => {
-      if (!touch) return;
-      touch = false;
-      lastTouch = performance.now();
-      el.classList.remove('is-off');
-      if (inside) void play(uid);
-      else {
-        sfx.back();
-        setHot(null);
-      }
-    });
-    el.addEventListener('pointercancel', () => {
-      touch = false;
-      el.classList.remove('is-off');
-      setHot(null);
+      by = e.pointerType;
     });
     el.addEventListener('click', () => {
-      if (performance.now() - lastTouch > 600) void play(uid);
+      if (busy) return;
+      const mouse = by === 'mouse';
+      by = '';
+      if (mouse || hot === uid) void play(uid);
+      else {
+        sfx.cardPick();
+        vibrate(8);
+        setHot(uid);
+      }
     });
     el.addEventListener('focus', () => {
       if (el.matches(':focus-visible')) setHot(uid);
@@ -430,6 +437,11 @@ export function clubScreen(): [HTMLElement, () => void] {
 
   const root = h('div.screen.club', ground.el, h('div.pg-shade', { 'aria-hidden': 'true' }), heroes, top, hand, coach.el);
 
+  // a tap anywhere else puts a considered card back
+  root.addEventListener('pointerdown', (e) => {
+    if (hot !== null && e.pointerType !== 'mouse' && !(e.target as HTMLElement).closest?.('.pgc')) setHot(null);
+  });
+
   /** Tells the ground how much of it the calendar and the hand cover. */
   const measure = (): void => {
     if (!root.isConnected) return;
@@ -473,6 +485,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     hot = null;
     clearTimeout(talk);
     clearBadges();
+    drawEffect(null);
     ground.hint(null);
     busy = true;
     root.classList.add('is-busy');
@@ -522,7 +535,8 @@ export function clubScreen(): [HTMLElement, () => void] {
     if (!alive) return;
     ring(spot.x, spot.y, '#ffe14a', 1.6);
     burst(spot.x, spot.y, { count: 12, color: ['#ffe14a', '#fffbe8', '#ff5a2e'], shape: ['star', 'rect'] });
-    coach.say(`「${report.info.name}」、はじめ！`, 'cheer');
+    const kind = drillKind(card);
+    coach.say(kind ? `「${report.info.name}」、はじめ！` : 'きょうはお休み。しっかり食べて、ゆっくり休みましょう！', kind ? 'cheer' : 'smile');
 
     // the drill, with sound on its beats; everyone's share pops out as it lands
     let n = 0;
@@ -534,7 +548,12 @@ export function clubScreen(): [HTMLElement, () => void] {
       gain(c, n, spot, card.kind !== 'solo' || report.info.hero === id ? report.info : null, report.info.hero === id);
       n += 1;
     };
-    if (!fast) {
+    if (!kind) {
+      // a day off: nobody runs, everybody gets their breath back
+      sfx.trustUp();
+      report.changes.forEach((c, k) => setTimeout(() => payoff(c.id), k * 70));
+      await Promise.race([wait(motion() ? 900 : 200), skipped]);
+    } else if (!fast) {
       // the drill is over when its last beat has landed; the picture may go on settling behind the next card
       let landed: () => void = () => undefined;
       const over = new Promise<void>((resolve) => {
@@ -542,7 +561,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       });
       await Promise.race([
         over,
-        ground.drill(drillKind(card), { lead: report.info.hero ?? undefined, speed: 1 }, {
+        ground.drill(kind, { lead: report.info.hero ?? undefined, speed: 1 }, {
           onEnd: () => landed(),
           onStep: () => sfx.countTick(),
           onThrow: () => sfx.throwBall(false),
@@ -614,7 +633,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     }
   };
 
-  // ---- keys: 1-5 play, arrows consider, Enter plays what is considered
+  // ---- keys: a number or the arrows consider a card; the same number again, or Enter, plays it
   const onKey = (e: KeyboardEvent): void => {
     if (!alive || modalOpen() || e.metaKey || e.ctrlKey || e.altKey) return;
     const onButton = document.activeElement instanceof HTMLButtonElement;
@@ -629,7 +648,12 @@ export function clubScreen(): [HTMLElement, () => void] {
     const n = Number(e.key);
     if (Number.isInteger(n) && n >= 1 && n <= s.hand.length) {
       e.preventDefault();
-      void play(s.hand[n - 1]!.uid);
+      const uid = s.hand[n - 1]!.uid;
+      if (hot === uid) void play(uid);
+      else {
+        sfx.hover();
+        setHot(uid);
+      }
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       const at = s.hand.findIndex((c) => c.uid === hot);

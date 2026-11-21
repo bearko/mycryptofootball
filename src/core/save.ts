@@ -2,7 +2,7 @@
 
 import { Rng } from './rng';
 import type { MatchState } from '../game/match';
-import type { Season } from '../game/season';
+import { mend, type Season } from '../game/season';
 
 const KEY = 'mycryptofootball.save.v1';
 
@@ -57,6 +57,7 @@ export function save(): SaveData {
         data.season = null;
         data.match = null;
       }
+      if (data.season) mend(data.season);
     }
   } catch {
     /* a browser without storage still runs the game, it just forgets */

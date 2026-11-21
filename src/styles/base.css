@@ -295,7 +295,8 @@ img { -webkit-user-drag: none; }
 .member-say { font-size: var(--fs-s); line-height: 1.4; display: grid; gap: 0.4rem; }
 .member-line { font-family: var(--display); font-size: var(--fs-m); color: var(--chalk); }
 .dim { color: var(--dim); }
-.member-trust { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: center; white-space: nowrap; }
+.member-worn { grid-column: 1 / -1; font-style: normal; font-size: var(--fs-xs); color: var(--orange); margin-top: -0.6rem; }
+.member-trust { display: grid; grid-template-columns: 6rem 1fr; gap: 1rem; align-items: center; white-space: nowrap; }
 .member-play { display: grid; grid-template-columns: auto 1fr; gap: 1.4rem; align-items: center; margin-top: 1rem; padding: 0.8rem 1.2rem; background: rgba(6, 8, 26, 0.5); border: 0.2rem dashed var(--line); font-size: var(--fs-s); line-height: 1.4; }
 .member-play.on { border: 0.2rem solid var(--yellow); }
 .member-play:not(.on) .card { filter: grayscale(0.7) brightness(0.7); }

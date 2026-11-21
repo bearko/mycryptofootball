@@ -1,5 +1,6 @@
-// The calendar strip: twenty-eight days as tiles on a track. Today is the big tile in the middle;
-// when a day passes the strip slides one tile and the ball rolls on.
+// The calendar strip: twenty-eight days as tiles on a track. It starts at yesterday (older days are done with),
+// today is the big tile next to it, and the rest of the strip is what is coming: the days ahead, as far as fits.
+// When a day passes the strip slides one tile and the ball rolls on.
 
 import { h } from '../../core/dom';
 import { DOW, SCHEDULE, dateText, nextMatch, plan, type Season } from '../../game/season';
@@ -50,7 +51,9 @@ export function calendar(s: Season): Calendar {
       if (note.textContent !== text) note.textContent = text;
       note.className = `cal-note ${cls}`;
     });
-    track.style.setProperty('--d', String(st.day));
+    // the strip starts at yesterday
+    el.style.setProperty('--o', String(Math.max(0, st.day - 1)));
+    el.classList.toggle('is-first', st.day === 0);
     el.setAttribute('aria-label', `カレンダー：きょうは${dateText(plan(st))}`);
   };
 

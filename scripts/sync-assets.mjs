@@ -64,6 +64,28 @@ for (const file of readdirSync(join(src, 'Image/Characters'))) {
   chars[file.replace(/\.png$/, '')] = use(`Image/Characters/${file}`);
 }
 
+// ---------------------------------------------------------------- practice card art (Extensions)
+// One Extension series per practice; the card's star level picks the rarity (Common, Rare, Legendary).
+const DRILL_ART = {
+  dash: 1031, // boots
+  pass: 1187, // javelin
+  catch: 1099, // gauntlets
+  hit: 1010, // shield
+  tackle: 1023, // bull
+  study: 1037, // war fan
+  game: 1018, // helmet
+  rest: 1142, // picnic box
+};
+const extById = new Map(readJson('Data/Extensions/extensions.json').map((e) => [e.id, e]));
+const drills = {};
+for (const [key, base] of Object.entries(DRILL_ART)) {
+  drills[key] = [0, 2000, 4000].map((step) => {
+    const e = extById.get(base + step) ?? extById.get(base);
+    if (!e) throw new Error(`missing extension ${base}`);
+    return { name: e.name.ja, img: use(e.image_file_path) };
+  });
+}
+
 // ---------------------------------------------------------------- sound
 const bgm = {
   club: use('Audio/BGM/land.mp3'),
@@ -82,5 +104,5 @@ const se = {
 };
 
 mkdirSync(dirname(outCatalog), { recursive: true });
-writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, bgm, se }, null, 1)}\n`);
+writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, bgm, se }, null, 1)}\n`);
 console.log(`[sync-assets] ${Object.keys(heroes).length} heroes, ${copied} files → public/mch`);

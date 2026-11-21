@@ -9,7 +9,7 @@ import {
 import { DEF_POS, OFF_POS, STATS, fit, roleOf } from '../src/game/model';
 import { OPPONENTS, opponentSheet } from '../src/game/teams';
 import {
-  CANDIDATES, EVENTS, HAND_SIZE, PRACTICE_KEYS, ROSTER_SIZE, SCHEDULE, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
+  CANDIDATES, EVENTS, HAND_SIZE, PRACTICE, PRACTICE_KEYS, REST_STA, ROSTER_SIZE, SCHEDULE, STA_MAX, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
   cardInfo, clubSheet, costOf, dateText, finishMatch, learned, newSeason, plan, policyOpen, presetFocus, previewTrain, setFocus,
   signRecruits, train, type PracticeCard, type Season,
 } from '../src/game/season';
@@ -255,7 +255,49 @@ describe('season', () => {
     expect(s.members[0]!.captain).toBe(true);
     expect(s.members.filter(learned)).toHaveLength(1);
     expect(clubSheet(s).specials).toHaveLength(1);
-    expect(s.hand).toHaveLength(HAND_SIZE);
+    expect(s.hand).toHaveLength(HAND_SIZE + 1);
+    expect(s.hand[s.hand.length - 1]!.kind).toBe('rest');
+  });
+
+  it('practice costs stamina, a day off brings it back, and the rest card never leaves the hand', () => {
+    const s = club();
+    expect(s.members.every((m) => m.sta === STA_MAX)).toBe(true);
+    const hard = play(s, basic('hit'));
+    expect(hard.changes.every((c) => c.sta === -PRACTICE.hit.sta)).toBe(true);
+    expect(s.members.every((m) => m.sta === STA_MAX - PRACTICE.hit.sta)).toBe(true);
+    for (const m of s.members) m.sta = 20;
+    const at = s.hand.findIndex((c) => c.kind === 'rest');
+    s.event = null;
+    const off = train(s, at);
+    expect(off.changes.every((c) => c.sta === REST_STA && Object.keys(c.stats).length === 0)).toBe(true);
+    expect(s.hand.filter((c) => c.kind === 'rest')).toHaveLength(1);
+    expect(s.hand).toHaveLength(HAND_SIZE + 1);
+  });
+
+  it('a tired hero takes in less of a practice, and plays a match a little worse', () => {
+    const fresh = club(5);
+    const worn = club(5);
+    for (const m of worn.members) m.sta = 10;
+    play(fresh, basic('dash', 3));
+    play(worn, basic('dash', 3));
+    const xp = (x: Season): number => x.members.reduce((sum, m) => sum + m.xp.spd + m.stats.spd * 10, 0);
+    expect(xp(worn)).toBeLessThan(xp(fresh));
+    const a = club(5);
+    const b = club(5);
+    for (const m of b.members) m.sta = 0;
+    a.day = 6;
+    b.day = 6;
+    const total = (x: Season): number => clubSheet(x).players.reduce((sum, pl) => sum + pl.stats.spd + pl.stats.blk, 0);
+    expect(total(b)).toBeLessThan(total(a));
+  });
+
+  it('while one hero trains alone, the others catch their breath', () => {
+    const s = club();
+    for (const m of s.members) m.sta = 50;
+    const one = s.members[2]!.id;
+    const r = play(s, { uid: 999, kind: 'solo', hero: one });
+    expect(r.changes.find((c) => c.id === one)!.sta).toBeLessThan(0);
+    expect(r.changes.filter((c) => c.id !== one).every((c) => c.sta > 0)).toBe(true);
   });
 
   it('everyone starts out working on their talent, and the policy is open at the start only', () => {

@@ -9,11 +9,11 @@ import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { DEF_POS, OFF_POS, ROLE_LABEL, STATS, STAT_LABEL, fit, roleOf, type Role, type Stats } from '../game/model';
 import {
-  TRUST_BOOST, TRUST_LEARN, TRUST_MAX, boosted, learned, member, type Change, type Member, type Season,
+  STA_MAX, STA_TIRED, TRUST_BOOST, TRUST_LEARN, TRUST_MAX, boosted, learned, member, type Change, type Member, type Season,
 } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
-import { TALENT_COLOR, button, cheerAt, closeModal, modal, portrait, radar, trustGauge } from './kit';
+import { TALENT_COLOR, button, cheerAt, closeModal, gauge, modal, portrait, radar, trustGauge } from './kit';
 
 /** Where a member plays: "司令塔 / セーフティ", or "控え". */
 export function positions(s: Season, id: number): string {
@@ -45,7 +45,8 @@ export function changeList(s: Season, changes: Change[]): HTMLElement {
       h('div.change-main',
         h('b', hero(c.id).name),
         STATS.filter((k) => c.stats[k]).map((k) => h('span', { class: c.stats[k]! < 0 ? 'minus' : '' }, `${STAT_LABEL[k]}${c.stats[k]! > 0 ? '+' : ''}${c.stats[k]}`)),
-        c.trust ? h('span', { class: c.trust < 0 ? 'minus' : '' }, `信頼${c.trust > 0 ? '+' : ''}${c.trust}`) : null),
+        c.trust ? h('span', { class: c.trust < 0 ? 'minus' : '' }, `信頼${c.trust > 0 ? '+' : ''}${c.trust}`) : null,
+        c.sta ? h('span', { class: c.sta < 0 ? 'minus' : '' }, `体力${c.sta > 0 ? '+' : ''}${c.sta}`) : null),
       g,
       c.learnedNow ? h('em', `特別作戦「${hero(c.id).passive}」を覚えた！`) : null,
       c.boostedNow ? h('em', `「${hero(c.id).passive}」がさらに強くなった！`) : null);
@@ -75,7 +76,9 @@ export function memberModal(s: Season, m: Member): void {
         portrait(m.id, { color: TALENT_COLOR[best] }),
         h('h3', hero(m.id).name, m.captain ? h('span.label.hot', '主将') : null)),
       h('div.member-say', h('p.member-line', `「${r.line}」`), h('p', r.blurb), h('p.dim', `いまは ${positions(s, m.id)}。${bestRoles(m.stats)}`),
-        h('div.member-trust', h('span', `信頼 ${m.trust}`), trustGauge(m.trust))),
+        h('div.member-trust', h('span', `信頼 ${m.trust}`), trustGauge(m.trust)),
+        h('div.member-trust', h('span', `体力 ${m.sta}`), gauge(m.sta / STA_MAX, { color: m.sta < STA_TIRED ? '#ff8a3d' : '#7dff8a' }),
+          m.sta < STA_TIRED ? h('i.member-worn', 'バテ気味：練習が身につきにくい') : null)),
       radar(m.stats, r.stats).el),
     h('div.member-play', { class: learned(m) ? 'on' : '' },
       playCard({ type: 'inside', star: 1, special: sp }, 'off', { small: true, read: 0 }),
@@ -90,6 +93,7 @@ export function helpModal(): void {
     ['作戦カード', '攻撃も守備も、配られたカードから1枚えらぶ。相手のカードとの相性（◎と×）で結果が大きく変わる。'],
     ['ヒーロー', '全員が一芸もち。得意に合うポジションに置くと活躍する。同じ6人が攻撃も守備もする。'],
     ['練習', '月〜土は練習カードを1枚えらぶと1日進む。ヒーローは経験を、育成方針で決めた能力に変える。日曜は試合。'],
+    ['体力', '練習すると減る。半分を切るとバテて、練習が身につきにくくなり、試合でも動きが落ちる。「休養」で戻る。'],
     ['信頼', '練習や試合でたまる。20でそのヒーローの特別練習がカードに出るようになる。'],
     ['特別作戦', '信頼が40たまるとヒーローごとの特別作戦を覚える。試合中にたまる「流れ」を使って出す。'],
     ['読まれる', '同じ特別作戦は、使うたびに相手に読まれて弱くなる。ここぞで使おう。'],

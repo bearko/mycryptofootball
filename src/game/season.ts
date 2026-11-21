@@ -8,6 +8,8 @@
 //    colours (power, speed, technique, brains) to the heroes
 //  - each hero turns that experience into abilities on their own: first into the policy ability, and whatever
 //    colours the policy has no use for into the other abilities their positions need
+//  - practice costs stamina. A tired hero (under half) takes in less, and plays a match a little worse;
+//    the rest card, always in the hand, brings stamina back
 
 import { Rng, clamp } from '../core/rng';
 import { READ_MAX } from './cards';
@@ -23,7 +25,17 @@ export const TRUST_DRILL = 20;
 export const TRUST_LEARN = 40;
 export const TRUST_BOOST = 80;
 export const TRUST_MAX = 100;
+/** practice cards dealt to the hand (the rest card, always there, comes on top) */
 export const HAND_SIZE = 5;
+export const STA_MAX = 100;
+/** under this a hero is tired: practice sticks less, and they play a match a little worse */
+export const STA_TIRED = 50;
+/** stamina a rest day gives back / a starter spends in a match / the others regain while one hero trains alone */
+export const REST_STA = 45;
+export const MATCH_STA = 10;
+const SOLO_REST = 8;
+const SOLO_COST = 16;
+const DRILL_COST = 12;
 
 export const TEAM_NAME = 'マイクリ学園';
 export const TEAM_SHORT = 'マイクリ';
@@ -94,9 +106,17 @@ export interface Member {
   captain: boolean;
   /** experience not yet turned into abilities */
   xp: XpBag;
+  /** stamina, 0 to STA_MAX */
+  sta: number;
   /** the training policy: the ability this hero is working on */
   focus: Stat;
 }
+
+export const tired = (m: Member): boolean => m.sta < STA_TIRED;
+/** How much of a practice a hero takes in at this stamina (1 when fresh, down to 0.4 when spent). */
+export const intake = (sta: number): number => (sta >= STA_TIRED ? 1 : 0.4 + (0.6 * Math.max(0, sta)) / STA_TIRED);
+/** How well a hero plays a match at this stamina (1 when fresh, down to 0.9 when spent). */
+export const condition = (sta: number): number => (sta >= STA_TIRED ? 1 : 0.9 + (0.1 * Math.max(0, sta)) / STA_TIRED);
 
 /** What one more point of an ability costs this hero now (the talent is cheap, the weak spot dear, the heights steep). */
 export function costOf(m: Member, k: Stat): Partial<XpBag> {
@@ -163,26 +183,28 @@ export interface Practice {
   xp: Partial<XpBag>;
   /** trust every member gains */
   trust: number;
+  /** stamina it costs everyone */
+  sta: number;
   text: string;
 }
 export const PRACTICE: Record<PracticeKey, Practice> = {
-  dash: { name: '走りこみ', xp: { spd: 12 }, trust: 0, text: 'ひたすら走る' },
-  pass: { name: 'パス練習', xp: { tec: 8, int: 4 }, trust: 0, text: '投げて、投げて、投げる' },
-  catch: { name: 'キャッチ練習', xp: { tec: 7, spd: 5 }, trust: 0, text: '走りながら捕る' },
-  hit: { name: '当たり稽古', xp: { pow: 12 }, trust: 0, text: '体をぶつけ合う' },
-  tackle: { name: 'タックル練習', xp: { pow: 7, spd: 5 }, trust: 0, text: '追いかけて、倒す' },
-  study: { name: '作戦会議', xp: { int: 10 }, trust: 1, text: '黒板を囲んで作戦を練る。信頼も少し上がる' },
-  game: { name: 'ミニゲーム', xp: { pow: 3, spd: 3, tec: 3, int: 3 }, trust: 2, text: 'みんなで試合形式。信頼が上がる' },
+  dash: { name: '走りこみ', xp: { spd: 12 }, trust: 0, sta: 14, text: 'ひたすら走る' },
+  pass: { name: 'パス練習', xp: { tec: 8, int: 4 }, trust: 0, sta: 10, text: '投げて、投げて、投げる' },
+  catch: { name: 'キャッチ練習', xp: { tec: 7, spd: 5 }, trust: 0, sta: 10, text: '走りながら捕る' },
+  hit: { name: '当たり稽古', xp: { pow: 12 }, trust: 0, sta: 14, text: '体をぶつけ合う' },
+  tackle: { name: 'タックル練習', xp: { pow: 7, spd: 5 }, trust: 0, sta: 14, text: '追いかけて、倒す' },
+  study: { name: '作戦会議', xp: { int: 10 }, trust: 1, sta: 3, text: '黒板を囲んで作戦を練る。信頼も少し上がる' },
+  game: { name: 'ミニゲーム', xp: { pow: 3, spd: 3, tec: 3, int: 3 }, trust: 2, sta: 10, text: 'みんなで試合形式。信頼が上がる' },
 };
 export const PRACTICE_KEYS = Object.keys(PRACTICE) as PracticeKey[];
-const STAR_MUL = [0, 1, 1.35, 1.7];
+export const STAR_MUL = [0, 1.2, 1.6, 2];
 
 /** The special practice a trusted hero can run, by that hero's talent. */
 export const DRILL_NAME: Record<Stat, string> = {
   spd: '鬼ごっこ', pas: '的当て', cat: '空中キャッチ', blk: '押しくらべ', tkl: '一騎打ち', iq: '兵法講義',
 };
-const DRILL_TOTAL = 26;
-const SOLO_TOTAL = 32;
+const DRILL_TOTAL = 31;
+const SOLO_TOTAL = 38;
 const SOLO_TRUST = 10;
 
 export type PracticeCard =
@@ -191,7 +213,9 @@ export type PracticeCard =
   /** the coach works with one hero alone: a lot of experience for the policy ability, and trust */
   | { uid: number; kind: 'solo'; hero: number }
   /** a trusted hero runs their own special drill for the whole team */
-  | { uid: number; kind: 'special'; hero: number };
+  | { uid: number; kind: 'special'; hero: number }
+  /** a day off: no experience, stamina comes back. Always in the hand */
+  | { uid: number; kind: 'rest' };
 
 export interface CardInfo {
   name: string;
@@ -203,6 +227,9 @@ export interface CardInfo {
   heroTrust: number;
   hero: number | null;
   star: number;
+  /** stamina change for the heroes who take part (negative: it costs) / for the others (one-on-one only) */
+  sta: number;
+  others: number;
 }
 
 /** Spreads an amount of experience over the colours an ability needs. */
@@ -219,20 +246,23 @@ export function cardInfo(s: Season, card: PracticeCard): CardInfo {
     const p = PRACTICE[card.key];
     const xp: Partial<XpBag> = {};
     for (const [c, v] of Object.entries(p.xp)) xp[c as Xp] = Math.round((v as number) * STAR_MUL[card.star]! * 10) / 10;
-    return { name: p.name, text: p.text, xp, trust: p.trust, heroTrust: 0, hero: null, star: card.star };
+    return { name: p.name, text: p.text, xp, trust: p.trust, heroTrust: 0, hero: null, star: card.star, sta: -p.sta, others: 0 };
+  }
+  if (card.kind === 'rest') {
+    return { name: '休養', text: '練習は休み。全員の体力が戻る', xp: {}, trust: 0, heroTrust: 0, hero: null, star: 0, sta: REST_STA, others: 0 };
   }
   const m = member(s, card.hero);
   const name = hero(card.hero).name;
   if (card.kind === 'solo') {
     return {
       name: 'マンツーマン', text: `${name}とふたりで特訓。${STAT_LABEL[m.focus]}がぐんと伸び、信頼が大きく上がる`,
-      xp: xpFor(m.focus, SOLO_TOTAL), trust: 0, heroTrust: SOLO_TRUST, hero: card.hero, star: 0,
+      xp: xpFor(m.focus, SOLO_TOTAL), trust: 0, heroTrust: SOLO_TRUST, hero: card.hero, star: 0, sta: -SOLO_COST, others: SOLO_REST,
     };
   }
   const talent = talentOf(recruit(card.hero).stats).best;
   return {
     name: DRILL_NAME[talent], text: `${name}の特別練習。全員の${STAT_LABEL[talent]}の経験がどっさり入る`,
-    xp: xpFor(talent, DRILL_TOTAL), trust: 1, heroTrust: 2, hero: card.hero, star: 0,
+    xp: xpFor(talent, DRILL_TOTAL), trust: 1, heroTrust: 2, hero: card.hero, star: 0, sta: -DRILL_COST, others: 0,
   };
 }
 
@@ -311,6 +341,7 @@ export function signRecruits(s: Season, ids: number[]): void {
     trust: i === 0 ? TRUST_LEARN : rng.int(5, 15),
     captain: i === 0,
     xp: noXp(),
+    sta: STA_MAX,
     focus: talentOf(recruit(id).stats).best,
   }));
   s.lineup = bestLineup(s.members.map(asPlayer));
@@ -401,7 +432,11 @@ export function startDay(s: Season): void {
   s.event = null;
   if (s.phase !== 'club' || plan(s).t !== 'train') return;
   const rng = rngOf(s);
+  // the rest card is always there, at the end of the hand
+  const rest = s.hand.find((c) => c.kind === 'rest') ?? { uid: s.uid++, kind: 'rest' as const };
+  s.hand = s.hand.filter((c) => c.kind !== 'rest');
   while (s.hand.length < HAND_SIZE) s.hand.push(drawCard(s, rng));
+  s.hand.push(rest);
   if (EVENT_DAYS.includes(s.day)) {
     const fresh = EVENTS.filter((e) => !s.seen.includes(e.key));
     if (fresh.length) {
@@ -417,6 +452,8 @@ export interface Change {
   id: number;
   stats: Partial<Stats>;
   trust: number;
+  /** stamina gained or spent */
+  sta: number;
   learnedNow: boolean;
   boostedNow: boolean;
   /** the hero's special practice became available */
@@ -429,13 +466,19 @@ function grow(m: Member, k: Stat, amount: number): number {
   return m.stats[k] - before;
 }
 
+function addSta(m: Member, v: number): number {
+  const before = m.sta;
+  m.sta = clamp(Math.round(before + v), 0, STA_MAX);
+  return m.sta - before;
+}
+
 function addTrust(m: Member, v: number): number {
   const before = m.trust;
   m.trust = clamp(before + v, 0, TRUST_MAX);
   return m.trust - before;
 }
 
-const blankChange = (id: number): Change => ({ id, stats: {}, trust: 0, learnedNow: false, boostedNow: false, drillNow: false });
+const blankChange = (id: number): Change => ({ id, stats: {}, trust: 0, sta: 0, learnedNow: false, boostedNow: false, drillNow: false });
 
 function withMilestones(s: Season, run: (changes: Map<number, Change>) => void): Change[] {
   const was = new Map(s.members.map((m) => [m.id, m.trust]));
@@ -467,11 +510,15 @@ export function train(s: Season, index: number): DayReport {
     for (const m of s.members) {
       const c = ch.get(m.id)!;
       const mine = info.hero === m.id;
-      if (card.kind !== 'solo' || mine) for (const [k, v] of Object.entries(info.xp)) m.xp[k as Xp] += v as number;
+      const takesPart = card.kind !== 'solo' || mine;
+      // a tired hero takes in less of the practice
+      const share = intake(m.sta);
+      if (takesPart) for (const [k, v] of Object.entries(info.xp)) m.xp[k as Xp] += (v as number) * share;
       const got = convert(m, s.lineup);
       for (const [k, v] of Object.entries(got)) c.stats[k as Stat] = (c.stats[k as Stat] ?? 0) + (v as number);
-      // being on the ground together builds a little trust, every other day
-      const base = s.day % 2;
+      c.sta += addSta(m, takesPart ? info.sta : info.others);
+      // being on the ground together builds a little trust, every other day (a day off is a day off)
+      const base = card.kind === 'rest' ? 0 : s.day % 2;
       c.trust += addTrust(m, base + info.trust + (mine ? info.heroTrust : 0));
     }
   });
@@ -611,7 +658,13 @@ export function clubSheet(s: Season): TeamSheet {
     name: TEAM_NAME,
     short: TEAM_SHORT,
     color: TEAM_COLOR,
-    players: s.members.map(asPlayer),
+    // tired heroes play a little worse
+    players: s.members.map((m) => {
+      const c = condition(m.sta);
+      const stats = { ...m.stats };
+      if (c < 1) for (const k of STATS) stats[k] = Math.max(1, Math.round(stats[k] * c));
+      return { ...asPlayer(m), stats };
+    }),
     lineup: l,
     specials: s.members.filter(learned).map((m) => specialOf(m.id, recruit(m.id).kind, boosted(m))),
     runBias: 0.5,
@@ -635,8 +688,9 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     for (const m of s.members) {
       if (!on.includes(m.id)) continue;
       ch.get(m.id)!.trust += addTrust(m, win ? 4 : 2);
+      ch.get(m.id)!.sta += addSta(m, -MATCH_STA);
     }
-  }).filter((c) => c.trust !== 0);
+  }).filter((c) => c.trust !== 0 || c.sta !== 0);
   let ended = false;
   if (p.cup && !win) ended = true;
   if (s.day >= SCHEDULE.length - 1) {
@@ -653,8 +707,19 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   return { changes, win, ended };
 }
 
+/** Brings a season saved by an earlier version up to date (stamina and the rest card came later). */
+export function mend(s: Season): Season {
+  for (const m of s.members) if (typeof m.sta !== 'number') m.sta = STA_MAX;
+  if (s.phase === 'club' && plan(s).t === 'train' && !s.hand.some((c) => c.kind === 'rest')) {
+    s.hand.push({ uid: s.uid, kind: 'rest' });
+    s.uid += 1;
+  }
+  return s;
+}
+
 /** A short description of a change, e.g. "走力 +4". */
 export const changeText = (c: Change): string[] => [
   ...STATS.filter((k) => c.stats[k]).map((k) => `${STAT_LABEL[k]} ${c.stats[k]! > 0 ? '+' : ''}${c.stats[k]}`),
   ...(c.trust ? [`信頼 ${c.trust > 0 ? '+' : ''}${c.trust}`] : []),
+  ...(c.sta ? [`体力 ${c.sta > 0 ? '+' : ''}${c.sta}`] : []),
 ];
