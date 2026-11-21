@@ -3,7 +3,7 @@
 // URL parameters (all optional):
 //   auto=1            keep playing a real match by itself
 //   speed=1|2|12      playback speed
-//   force=longtd|runtd|shorttd|int|sack|bigrun|special|defspecial|fumble|incomplete|stuff   show this outcome first
+//   force=longtd|runtd|shorttd|int|sack|bigrun|run|catchrun|longgain|special|defspecial|fumble|incomplete|stuff   show this outcome first
 //   delay=ms          with force: how long to wait before the forced play (default 900)
 //   loop=1            with force: repeat the forced play forever
 //   preview=inside|outside|short|long|stuff|contain|zone|deep|blitz   chalk this card
@@ -151,6 +151,12 @@ function forced(kind: string): PlayResult {
       return { ...base, offPick: { type: 'short', star: 1 }, defPick: { type: 'zone', star: 2 }, outcome: 'incomplete', yards: 0, carrier: O.lineup.off.WR1, defender: D.lineup.def.CB1 };
     case 'stuff':
       return { ...base, offPick: { type: 'inside', star: 1 }, defPick: { type: 'stuff', star: 3 }, outcome: 'loss', yards: -2, defender: D.lineup.def.DL2 };
+    case 'run':
+      return { ...base, offPick: { type: 'inside', star: 2 }, defPick: { type: 'zone', star: 1 }, yards: Math.min(6, toGoal - 1), defender: D.lineup.def.LB };
+    case 'catchrun':
+      return { ...base, offPick: { type: 'short', star: 2 }, defPick: { type: 'deep', star: 1 }, yards: Math.min(15, toGoal - 1), carrier: O.lineup.off.WR1, defender: D.lineup.def.CB1 };
+    case 'longgain':
+      return { ...base, offPick: { type: 'long', star: 2 }, defPick: { type: 'stuff', star: 1 }, yards: Math.min(24, toGoal - 1), carrier: O.lineup.off.WR2, defender: D.lineup.def.S };
     case 'defspecial': {
       const sp = D.specials.find((s) => KIND[s.kind].side === 'def' && s.kind !== 'peekDef');
       if (!sp) return forced('stuff');

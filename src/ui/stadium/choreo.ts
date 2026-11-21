@@ -74,6 +74,15 @@ export interface PlaySpec {
   kick?: { type: KickType; good: boolean; dist: number };
 }
 
+/**
+ * What a hero was sent out to do, as the coach drew it: the way the runner means to go, the routes the receivers run.
+ * World x,z points. It is the plan, not the result (the runner may never get that far).
+ */
+export interface Design extends Ref {
+  kind: 'run' | 'route' | 'decoy';
+  way: [number, number][];
+}
+
 export interface Script {
   spec: PlaySpec;
   dir: 1 | -1;
@@ -99,6 +108,8 @@ export interface Script {
   /** where the pass comes down, world */
   spotX: number;
   spotZ: number;
+  /** the play as it was drawn up (empty for a kick) */
+  design: Design[];
 }
 
 export function specOf(res: PlayResult): PlaySpec {
@@ -275,6 +286,10 @@ export function buildScript(
 
   const cues: Cue[] = [];
   const ball: BallSeg[] = [];
+  const design: Design[] = [];
+  const draw = (pl: Plan, kind: Design['kind'], way: UV[]): void => {
+    design.push({ team: pl.team, id: pl.id, kind, way: way.map(([u, v]) => [X(clamp(u, -4.3, FIELD + 4.3)), clamp(v, 0.6, WIDTH - 0.6)] as [number, number]) });
+  };
 
   // before the snap: everybody gets set, the defense shows its call
   for (const p of OFF_POS) go(a(p), s * 0.72, base.off[p][0], base.off[p][1]);
@@ -422,6 +437,9 @@ export function buildScript(
     // where the runner is when he is hit; he then falls to the spot the rules gave
     const hitU = sp.td ? stopU : back ? stopU + 0.7 : stopU - 0.6;
     tHand = s + (inside ? 0.34 : 0.3);
+    // the run as drawn up: through the hole and on, as far as the goal line allows
+    if (inside) draw(rb, 'run', [base.off.RB, [los - 5.4, 12.2], [los - 0.8, lane], [Math.min(los + 9, FIELD + 2), lane]]);
+    else draw(rb, 'run', [base.off.RB, [los - 7.7, lerp(12.8, lane, 0.3)], [los - 3.6, lane], [Math.min(los + 11, FIELD + 2), lane + (lane < 12 ? 0.9 : -0.9)]]);
     go(qb, s + 0.3, los - 5.9, inside ? 12.5 : 12 + (lane < 12 ? -0.9 : 0.9));
     go(qb, s + 1.2, los - 5.5, 12.4);
     let fromU: number;
@@ -558,6 +576,11 @@ export function buildScript(
       go(other, tCatch + 0.25, u + (long ? 13.5 : 6.5), v + inw * 1.6);
     }
     go(recv, s + (tCatch - s) * 0.55, los + depth * 0.5, rv0 + inward * 0.3);
+    draw(recv, 'route', [base.off[recvPos], [los + depth * 0.5, rv0 + inward * 0.3], [spotU, rv]]);
+    {
+      const [u, v] = base.off[other.pos as OffPos];
+      draw(other, 'decoy', [[u, v], [u + (long ? 10 : 5), v], [u + (long ? 13.5 : 6.5), v + (v < 12 ? 1.6 : -1.6)]]);
+    }
     if (sp.call === 'blitz' && b('LB') !== defender) {
       const lb = b('LB');
       go(lb, s + 0.75, los - 2.4, 12.6 + (sp.n % 2 ? 1.5 : -1.5));
@@ -719,7 +742,7 @@ export function buildScript(
   const dur = endT + (fast ? 0.08 : 0.5);
   return {
     spec: sp, dir, losX: X(los), dur, snap: s, tHand, tThrow, tCatch, tEnd, tTD, plans, ball, cues, star,
-    pass: !isRun(type), long: type === 'long', endX: X(endU), endZ: endV, spotX: X(spotU), spotZ: spotV,
+    pass: !isRun(type), long: type === 'long', endX: X(endU), endZ: endV, spotX: X(spotU), spotZ: spotV, design,
   };
 }
 
