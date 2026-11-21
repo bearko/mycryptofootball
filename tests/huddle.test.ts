@@ -1,3 +1,4 @@
+import { opened } from './open';
 import { describe, expect, it } from 'vitest';
 import { OFF_TYPES, type OffType } from '../src/game/cards';
 import {
@@ -25,7 +26,7 @@ const tuned = (t: TeamSheet, by: number, iq?: number): TeamSheet => ({
   }),
 });
 const match = (home: TeamSheet, poss: 0 | 1, seed = 7): MatchState => {
-  const st = createMatch(home, opponentSheet(1), seed);
+  const st = opened(home, opponentSheet(1), seed);
   st.poss = poss;
   deal(st);
   return st;

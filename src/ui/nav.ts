@@ -3,6 +3,7 @@
 import { sfx } from '../core/audio';
 import { wipe } from './fx';
 import { closeModal } from './kit';
+import { closeTutor } from './tutor';
 
 let leave: (() => void) | null = null;
 let router: () => void = () => undefined;
@@ -14,6 +15,7 @@ export function show(el: HTMLElement, onLeave?: () => void, cut = false): void {
     leave?.();
     leave = onLeave ?? null;
     closeModal();
+    closeTutor();
     document.getElementById('app')!.replaceChildren(el);
   };
   // screens that need to act once they are really on screen listen for 'shown'

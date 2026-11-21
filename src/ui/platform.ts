@@ -8,6 +8,7 @@
  */
 import { version } from '../../package.json';
 import { onCommit, type SaveData } from '../core/save';
+import { lessonsOver } from '../game/tutorial';
 
 /** the title's id on the platform (its host is football.bearko.games) */
 const GAME = 'football';
@@ -67,27 +68,26 @@ export function openChat(): void {
   guard('chat.open', (api) => api.chat.open());
 }
 
-// ---------------------------------------------------------------- the first year, step by step
+// ---------------------------------------------------------------- the first week, step by step
 
 /**
- * The steps of a new coach's first year (docs/PLATFORM.md has the table). Once published, a number and its id
- * are never changed: a new step takes a free number.
+ * The steps of the tutorial: a new coach's first week, up to the end of the manager's last lesson after the
+ * practice match (docs/PLATFORM.md has the table). Once published, a number and its id are never changed:
+ * a new step takes a free number.
  */
 export const STEPS = {
   start: 0,
-  first_pick: 4,
-  recruit_done: 8,
-  policy_done: 12,
-  first_practice: 16,
-  day3: 22,
-  match_day: 28,
-  match_start: 32,
-  first_play: 36,
-  halftime: 42,
-  first_match_done: 48,
-  week2: 54,
-  cup_start: 60,
-  cup_r1_done: 66,
+  captain: 6,
+  recruit_done: 12,
+  policy_done: 18,
+  first_practice: 24,
+  day3: 30,
+  match_day: 36,
+  match_start: 42,
+  first_play: 48,
+  second_play: 54,
+  first_td: 60,
+  match_done: 66,
   done: 90,
 } as const;
 export type GuideStep = keyof typeof STEPS;
@@ -115,7 +115,14 @@ export function trackGuide(d: SaveData): void {
     const s = d.season!;
     const m = d.match;
     step('start');
-    if (s.phase === 'recruit') return;
+    // the manager has said everything, or the coach has waved the rest away: the tutorial is over, wherever that was
+    const over = (): void => {
+      if (lessonsOver(s)) step('done');
+    };
+    if (s.phase === 'recruit') {
+      over();
+      return;
+    }
     step('recruit_done');
     // (the first meeting on the training policy: reported when it is closed, or at the latest with the first practice)
     if (s.day > 0) step('policy_done');
@@ -124,19 +131,14 @@ export function trackGuide(d: SaveData): void {
     if (s.day >= 6) step('match_day');
     const played = s.results.length;
     if (m || played >= 1) step('match_start');
-    if ((m && m.n >= 1) || played >= 1) step('first_play');
-    if ((m && played === 0 && m.quarter >= 3) || played >= 1) step('halftime');
-    if (played >= 1) step('first_match_done');
-    if (s.day >= 8) step('week2');
-    if ((m && played === 1) || played >= 2) step('cup_start');
-    if (played >= 2) step('cup_r1_done');
-    if (s.phase === 'done') step('done');
+    if (played >= 1) step('match_done');
+    over();
   } catch (err) {
     console.warn('[platform] trackGuide', err);
   }
 }
 
-/** A step that is not in the saved game (the first hero picked at the briefing). */
+/** A step that is not in the saved game (the captain picked at the briefing, the cards played in the first match). */
 export function guideEvent(d: SaveData, id: GuideStep): void {
   if (guided(d)) step(id);
 }

@@ -35,6 +35,8 @@ export function titleScreen(): [HTMLElement, () => void] {
   const start = (): void => {
     s.season = newSeason(newSeed());
     s.season.guide = true;
+    // the manager teaches the first week (game/tutorial.ts)
+    s.season.tut = [];
     storeMatch(null);
     commit();
     route();

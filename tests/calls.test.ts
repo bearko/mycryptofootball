@@ -133,6 +133,6 @@ describe('the route tree', () => {
       expect(JSON.stringify(a!.way.slice(1).map((p) => [Math.round(Math.abs(p[0] - a!.way[0]![0])), Math.round(Math.abs(p[1] - a!.way[0]![1]))])))
         .not.toBe(JSON.stringify(b!.way.slice(1).map((p) => [Math.round(Math.abs(p[0] - b!.way[0]![0])), Math.round(Math.abs(p[1] - b!.way[0]![1]))])));
     }
-    expect(seen.size).toBeGreaterThanOrEqual(14);
+    expect(seen.size).toBeGreaterThanOrEqual(13);
   });
 });

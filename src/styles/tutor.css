@@ -1,0 +1,79 @@
+/* The manager's lessons: she steps in front of the screen with a sheet of her notebook, a page per tap. */
+
+.tutor { position: fixed; inset: 0; z-index: 120; background: rgba(6, 8, 26, 0.4); animation: fade 0.18s; cursor: pointer; }
+.tutor.is-out { animation: fade 0.16s reverse forwards; }
+
+.tutor-box {
+  position: absolute; left: 50%; bottom: max(1.4rem, env(safe-area-inset-bottom)); width: min(54rem, calc(100% - 2.4rem)); transform: translateX(-50%);
+  display: grid; grid-template-columns: 7.6rem 1fr; align-items: end; gap: 0.2rem;
+  transition: bottom 0.25s var(--spring), top 0.25s var(--spring);
+}
+.tutor-box.is-top { bottom: auto; top: max(1.4rem, env(safe-area-inset-top)); }
+.tutor-who { position: relative; height: 10.4rem; margin-bottom: -0.6rem; }
+.tutor-box.is-top { align-items: start; }
+.tutor-who img { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; object-fit: contain; object-position: 50% 100%; filter: drop-shadow(0.25rem 0.25rem 0 var(--ink)); }
+.tutor-box:not(.is-ready) .tutor-who { animation: nod 0.36s steps(2) infinite; }
+
+.tutor-main {
+  position: relative; min-width: 0; color: var(--ink); padding: 1.5rem 1.6rem 0.5rem;
+  background: repeating-linear-gradient(0deg, transparent 0 1.95rem, rgba(40, 60, 140, 0.12) 1.95rem 2.05rem), var(--paper);
+  border: 0.25rem solid var(--ink); border-radius: 0.3rem 1.2rem 1.2rem 1.2rem; box-shadow: 0.45rem 0.45rem 0 var(--ink);
+}
+.tutor-box.is-page .tutor-main { animation: tutor-page 0.28s var(--spring); }
+@keyframes tutor-page { from { transform: translateY(0.7rem) rotate(-0.8deg); } }
+.tutor-name {
+  position: absolute; left: -0.5rem; top: -1.25rem; display: flex; align-items: baseline; gap: 0.5rem; padding: 0.1rem 1.6rem 0.1rem 1rem;
+  font-size: var(--fs-xs); color: var(--ink); background: var(--yellow); border: 0.2rem solid var(--ink);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 0.9rem) 100%, 0 100%);
+}
+.tutor-name b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); }
+.tutor-text { min-height: 3.9rem; font-size: var(--fs-m); line-height: 1.5; word-break: auto-phrase; line-break: strict; padding-right: 7.4rem; }
+.tutor-text i { font-style: normal; opacity: 0; }
+.tutor-text i.on { opacity: 1; }
+/* the words to remember: a highlighter pen run under them */
+.tutor-key { font-weight: 700; background: linear-gradient(transparent 58%, rgba(255, 198, 30, 0.95) 58% 94%, transparent 94%); padding: 0 0.1em; }
+.tutor-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 0.2rem; min-height: 1.6rem; }
+.tutor-dots { display: inline-flex; gap: 0.4rem; }
+.tutor-dots i { width: 0.75rem; height: 0.75rem; background: transparent; border: 0.16rem solid var(--ink); transform: skewX(-12deg); }
+.tutor-dots i.was { background: rgba(6, 8, 26, 0.35); }
+.tutor-dots i.on { background: var(--orange); }
+.tutor-next { font-size: var(--fs-xs); color: #5a4a1a; visibility: hidden; }
+.tutor-box.is-ready .tutor-next { visibility: visible; animation: tutor-bob 0.9s ease-in-out infinite; }
+@keyframes tutor-bob { 50% { transform: translateY(0.2rem); } }
+.tutor-box > .btn { position: absolute; right: 0.9rem; top: 0.8rem; }
+.tutor-box > .btn .btn-face { min-height: 3rem; }
+/* a finger needs the full height */
+@media (pointer: coarse) { .tutor-box > .btn .btn-face { min-height: 4.4rem; } .tutor-box > .btn { top: 0.5rem; } }
+
+/* what she is talking about, and what to press next */
+.tutor-ring {
+  position: fixed; z-index: 118; pointer-events: none; border-radius: 0.7rem;
+  box-shadow: 0 0 0 0.3rem var(--yellow), 0 0 0 0.6rem var(--ink), 0 0 1.6rem 0.6rem rgba(255, 225, 74, 0.55);
+  animation: tutor-ring 1s ease-in-out infinite;
+}
+.tutor-ring[hidden] { display: none; }
+@keyframes tutor-ring { 50% { box-shadow: 0 0 0 0.3rem var(--yellow), 0 0 0 0.6rem var(--ink), 0 0 2.4rem 1.2rem rgba(255, 225, 74, 0.25); transform: scale(1.02); } }
+.tutor-note {
+  position: fixed; left: 0; top: 0; z-index: 119; pointer-events: none; display: flex; align-items: center; gap: 0.5rem; max-width: min(34rem, calc(100% - 1.2rem));
+  padding: 0.25rem 1.2rem 0.25rem 0.4rem; font-size: var(--fs-s); line-height: 1.25; color: var(--ink); background: var(--yellow);
+  border: 0.2rem solid var(--ink); box-shadow: 0.3rem 0.3rem 0 var(--ink); will-change: transform; animation: fade 0.3s;
+}
+.tutor-note img { width: 2.2rem; height: 2.8rem; object-fit: contain; object-position: 50% 100%; flex: none; }
+.tutor-note span { font-family: var(--display); }
+html.calm .tutor-ring, html.calm .tutor-next { animation: none; }
+
+/* the gist of a skipped scene */
+.gist-layer { z-index: 121; }
+.gist-panel { width: min(44rem, 100%); }
+.gist { display: grid; gap: 0.25rem; }
+.gist li { display: grid; grid-template-columns: 8.2rem 1fr; align-items: center; gap: 1.1rem; padding: 0.15rem 0; border-bottom: 0.12rem dashed var(--line); font-size: var(--fs-m); line-height: 1.3; animation: fade-up 0.35s backwards; animation-delay: calc(var(--i) * 60ms); }
+.gist-pic { display: grid; place-items: center; min-height: 3.3rem; pointer-events: none; }
+.gist-pic .btn .btn-face { min-height: 3rem; padding: 0 1rem; }
+.gist-pic.is-mark i { font-style: normal; font-family: var(--display); font-size: var(--fs-s); color: var(--ink); background: var(--cyan); border: 0.2rem solid var(--ink); padding: 0.1rem 0.9rem; transform: skewX(-9deg); box-shadow: 0.2rem 0.2rem 0 var(--ink); white-space: nowrap; }
+.gist-pic.is-card { width: 3.5rem; height: 4.4rem; min-height: 0; justify-self: center; }
+.gist-pic.is-card .card { transform: scale(0.4); transform-origin: 50% 50%; margin: -3.25rem -2.45rem; }
+
+/* the list of scenes to hear again */
+.lessons p { font-size: var(--fs-s); margin-bottom: 1rem; }
+.lessons-list { display: flex; flex-wrap: wrap; gap: 0.9rem 1rem; }
+.lessons-list .btn { animation: fade-up 0.3s backwards; animation-delay: calc(var(--i) * 50ms); }

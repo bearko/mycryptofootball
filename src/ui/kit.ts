@@ -189,6 +189,10 @@ const REST: Record<Who, Record<string, string>> = {
   },
 };
 
+/** The picture of a talking character in a pose, and the two frames of its moving mouth. */
+export const charPose = (who: Who, pose = 'idle'): string => CHARS[REST[who][pose] ?? REST[who].idle!] ?? '';
+export const charTalk = (who: Who): string[] => TALK[who].map((k) => CHARS[k] ?? '');
+
 export interface Speech { el: HTMLElement; say: (text: string, pose?: string) => Typing }
 
 /**

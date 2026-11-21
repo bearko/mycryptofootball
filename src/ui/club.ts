@@ -32,6 +32,8 @@ import { reviewModal } from './review';
 import { memberModal, settingsModal } from './shared';
 import { standingChip } from './standing';
 import { titleScreen } from './title';
+import { lessonDue, markLesson, tutorOn } from '../game/tutorial';
+import { clearGoal, teach } from './tutor';
 
 /** The season whose opening meeting has been held (it opens by itself only once). */
 let metFor: number | null = null;
@@ -496,6 +498,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     const i = s.hand.findIndex((c) => c.uid === uid);
     const cardEl = cardEls.get(uid);
     if (busy || i < 0 || !cardEl || s.event || plan(s).t !== 'train' || modalOpen()) return;
+    clearGoal();
     hot = null;
     clearTimeout(talk);
     clearBadges();
@@ -631,10 +634,33 @@ export function clubScreen(): [HTMLElement, () => void] {
       // a one-on-one card trains whatever the policy says: redraw the hand after a meeting
       if (open && plan(s).t === 'train') drawHand('none', true);
       if (open) coach.say(s.day === 0 ? '方針は決まりました！ 下のカードが今日の練習メニュー。1枚えらぶと1日進みます。' : '方針はこれでいきましょう。さあ、きょうの1枚を！', 'wave');
+      // a new coach's first meeting is followed by the first practice card
+      if (open && s.day === 0 && plan(s).t === 'train') void teach(s, 'c3');
     });
   }
+  /** The manager's lesson that is due on arriving at the ground, if any (the first week of a new coach). */
+  const lessonNow = (): string | null => {
+    if (!tutorOn(s)) return null;
+    const due = (id: string): boolean => lessonDue(s, id);
+    if (s.results.length) return due('a1') ? 'a1' : null;
+    const p = plan(s);
+    if (p.t === 'match') return due('c6') ? 'c6' : null;
+    if (s.day === 0) return due('c1') ? 'c1' : null;
+    // (a lesson whose moment has passed is not given late)
+    for (const id of ['c1', 'c2', 'c3']) if (due(id)) markLesson(s, id);
+    if (due('c4')) return 'c4';
+    if (s.day >= 3 && due('c5')) return 'c5';
+    return null;
+  };
   const arrive = (first: boolean): void => {
     if (!alive) return;
+    const lesson = lessonNow();
+    if (lesson) {
+      void teach(s, lesson).then((how) => {
+        if (alive && how !== 'none') arrive(first);
+      });
+      return;
+    }
     // a new month: first look back on the last one (then the day goes on as usual)
     if (s.review) {
       coach.say('月がかわりました！ 先月のみんなの成長を見てみましょう。', 'smile');

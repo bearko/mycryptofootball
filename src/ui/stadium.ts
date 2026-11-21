@@ -7,8 +7,8 @@
 // World: x along the field (0..FIELD between the goal lines), z across (0 far, WIDTH near the main
 // camera), y up, in yards. Team 0 attacks toward +x.
 
-import { KIND, isKick, type DefType, type OffType } from '../game/cards';
-import { FIELD, type MatchState, type Pick, type PlayResult, type TeamSheet } from '../game/match';
+import { KIND, isKick, isKickoff, type DefType, type OffType } from '../game/cards';
+import { FIELD, kickoffKicker, type MatchState, type Pick, type PlayResult, type TeamSheet } from '../game/match';
 import { offPos, sizeOf } from '../game/model';
 import {
   ART, ART_PAD, BANDS, CHALK, CROWD_ROWS, END, FX0, FX1, FZ0, FZ1, RIBBON_H, RIBBON_PPY, SURROUND, WIDTH,
@@ -328,6 +328,8 @@ export class Stadium {
   private actors: Actor[] = [];
   private offense: 0 | 1 = 0;
   private los = 15;
+  /** set while the scene is a kickoff: who kicks it */
+  private koKicker: number | undefined;
   private toGo = 10;
   private sceneN = 0;
   private hasScene = false;
@@ -503,17 +505,19 @@ export class Stadium {
     this.leaveGround();
     this.attractOn = false;
     this.teams = st.teams;
-    this.offense = st.poss;
-    this.los = st.pos;
+    // a kickoff is seen from the side that receives it: the ball lies where it will be kicked from
+    this.koKicker = st.ko ? kickoffKicker(st.teams[st.poss]).id : undefined;
+    this.offense = st.ko ? ((1 - st.poss) as 0 | 1) : st.poss;
+    this.los = st.ko ? FIELD - st.pos : st.pos;
     this.toGo = st.toGo;
     this.sceneN = st.n;
     this.hasScene = true;
-    this.setDown(st.down, !!st.tfp);
+    this.setDown(st.ko ? 0 : st.down, !!st.tfp);
     this.script = null;
     this.chalk = null;
     this.guide = null;
     this.place(this.offense, this.los, first);
-    this.ballHeld = this.find(this.offense, this.teams[this.offense].lineup.off.QB);
+    this.ballHeld = st.ko ? this.find(st.poss, this.koKicker!) : this.find(this.offense, this.teams[this.offense].lineup.off.QB);
     this.ballAir = false;
     this.ballTrail.length = 0;
     this.speedLines = 0;
@@ -553,7 +557,7 @@ export class Stadium {
     this.leaveGround();
     this.attractOn = false;
     this.hasScene = true;
-    if (res.kick) {
+    if (res.kick && !isKickoff(res.kick.type)) {
       // the kicker comes on where the running back stands (for this play only: the next scene puts the line-up back)
       const t = this.teams[res.off];
       const off = { ...t.lineup.off };
@@ -979,7 +983,7 @@ export class Stadium {
 
   /** Sends everybody to their spot for a snap at `los`; `jump` puts them there at once. */
   private place(offense: 0 | 1, los: number, jump: boolean): void {
-    const spots = lineUp(this.teams, offense, los);
+    const spots = lineUp(this.teams, offense, los, undefined, this.koKicker);
     const keep: Actor[] = [];
     for (const s of spots) {
       let ac = this.find(s.team, s.id);
@@ -1018,7 +1022,9 @@ export class Stadium {
     this.setDown(cinematic ? 0 : spec.down ?? 0, !!spec.tfp);
     this.chalk = null;
     // make sure everyone who is in this play is on the field
-    const spots = lineUp(this.teams, spec.off, spec.los);
+    const koPlay = !!spec.kick && isKickoff(spec.kick.type);
+    this.koKicker = koPlay ? spec.kick!.kicker : undefined;
+    const spots = lineUp(this.teams, spec.off, spec.los, undefined, this.koKicker);
     const keep: Actor[] = [];
     for (const s of spots) {
       const ac = this.find(s.team, s.id) ?? this.newActor(s.team, s.id, s.x, s.z);
@@ -3773,7 +3779,19 @@ export class Stadium {
         mark: opt.mark === undefined ? (opt.dashed ? 'ball' : 'run') : opt.mark,
       });
     };
-    if (side === 'off') {
+    if (isKickoff(pick.type)) {
+      // a kickoff (the scene is seen from the side that receives it): the ball's flight from where it lies
+      const spot: [number, number] = [X(los), 12];
+      if (pick.type === 'kickoff') path([spot, [X(Math.max(los - 27, 2)), 12]], { dashed: true, width: 0.26, arc: 6, mark: 'ball' });
+      else {
+        path([spot, [X(los - 6), 14.5]], { dashed: true, width: 0.26, arc: 1.1, mark: 'ball' });
+        // everybody goes after it
+        for (const ac of this.actors) {
+          if (ac.team === o || ac.id === this.koKicker) continue;
+          path([[ac.x, ac.z], [X(los - 5), lerp(ac.z, 14.5, 0.6)]], { width: 0.22, alpha: 0.7, delay: 0.1 });
+        }
+      }
+    } else if (side === 'off') {
       const type = base as OffType;
       const qb = at(o, O.lineup.off.QB, f.off.QB);
       const rb = at(o, O.lineup.off.RB, f.off.RB);

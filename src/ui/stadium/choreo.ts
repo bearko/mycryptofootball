@@ -4,8 +4,8 @@
 // Scripts are written in "drive coordinates" like the rules (u = yards from the offense's own goal line,
 // v = across the field) and converted to world x/z here: team 0 attacks toward +x, team 1 toward -x.
 
-import { KIND, isRun, type DefType, type KickType, type OffType } from '../../game/cards';
-import { FIELD, type Outcome, type PlayResult, type TeamSheet } from '../../game/match';
+import { KIND, isKickoff, isRun, type DefType, type KickType, type OffType } from '../../game/cards';
+import { FIELD, returnerOf, type Outcome, type PlayResult, type TeamSheet } from '../../game/match';
 import { DEF_POS_OF, OFF_POS_OF, defPos, offPos, roleOf, sizeOf, type DefPos, type OffPos, type Size } from '../../game/model';
 import { END, WIDTH } from './assets';
 import { clamp, lerp } from './math';
@@ -74,8 +74,12 @@ export interface PlaySpec {
   defender: number;
   offStar: number | null;
   defStar: number | null;
-  /** a kick instead of a play (the kicker is `carrier`, lined up where the running back would be) */
-  kick?: { type: KickType; good: boolean; dist: number };
+  /**
+   * a kick instead of a play (the kicker is `carrier`, lined up where the running back would be).
+   * A kickoff is told from the side that receives it: `off` is the team the ball is kicked to, `los` where it is
+   * kicked from (in that team's yards), `carrier` who gets the ball, `defender` who of the kicking team gets to him
+   */
+  kick?: { type: KickType; good: boolean; dist: number; kicker?: number; ret?: number };
 }
 
 /**
@@ -191,6 +195,14 @@ export interface Script {
 
 export function specOf(res: PlayResult): PlaySpec {
   const dsp = res.defPick.special;
+  if (res.kick && isKickoff(res.kick.type)) {
+    return {
+      n: res.n, off: (1 - res.off) as 0 | 1, type: 'long', call: undefined,
+      kick: { type: res.kick.type, good: res.kick.good, dist: res.kick.dist, kicker: res.kick.kicker, ret: res.kick.ret },
+      outcome: res.outcome, yards: 0, td: false, los: FIELD - res.before.pos, toGo: 10,
+      carrier: res.kick.returner ?? res.carrier, defender: res.defender, offStar: null, defStar: null,
+    };
+  }
   return {
     n: res.n,
     off: res.off,
@@ -267,7 +279,50 @@ export const worldX = (offense: 0 | 1, u: number): number => (offense === 0 ? u 
 
 export interface Spot extends Ref { pos: OffPos | DefPos; x: number; z: number; offense: boolean }
 
-export function lineUp(teams: [TeamSheet, TeamSheet], offense: 0 | 1, los: number, call?: DefType): Spot[] {
+/**
+ * Where everybody stands for a kickoff, seen from the team that receives it (`recv`; `los`: where the ball is
+ * kicked from, in its yards). The kicking team is in a row beside the ball with its kicker behind it; the other
+ * team is spread over its own half, its fastest back deep. The heroes are the ones who play on after the kick:
+ * the kicking team's defense (its kicker takes the safety's place if he is not one of them), the other team's offense.
+ */
+export function kickoffForm(teams: [TeamSheet, TeamSheet], recv: 0 | 1, los: number, kicker: number): { team: 0 | 1; id: number; pos: OffPos | DefPos; at: UV; offense: boolean }[] {
+  const kt = (1 - recv) as 0 | 1;
+  const K = teams[kt];
+  const R = teams[recv];
+  const out: { team: 0 | 1; id: number; pos: OffPos | DefPos; at: UV; offense: boolean }[] = [];
+  const dp = defPos(K.lineup);
+  const kp: DefPos = dp.find((p) => K.lineup.def[p] === kicker) ?? 'S';
+  const row = dp.filter((p) => p !== kp);
+  const left = Math.ceil(row.length / 2);
+  row.forEach((p, i) => {
+    const onLeft = i < left;
+    const n = onLeft ? left : row.length - left;
+    const f = n > 1 ? (onLeft ? i : i - left) / (n - 1) : 0.5;
+    out.push({ team: kt, id: K.lineup.def[p], pos: p, at: [los + 1.6, onLeft ? lerp(2.4, 9.6, f) : lerp(14.4, 21.6, f)], offense: false });
+  });
+  out.push({ team: kt, id: kicker, pos: kp, at: [los + 4.6, 12.6], offense: false });
+  const op = offPos(R.lineup);
+  const back = returnerOf(R).id;
+  const line = op.filter((p) => roleOf(p) === 'OL' && R.lineup.off[p] !== back);
+  line.forEach((p, i) => {
+    out.push({ team: recv, id: R.lineup.off[p], pos: p, at: [los - 11, line.length > 1 ? lerp(line.length > 2 ? 3.6 : 8, line.length > 2 ? 20.4 : 16, i / (line.length - 1)) : 12], offense: true });
+  });
+  const order = (p: OffPos): number => (roleOf(p) === 'QB' ? 0 : roleOf(p) === 'TE' ? 1 : 2);
+  const rest = op.filter((p) => roleOf(p) !== 'OL' && R.lineup.off[p] !== back).sort((a, b) => order(a) - order(b));
+  const slots: UV[] = rest.length > 3
+    ? [[los - 17, 8.4], [los - 17, 15.6], [13, 5.5], [13, 18.5], [18, 12], [20, 4], [20, 20]]
+    : [[los - 17, 12], [14, 5.5], [14, 18.5], [20, 12]];
+  rest.forEach((p, i) => out.push({ team: recv, id: R.lineup.off[p], pos: p, at: slots[i % slots.length]!, offense: true }));
+  const bp = op.find((p) => R.lineup.off[p] === back) ?? 'RB';
+  out.push({ team: recv, id: back, pos: bp, at: [7, 12], offense: true });
+  return out;
+}
+
+/** `kicker`: line up for a kickoff instead (`offense` is then the team that receives it; see kickoffForm). */
+export function lineUp(teams: [TeamSheet, TeamSheet], offense: 0 | 1, los: number, call?: DefType, kicker?: number): Spot[] {
+  if (kicker !== undefined) {
+    return kickoffForm(teams, offense, los, kicker).map((f) => ({ team: f.team, id: f.id, pos: f.pos, x: worldX(offense, f.at[0]), z: f.at[1], offense: f.offense }));
+  }
   const d = (1 - offense) as 0 | 1;
   const f = formation(los, call, sizeOf(teams[offense].lineup));
   const out: Spot[] = [];
@@ -332,12 +387,164 @@ export function evalKeys(keys: Key[], t: number, out: { x: number; z: number }):
 /** seconds per yard at a sprint */
 const PACE = 0.082;
 
+/**
+ * A kickoff: the ball is kicked off the ground, hangs, and comes down to the back who waits for it; he runs it
+ * back behind his blockers until somebody of the kicking team gets to him. An onside kick skips along the ground
+ * and both teams throw themselves at it.
+ */
+function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team: 0 | 1, id: number) => UV | null, fast: boolean): Script {
+  const o = sp.off;
+  const d = (1 - o) as 0 | 1;
+  const dir: 1 | -1 = o === 0 ? 1 : -1;
+  const X = (u: number): number => worldX(o, u);
+  const los = sp.los;
+  const kick = sp.kick!;
+  const s = fast ? 0.06 : 0.7;
+  const plans: Plan[] = [];
+  const uv = new Map<Plan, UV>();
+  const go = (p: Plan, t: number, u: number, v: number, hard = false): void => {
+    const last = p.keys[p.keys.length - 1]!;
+    const key: Key = { t: Math.max(t, last.t + 0.02), x: X(clamp(u, -4.3, FIELD + 4.3)), z: clamp(v, -0.8, WIDTH + 0.8) };
+    if (hard) key.hard = true;
+    p.keys.push(key);
+    uv.set(p, [u, v]);
+  };
+  const U = (p: Plan): number => uv.get(p)![0];
+  const V = (p: Plan): number => uv.get(p)![1];
+  const ref = (p: Plan): Ref => ({ team: p.team, id: p.id });
+  for (const f of kickoffForm(teams, o, los, kick.kicker ?? teams[d].lineup.def.S)) {
+    const w = where(f.team, f.id);
+    const p: Plan = { team: f.team, id: f.id, pos: f.pos, star: false, keys: [{ t: 0, x: w ? w[0] : X(f.at[0]), z: w ? w[1] : f.at[1] }] };
+    plans.push(p);
+    uv.set(p, [f.at[0], f.at[1]]);
+    go(p, s * 0.8, f.at[0], f.at[1]);
+  }
+  const kickers = plans.filter((p) => p.team === d);
+  const takers = plans.filter((p) => p.team === o);
+  const kp = kickers.find((p) => p.id === kick.kicker) ?? kickers[kickers.length - 1]!;
+  const row = kickers.filter((p) => p !== kp);
+  const cues: Cue[] = [];
+  const ball: BallSeg[] = [];
+  const side = (sp.n % 3) - 1;
+  const tK = s + 0.75;
+  // everybody waits for the foot to meet the ball
+  for (const p of plans) if (p !== kp) go(p, tK - 0.08, U(p), V(p));
+  go(kp, s, U(kp), V(kp));
+  go(kp, tK, los + 0.5, 12, true);
+  go(kp, tK + 0.45, los - 1.4, 12.2);
+  ball.push({ t0: 0, t1: tK, kind: 'ground', at: [X(los), 0.15, 12] });
+  cues.push({ t: s, c: 'snap' });
+  cues.push({ t: tK, c: 'kick' });
+  let tCatch: number;
+  let tEnd: number;
+  let endT: number;
+  let endU: number;
+  let endV: number;
+  let spotU: number;
+  let spotV: number;
+  let star: Ref;
+  if (kick.type === 'onside') {
+    // ---- the short kick: two hops along the ground, and a pile on the ball
+    const bu = los - kick.dist;
+    const bv = 12 + (side || 1) * 3.6;
+    const tG = tK + 1.2;
+    ball.push({ t0: tK, t1: tK + 0.5, kind: 'air', from: [X(los), 0.2, 12], to: [X(los - kick.dist * 0.6), 0.2, lerp(12, bv, 0.6)], h: 1.3, spiral: false });
+    ball.push({ t0: tK + 0.5, t1: tK + 0.9, kind: 'air', from: [X(los - kick.dist * 0.6), 0.2, lerp(12, bv, 0.6)], to: [X(bu), 0.25, bv], h: 0.8, spiral: false });
+    ball.push({ t0: tK + 0.9, t1: tG, kind: 'ground', at: [X(bu), 0.25, bv] });
+    const near = (list: Plan[]): Plan => [...list].sort((p, q) => Math.abs(V(p) - bv) - Math.abs(V(q) - bv))[0]!;
+    const mine = row.find((p) => p.id === sp.defender) ?? near(row);
+    const front = takers.filter((p) => U(p) >= los - 12);
+    const theirs = takers.find((p) => p.id === sp.carrier) ?? near(front.length ? front : takers);
+    const winner = kick.good ? mine : theirs;
+    const loser = kick.good ? theirs : mine;
+    row.filter((p) => p !== mine).forEach((p, i) => go(p, tG + 0.1, bu + 1.3 + (i % 3) * 0.9, lerp(V(p), bv, 0.62) + (V(p) < bv ? -0.5 : 0.5)));
+    front.filter((p) => p !== theirs).forEach((p, i) => go(p, tG + 0.1, bu - 1.3 - (i % 3) * 0.9, lerp(V(p), bv, 0.62) + (V(p) < bv ? -0.5 : 0.5)));
+    takers.filter((p) => !front.includes(p) && p !== theirs).forEach((p) => go(p, tG + 0.3, U(p) + 4, V(p)));
+    go(winner, tG, bu + (winner.team === d ? 0.2 : -0.2), bv, true);
+    go(loser, tG + 0.08, bu + (loser.team === d ? 1.0 : -1.0), bv + 0.7, true);
+    go(kp, tG, los - 3, 12.4);
+    cues.push({ t: tG - 0.14, c: 'dive', who: ref(winner), dir: winner.team === o ? 1 : -1 });
+    cues.push({ t: tG - 0.04, c: 'dive', who: ref(loser), dir: loser.team === o ? 1 : -1 });
+    cues.push({ t: tG - 0.02, c: 'clash', at: [[X(bu), bv]] });
+    ball.push({ t0: tG, t1: 99, kind: 'held', team: winner.team, id: winner.id });
+    if (kick.good) {
+      cues.push({ t: tG, c: 'steal', who: ref(winner) });
+      cues.push({ t: tG + 0.7, c: 'celebrate', team: d });
+    } else cues.push({ t: tG, c: 'catch', who: ref(winner), long: false });
+    tCatch = tG;
+    tEnd = tG;
+    endT = tG + (kick.good ? 1.3 : 0.8);
+    endU = bu;
+    endV = bv;
+    spotU = bu;
+    spotV = bv;
+    star = ref(winner);
+  } else {
+    // ---- kicked deep
+    const ret = kick.ret ?? 0;
+    const back = takers.find((p) => p.id === sp.carrier) ?? takers[takers.length - 1]!;
+    const landU = ret > 0 ? los - kick.dist : -2.2;
+    const lv = 12 + side * 3.2;
+    const tLand = tK + clamp(kick.dist * 0.07, 1.5, 2.2);
+    ball.push({ t0: tK, t1: tLand, kind: 'air', from: [X(los), 0.2, 12], to: [X(landU), 1.5, lv], h: 9, spiral: true });
+    go(back, tLand - 0.12, landU, lv);
+    cues.push({ t: tLand, c: 'catch', who: ref(back), long: false });
+    ball.push({ t0: tLand, t1: 99, kind: 'held', team: o, id: back.id });
+    const blockers = takers.filter((p) => p !== back);
+    endU = landU + ret;
+    endV = clamp(lv - side * 1.6 + (sp.n % 2 ? 1.2 : -1.2), 3, 21);
+    if (ret > 0) {
+      const run = clamp(ret * PACE * 1.15, 0.4, 2.4);
+      tEnd = tLand + 0.2 + run;
+      go(back, tLand + 0.2, landU + 0.3, lv);
+      if (ret >= 6) go(back, tLand + 0.2 + run * 0.5, landU + ret * 0.5, lerp(lv, endV, 0.5) + (sp.n % 2 ? 1.5 : -1.5));
+      go(back, tEnd, endU - 0.5, endV, true);
+      go(back, tEnd + 0.32, endU, endV);
+      const tackler = row.find((p) => p.id === sp.defender) ?? row[0]!;
+      /** how far down the field a hero of the kicking team can have run by the end */
+      const far = (p: Plan): number => U(p) - (tEnd - tK) / PACE * 0.9;
+      go(tackler, lerp(tK, tEnd, 0.6), Math.max(lerp(U(tackler), endU + 5, 0.62), far(tackler)), lerp(V(tackler), endV, 0.6));
+      go(tackler, tEnd, endU + 0.45, endV, true);
+      go(tackler, tEnd + 0.32, endU + 0.9, endV + 0.2);
+      row.filter((p) => p !== tackler).forEach((p, i) => go(p, tEnd, Math.max(endU + 3.4 + i * 1.7, far(p)), lerp(V(p), endV, 0.42)));
+      blockers.forEach((p, i) => {
+        go(p, tLand, Math.max(U(p) - 3, endU + 2), V(p));
+        go(p, tEnd, Math.max(endU + 2.5 + (i % 5) * 1.7, Math.min(U(p), endU + 4)), lerp(V(p), endV, 0.3) + (i % 2 ? 0.7 : -0.7));
+      });
+      if (ret >= 4) cues.push({ t: lerp(tLand, tEnd, 0.6), c: 'clash', at: [[X(endU + 4), endV - 2.5], [X(endU + 5.5), endV + 2.5]] });
+      if (ret >= 12) cues.push({ t: tLand + 0.2 + run * 0.45, c: 'break' });
+      cues.push({ t: tEnd, c: 'impact', x: X(endU - 0.1), z: endV, power: clamp(0.5 + ret * 0.012, 0.5, 0.8), victim: ref(back), hitter: ref(tackler), back: false });
+      endT = tEnd + 0.6;
+    } else {
+      // into the end zone: he catches it and stays down; nobody needs to hurry
+      tEnd = tLand + 0.45;
+      endU = landU;
+      endV = lv;
+      row.forEach((p, i) => go(p, tEnd, 15 + (i % 4) * 2.2, V(p)));
+      blockers.forEach((p) => go(p, tEnd, Math.max(U(p) - 2.5, 6), V(p)));
+      endT = tEnd + 0.5;
+    }
+    go(kp, tEnd, los - 7, 12.3);
+    tCatch = tLand;
+    spotU = landU;
+    spotV = lv;
+    star = ref(back);
+  }
+  cues.push({ t: endT, c: 'end' });
+  cues.sort((p, q) => p.t - q.t);
+  return {
+    spec: sp, dir, losX: X(los), dur: endT + (fast ? 0.08 : 0.5), snap: s, tHand: -1, tThrow: tK, tCatch, tEnd, tTD: -1, plans, ball, cues, star,
+    pass: true, long: true, endX: X(endU), endZ: endV, spotX: X(clamp(spotU, 0, FIELD)), spotZ: spotV, design: [],
+  };
+}
+
 export function buildScript(
   teams: [TeamSheet, TeamSheet],
   sp: PlaySpec,
   where: (team: 0 | 1, id: number) => UV | null,
   fast: boolean,
 ): Script {
+  if (sp.kick && isKickoff(sp.kick.type)) return buildKickoff(teams, sp, where, fast);
   const o = sp.off;
   const d = (1 - o) as 0 | 1;
   const dir: 1 | -1 = o === 0 ? 1 : -1;

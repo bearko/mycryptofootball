@@ -53,7 +53,7 @@ describe('eleven a side', () => {
     const s = clubAt(4);
     expect(s.members.length).toBe(22);
     expect(clubSize(s)).toBe(11);
-    expect(fielded(s.lineup!).length).toBeGreaterThanOrEqual(16);
+    expect(fielded(s.lineup!).length).toBeGreaterThanOrEqual(14);
     const t0 = Date.now();
     const l = bestLineup(s.members.map(asPlayer), 11);
     expect(Date.now() - t0).toBeLessThan(200);

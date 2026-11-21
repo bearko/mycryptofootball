@@ -312,6 +312,11 @@ export interface Season {
   draw: number[];
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
+  /**
+   * the manager's lessons of the first week (game/tutorial.ts): the ids of the ones already given.
+   * Missing: this club gets no lessons (an old save, a test, a debug jump)
+   */
+  tut?: string[];
   event: WeekEvent | null;
   /** events already seen */
   seen: string[];
