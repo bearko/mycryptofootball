@@ -297,3 +297,46 @@
 
 /* a card being looked at rises a little; the hint says what the next tap does */
 .hand.is-looking .hand-tip { color: var(--yellow); }
+
+/* ---- a hero's scouting sheet (heroCard.ts): beside him on the field, between plays */
+.hcard-layer { position: absolute; inset: 0; z-index: 9; pointer-events: none; overflow: hidden; }
+.hcard {
+  --tc: var(--cyan); position: absolute; left: 0; top: 0; width: 30rem; color: var(--chalk); will-change: transform;
+  background: rgba(6, 8, 26, 0.95); border: 0.18rem solid var(--ink); border-top: 0.42rem solid var(--tc); box-shadow: 0.35rem 0.35rem 0 rgba(6, 8, 26, 0.7);
+  padding: 0.55rem 0.8rem 0.6rem; font-size: var(--fs-xs); line-height: 1.3; animation: hcard-in 0.16s ease-out;
+}
+.hcard.on-left { animation-name: hcard-in-l; }
+.hcard.out { opacity: 0; transition: opacity 0.14s; }
+@keyframes hcard-in { from { opacity: 0; translate: -0.6rem 0; } }
+@keyframes hcard-in-l { from { opacity: 0; translate: 0.6rem 0; } }
+.hcard-head { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; }
+.hcard-art { width: 4.2rem; height: 4.2rem; display: grid; place-items: end center; overflow: hidden; background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--tc) 45%, transparent), transparent 70%); }
+.hcard-art img { width: 5.6rem; height: 5.6rem; object-fit: contain; object-position: 50% 100%; margin-bottom: -0.6rem; image-rendering: pixelated; }
+.hcard-who { min-width: 0; display: grid; gap: 0.05rem; }
+.hcard-who strong { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hcard-who > span { color: #9aa3cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hcard-pos { display: flex; align-items: center; gap: 0.35rem; }
+.hcard-pos b { font-family: var(--display); font-weight: 400; padding: 0 0.45rem; color: var(--ink); background: var(--tc); }
+.hcard-pos b.is-bench { background: #6a7096; }
+/* the body: the two numbers a scouting sheet leads with */
+.hcard-body { display: grid; gap: 0.2rem; text-align: right; }
+.hcard-body dt { font-size: 0.78rem; color: #9aa3cc; }
+.hcard-body dd { font-family: var(--display); font-size: var(--fs-m); line-height: 1; color: var(--yellow); }
+.hcard-body small, .hcard-blocks small { font-family: var(--body); font-size: 0.7em; margin-left: 0.12em; color: #c6cbe6; }
+.hcard-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.15rem 0.7rem; margin: 0.5rem 0 0.4rem; padding: 0.35rem 0 0.4rem; border-block: 0.1rem solid rgba(255, 255, 255, 0.14); }
+.hcard-stats li { display: grid; grid-template-columns: 1.3rem auto 1fr auto auto; align-items: center; gap: 0.2rem; }
+.hcard-stats li > b { grid-column: 4; }
+.hcard-stats li > span:not(.ticon) { color: #c6cbe6; white-space: nowrap; letter-spacing: -0.04em; }
+.hcard-stats b { font-family: var(--display); font-weight: 400; }
+.hcard-stats .rank { font-size: 0.78rem; }
+.hcard-span { font-family: var(--display); color: var(--yellow); margin-bottom: 0.2rem; }
+.hcard-blocks { display: grid; gap: 0.3rem; }
+.hcard-blocks section { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); gap: 0.5rem; align-items: start; }
+.hcard-blocks h4 { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; font-weight: 400; color: #c6cbe6; }
+.hcard-blocks h4 i { font-style: normal; font-family: var(--display); padding: 0 0.4rem; color: var(--ink); background: var(--chalk); }
+.hcard-blocks dl { display: flex; flex-wrap: wrap; gap: 0.15rem 0.75rem; }
+.hcard-blocks dl div { display: grid; }
+.hcard-blocks dt { font-size: 0.74rem; color: #9aa3cc; white-space: nowrap; }
+.hcard-blocks dd { font-family: var(--display); font-size: var(--fs-s); line-height: 1.1; white-space: nowrap; }
+.hcard-none { color: #9aa3cc; }
+html.calm .hcard { animation: none; }

@@ -95,7 +95,8 @@ const bgm = {
 const se = {
   win: use('Audio/SE/Jingles/win.mp3'),
   lose: use('Audio/SE/Jingles/lose.mp3'),
-  special: use('Audio/SE/Jingles/knight.mp3'),
+  // a hero's special play: the power-up sound of the battles
+  special: use('Audio/SE/Battle/4_buff.mp3'),
   hit: use('Audio/SE/Battle/1_single_damage.mp3'),
   bighit: use('Audio/SE/Battle/2_area_damage.mp3'),
   up: use('Audio/SE/Battle/4_buff.mp3'),

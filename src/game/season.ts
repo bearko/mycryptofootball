@@ -16,6 +16,7 @@ import { READ_MAX } from './cards';
 import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
+import { bookMatch, type Box } from './boxscore';
 import { applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, drawSchools, type School } from './teams';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
@@ -312,6 +313,8 @@ export interface Season {
   draw: number[];
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
+  /** this season's numbers of every hero who played (boxscore.ts; emptied when a new year begins) */
+  box?: Box;
   /**
    * the manager's lessons of the first week (game/tutorial.ts): the ids of the ones already given.
    * Missing: this club gets no lessons (an old save, a test, a debug jump)
@@ -462,6 +465,7 @@ export function nextYear(s: Season, seed: number): void {
   s.day = 0;
   s.results = [];
   s.usage = {};
+  s.box = {};
   s.seen = [];
   s.event = null;
   s.champion = false;
@@ -896,6 +900,8 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
   s.results.push({ day: s.day, opp: p.opp, us: st.score[0], them: st.score[1], win });
+  // who did what goes into the season's numbers
+  bookMatch((s.box ??= {}), st.box?.[0]);
   for (const [key, n] of Object.entries(st.totals[0].specials)) s.usage[key] = (s.usage[key] ?? 0) + n;
   const on = starters(s.lineup!);
   const changes = withMilestones(s, (ch) => {

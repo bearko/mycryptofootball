@@ -20,6 +20,7 @@ import {
   type DefKind, type DefType, type KickType, type OffKind, type OffType, type SpecialCard,
 } from './cards';
 import { defPos, fit, kickFit, offPos, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Role } from './model';
+import { tally, type Box } from './boxscore';
 
 export const FIELD = 50;
 /** where a drive starts on average (a kickoff run back) */
@@ -110,6 +111,8 @@ export interface MatchState {
   ko?: boolean;
   /** a match told as a story (the tutorial's first match): what the plays to come will be, whatever is called */
   script?: Scripted[];
+  /** who did what in this match, per team (boxscore.ts; filled after every play) */
+  box?: [Box, Box];
 }
 
 /**
@@ -1055,6 +1058,13 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
 }
 
 export function resolvePlay(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
+  const res = resolveScrimmage(st, offPick, defPick);
+  // the box score (no dice: the match plays the same with or without it)
+  tally(st, res);
+  return res;
+}
+
+function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
   if (st.over) throw new Error('the match is over');
   if (isKick(offPick.type)) return resolveKick(st, offPick, defPick);
   if (st.ko) throw new Error('a kickoff comes first');

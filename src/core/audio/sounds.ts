@@ -329,9 +329,9 @@ export const R = {
     snare(e, hit, 0.8);
     cymbal(e, hit, 0.9, 1.5);
     if (mine) {
-      // the sampled jingle carries the tune; without it the brass plays the hit
+      // the sampled power-up sound rides on the hit; without it the brass plays the hit
       roll(e, hit + 0.04, 0.45, 0.45, 0.08);
-      if (!sample(e, hit, 'special', 0.52)) {
+      if (!sample(e, hit, 'special', 0.85)) {
         brass(e, hit, [lo(C), lo(G), C, G, hi(C)], 0.7, 0.95, { vib: true, verb: 0.25 });
         brass(e, hit + 0.3, [hi(E)], 0.4, 0.6, { verb: 0.25 });
       }
