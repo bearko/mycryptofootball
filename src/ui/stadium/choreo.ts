@@ -87,6 +87,77 @@ export interface Design extends Ref {
   way: [number, number][];
 }
 
+/**
+ * The route tree: every way a receiver can be sent out. Which ones fit depends on how far downfield the ball is
+ * caught (see routesFor).
+ */
+export type RouteName =
+  | 'lookin' | 'hitch' | 'quickout'
+  | 'slant' | 'cross' | 'slicein' | 'hook'
+  | 'squarein' | 'squareout' | 'post' | 'comeback'
+  | 'corner' | 'longpost' | 'zigout' | 'fade' | 'up';
+export const ROUTE_LABEL: Record<RouteName, string> = {
+  lookin: 'ルックイン', hitch: 'ヒッチ', quickout: 'クイックアウト',
+  slant: 'スラント', cross: 'クロス', slicein: 'スライスイン', hook: 'フック',
+  squarein: 'スクエアーイン', squareout: 'スクエアーアウト', post: 'ポスト', comeback: 'カムバック',
+  corner: 'コーナー', longpost: 'ロングポスト', zigout: 'ジグアウト', fade: 'フェード', up: 'アップ',
+};
+/** routes that end with the receiver coming back toward the passer (not for a ball caught in the end zone) */
+const COMES_BACK: readonly RouteName[] = ['hitch', 'hook', 'comeback'];
+
+/** The routes that fit a catch `depth` yards past the line of scrimmage. */
+export function routesFor(long: boolean, depth: number): readonly RouteName[] {
+  if (!long) return depth < 3 ? ['lookin', 'hitch', 'quickout'] : ['slant', 'cross', 'slicein', 'hook', 'quickout', 'hitch'];
+  if (depth < 15) return ['squarein', 'post', 'squareout', 'comeback', 'hook'];
+  return depth < 22 ? ['longpost', 'corner', 'up', 'zigout', 'fade', 'comeback'] : ['up', 'longpost', 'fade', 'zigout', 'corner'];
+}
+
+/**
+ * A route from the line of scrimmage to the spot `depth` yards downfield: the corners to run through (drive
+ * coordinates; the last one is where the ball is caught). `inward` is +1 when the middle of the field lies toward
+ * larger v. `room`: how far past the line of scrimmage a hero may run at all (the back of the end zone).
+ */
+export function routeWay(name: RouteName, los: number, v0: number, depth: number, inward: number, room: number): UV[] {
+  const top = los + depth;
+  const i = inward;
+  /** how far past the spot a hero runs before he turns back */
+  const over = (most: number): number => Math.max(0.6, Math.min(most, room - depth));
+  switch (name) {
+    // at once, diagonally inside, shallow
+    case 'lookin': return [[los + Math.min(0.5, depth * 0.3), v0 + i * 0.4], [top, v0 + i * 4.2]];
+    // past the spot, stop, and back toward the passer
+    case 'hitch': return [[top + over(1.8), v0 + i * 0.2], [top, v0 + i * 1.0]];
+    // a lean to the inside, then flat to the sideline
+    case 'quickout': return [[top - 0.3, v0 + i * 1.3], [top, v0 - i * 1.5]];
+    // a step upfield, then diagonally across the middle
+    case 'slant': return [[los + Math.min(2, depth * 0.35), v0 + i * 0.2], [top, v0 + i * 5.6]];
+    // flat across the whole formation
+    case 'cross': return [[top - 0.3, v0 + i * 0.7], [top, v0 + i * 8.5]];
+    // a swing to the outside first, then slicing in behind the defender
+    case 'slicein': return [[los + depth * 0.42, v0 - i * 1.3], [los + depth * 0.72, v0 - i * 0.5], [top, v0 + i * 4.8]];
+    // deeper, then curling back to the inside
+    case 'hook': return [[top + over(2.4), v0 + i * 0.6], [top, v0 + i * 2.3]];
+    // straight up, then square in
+    case 'squarein': return [[top - 0.4, v0 + i * 0.3], [top, v0 + i * 7]];
+    // straight up with a lean inside, then square out
+    case 'squareout': return [[top - 0.4, v0 + i * 1.9], [top, v0 - i * 1.5]];
+    // up, then angling in toward the goal posts
+    case 'post': return [[los + depth * 0.6, v0 + i * 0.3], [top, v0 + i * 5]];
+    // past the spot and back out to the sideline
+    case 'comeback': return [[top + over(3.2), v0 + i * 0.6], [top, v0 - i * 1.2]];
+    // leaning in, then breaking out to the corner
+    case 'corner': return [[los + depth * 0.55, v0 + i * 2.8], [top, v0 - i * 1.3]];
+    // the deep post: a long stem, then all the way to the middle
+    case 'longpost': return [[los + depth * 0.5, v0 + i * 0.3], [top, v0 + i * 7.5]];
+    // sold as a post, then back out to the sideline
+    case 'zigout': return [[los + depth * 0.5, v0 + i * 0.3], [los + depth * 0.74, v0 + i * 3.6], [top, v0 - i * 1.2]];
+    // up the sideline, drifting to the outside shoulder
+    case 'fade': return [[los + depth * 0.4, v0 + i * 0.7], [top, v0 - i * 1.0]];
+    // straight up
+    case 'up': return [[los + depth * 0.5, v0], [top, v0 + i * 0.3]];
+  }
+}
+
 export interface Script {
   spec: PlaySpec;
   dir: 1 | -1;
@@ -114,6 +185,8 @@ export interface Script {
   spotZ: number;
   /** the play as it was drawn up (empty for a kick) */
   design: Design[];
+  /** the route the pass went to (missing for a run, a kick or a sack before the throw) */
+  route?: RouteName;
 }
 
 export function specOf(res: PlayResult): PlaySpec {
@@ -349,6 +422,7 @@ export function buildScript(
   let endV = 12;
   let spotU = end;
   let spotV = 12;
+  let route: RouteName | undefined;
   const moved = new Set<Plan>();
   /** the earliest the tackler can be at a spot without flying there */
   const needT = (u: number, v: number): number => {
@@ -556,7 +630,6 @@ export function buildScript(
     const other = a(recvPos === 'WR1' ? 'WR2' : 'WR1');
     const rv0 = base.off[recvPos][1];
     const inward = rv0 < 12 ? 1 : -1;
-    const rv = rv0 + inward * (long ? 1.7 : 3.8);
     const maxDepth = FIELD - los + 2.6;
     let depth: number;
     if (caught) {
@@ -565,6 +638,16 @@ export function buildScript(
     } else if (int) depth = deep + 2;
     else depth = deep + (long ? 3 : 1);
     depth = clamp(depth, 1, maxDepth);
+    // which route: it changes from play to play, and the two receivers never run the same one
+    // a ball caught in the end zone is not one to come back for
+    const noBack = sp.td && los + depth >= FIELD - 0.5;
+    const menu = routesFor(long, depth).filter((r) => !noBack || !COMES_BACK.includes(r));
+    const pickAt = Math.abs(sp.n * 7 + sp.carrier * 3 + Math.round(los) * 5 + (recvPos === 'WR1' ? 0 : 2));
+    const routeName = menu[pickAt % menu.length]!;
+    const way = routeWay(routeName, los, rv0, depth, inward, maxDepth);
+    const rv = clamp(way[way.length - 1]![1], 1, WIDTH - 1);
+    way[way.length - 1]![1] = rv;
+    route = routeName;
     spotU = los + depth;
     spotV = rv;
     const dropU = sack ? end + 0.7 : long ? los - 8.6 : los - 7.2;
@@ -575,18 +658,36 @@ export function buildScript(
 
     go(rb, s + 0.45, los - 5.2, 15.2);
     go(rb, s + 1.4, los - 4.9, 15.4);
+    /** runs a hero through the corners of a route, at an even pace, to arrive at the last one at time t1 */
+    const runRoute = (pl: Plan, from: UV, corners: UV[], t1: number, upTo: number): void => {
+      let total = 0;
+      let at = from;
+      const lens = corners.map((c) => {
+        const l = Math.hypot(c[0] - at[0], c[1] - at[1]);
+        at = c;
+        total += l;
+        return l;
+      });
+      let run = 0;
+      for (let i = 0; i < upTo; i += 1) {
+        run += lens[i]!;
+        go(pl, s + (t1 - s) * (run / Math.max(0.1, total)), corners[i]![0], corners[i]![1]);
+      }
+    };
     {
+      // the other receiver runs a route of his own (it takes his corner with him)
       const [u, v] = base.off[other.pos as OffPos];
       const inw = v < 12 ? 1 : -1;
-      go(other, s + (tCatch - s) * 0.6, u + (long ? 10 : 5), v);
-      go(other, tCatch + 0.25, u + (long ? 13.5 : 6.5), v + inw * 1.6);
+      const d2 = Math.max(1, Math.min(long ? (sp.n % 2 ? 17 : 12) : sp.n % 3 ? 5.5 : 2.5, maxDepth - 1.5));
+      const menu2 = routesFor(long, d2).filter((r) => r !== routeName);
+      const w2 = routeWay(menu2[(pickAt + sp.n) % menu2.length]!, los, v, d2, inw, maxDepth);
+      for (const c of w2) c[1] = clamp(c[1], 1, WIDTH - 1);
+      runRoute(other, [u, v], w2, tCatch + 0.25, w2.length);
+      draw(other, 'decoy', [[u, v], ...w2]);
     }
-    go(recv, s + (tCatch - s) * 0.55, los + depth * 0.5, rv0 + inward * 0.3);
-    draw(recv, 'route', [base.off[recvPos], [los + depth * 0.5, rv0 + inward * 0.3], [spotU, rv]]);
-    {
-      const [u, v] = base.off[other.pos as OffPos];
-      draw(other, 'decoy', [[u, v], [u + (long ? 10 : 5), v], [u + (long ? 13.5 : 6.5), v + (v < 12 ? 1.6 : -1.6)]]);
-    }
+    // the receiver the ball goes to: every corner but the last, which the outcome decides below
+    runRoute(recv, base.off[recvPos], way, tCatch, way.length - 1);
+    draw(recv, 'route', [base.off[recvPos], ...way]);
     if (sp.call === 'blitz' && b('LB') !== defender) {
       const lb = b('LB');
       go(lb, s + 0.75, los - 2.4, 12.6 + (sp.n % 2 ? 1.5 : -1.5));
@@ -617,6 +718,7 @@ export function buildScript(
       tEnd = tSack;
       tThrow = -1;
       tCatch = -1;
+      route = undefined;
       endT = tSack + 0.75;
       endU = end;
       endV = 12.2;
@@ -748,7 +850,7 @@ export function buildScript(
   const dur = endT + (fast ? 0.08 : 0.5);
   return {
     spec: sp, dir, losX: X(los), dur, snap: s, tHand, tThrow, tCatch, tEnd, tTD, plans, ball, cues, star,
-    pass: !isRun(type), long: type === 'long', endX: X(endU), endZ: endV, spotX: X(spotU), spotZ: spotV, design,
+    pass: !isRun(type), long: type === 'long', endX: X(endU), endZ: endV, spotX: X(spotU), spotZ: spotV, design, route,
   };
 }
 

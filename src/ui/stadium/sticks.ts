@@ -73,6 +73,8 @@ export function drawSticks(p: Painter, s: Sticks, layer: 'poles' | 'plates'): vo
   const ax = cam.sx;
   const ay = cam.sy;
   const ss = cam.ss;
+  // the lens stands right beside the pole (the sideline camera): it would be a wall across the picture
+  if (ss > 64 * px) return;
   const way = cam.project(s.losX + s.dir * 2, 0, SIDE_Z) && cam.sx < ax ? -1 : 1;
 
   // the sign where the ball is: its size and place (it is drawn last, over the flag)

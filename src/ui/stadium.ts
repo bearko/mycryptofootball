@@ -17,7 +17,7 @@ import {
 } from './stadium/assets';
 import {
   buildScript, evalKeys, formation, lineUp, randomSpec, specOf, worldX,
-  type Cue, type Key, type PlaySpec, type Ref, type Script,
+  type Cue, type Key, type PlaySpec, type Ref, type RouteName, type Script,
 } from './stadium/choreo';
 import { CHUNK, CONFETTI, Fx, GLINT, MOTE, PUFF, SPARK, burst } from './stadium/fx';
 import { Guide } from './stadium/guide';
@@ -37,7 +37,8 @@ export interface PlayHooks {
   /** fired in sync with the picture so the caller can play sounds / shake DOM / vibrate */
   onSnap?(): void;
   onHandoff?(): void;
-  onThrow?(long: boolean): void;
+  /** `route`: which route the pass goes to */
+  onThrow?(long: boolean, route?: RouteName): void;
   /** a field goal, a punt, or the kick after a touchdown leaves the foot */
   onKick?(): void;
   onCatch?(): void;
@@ -213,7 +214,7 @@ interface Actor extends Ref {
   sx: number; sy: number; ss: number; sd: number; vis: boolean;
 }
 
-type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract' | 'replay';
+type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract' | 'replay' | 'side';
 
 interface ChalkLine {
   /** x,y,z triples */
@@ -340,6 +341,8 @@ export class Stadium {
   private replaying = false;
   private replayEnd = 0;
   private replayKeys: number[] = [];
+  /** the sideline camera has been tried for this play (it cuts in once at most) */
+  private sideTried = false;
   private cueIdx = 0;
   private hooks: PlayHooks | undefined;
   private endFired = false;
@@ -1048,6 +1051,7 @@ export class Stadium {
     this.cinematic = cinematic;
     this.cueIdx = 0;
     this.replaying = replay;
+    this.sideTried = false;
     if (replay) {
       // from just before the snap to just after the finish
       this.playT = Math.max(0, script.snap - 0.3);
@@ -1179,7 +1183,7 @@ export class Stadium {
         break;
       case 'throw': {
         if (!this.cinematic && this.camMode === 'qb') this.setCam('ball', this.camVar, false);
-        this.safe(() => hooks?.onThrow?.(c.long));
+        this.safe(() => hooks?.onThrow?.(c.long, script.route));
         break;
       }
       case 'kick': {
@@ -1603,10 +1607,11 @@ export class Stadium {
           where: (r) => this.find(r.team, r.id),
         });
         // the road to the goal is lit: look down it from behind the runner
-        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit' && !this.replaying) this.setCam('chase', this.camVar, false);
+        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit' && this.camMode !== 'side' && !this.replaying) this.setCam('chase', this.camVar, false);
       } else guide.tick(this.clock);
       if (guide.dead) this.guide = null;
     }
+    if (this.playing && script && !this.sideTried) this.trySideline(script);
     this.fx.step(sdt);
     this.stepShow(dt);
 
@@ -1751,6 +1756,31 @@ export class Stadium {
     if (snap) this.camSnap = true;
   }
 
+  /**
+   * A hero carrying the ball down a sideline is shown from that sideline: the lens stands just off the field, a few
+   * steps ahead of him and at eye level, and he comes past it with the whole stadium behind him.
+   */
+  private trySideline(sc: Script): void {
+    if (!this.motion || this.playFast || this.cinematic || this.replaying || this.camMode === 'orbit' || this.camMode === 'whip') return;
+    const got = sc.pass ? sc.tCatch : sc.tHand;
+    const h = this.ballHeld;
+    if (got <= 0 || this.playT < got + 0.1 || !h || h.team !== sc.spec.off || !h.keys) return;
+    const until = sc.tTD > 0 ? sc.tTD : sc.tEnd;
+    // worth a cut only if he stays out there for a while yet
+    if (until - this.playT < 0.8) {
+      this.sideTried = true;
+      return;
+    }
+    const band = 5;
+    const near = h.z > WIDTH - band ? 1 : h.z < band ? 0 : -1;
+    if (near < 0) return;
+    evalKeys(h.keys, Math.min(until, this.playT + 0.7), tmp);
+    if (near ? tmp.z < WIDTH - band - 1 : tmp.z > band + 1) return;
+    this.sideTried = true;
+    this.setCam('side', near, true);
+    this.fade = Math.max(this.fade, 0.5);
+  }
+
   /** Chooses the shot for a play; a little different from play to play. */
   private pickShot(sc: Script): void {
     const n = sc.spec.n;
@@ -1830,6 +1860,12 @@ export class Stadium {
       case 'low': {
         ex = fx - dir * 9.5; ey = 4; ez = Math.min(fz + 17, AZ1 - 1.3);
         tx = fx + dir * 2.5; ty = 1.8; tz = fz - 1.5; fov = 0.58; om = 5;
+        break;
+      }
+      case 'side': {
+        ez = this.camVar ? Math.min(WIDTH + 3.8, AZ1 - 1.3) : Math.max(-3.8, AZ0 + 1.3);
+        ex = fx + dir * 4.6; ey = 1.9;
+        tx = fx + dir * 0.5; ty = 1.5; tz = fz; fov = 0.62; om = 8;
         break;
       }
       case 'replay': {
