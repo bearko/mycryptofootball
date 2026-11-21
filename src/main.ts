@@ -26,7 +26,11 @@ import { recruitScreen } from './ui/recruit';
 import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
 
-for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, unlockAudio, { once: true });
+// Sound needs a gesture, and on a phone only a lifted finger counts as one: listen to all of them, every time
+// (unlockAudio retries whatever the browser refused so far, and is cheap once the music plays).
+for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const) {
+  window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+}
 applyPrefs();
 wireHover();
 

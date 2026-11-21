@@ -15,6 +15,7 @@
 - **余計なタップをさせない**。作戦カードは 1 回押すだけ。練習カードは「かざす（スマホは 1 回目のタップ）で予測 → クリック（同じカードをもう一度タップ）で開始」。確認のボタンや、閉じるだけのポップアップを足さない（決まりは `docs/GAME_DESIGN.md` の「操作の決まり」）。
 - 練習カードに書くのは絵と名前だけ。効果は予測（カードの上の帯とヒーローの頭上）で見せる。ふつうの練習の絵はエクステンションの画像で、どれを使うかは `scripts/sync-assets.mjs` の `DRILL_ART`。
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。手元にサブモジュールがないときは `MCH_ASSETS_DIR=/path/to/mycryptoheroes` を付けて動かす。
+- 音は、タップやキーのたびに `unlockAudio()` を呼んで解除し直す（`main.ts`）。スマホは指を置いた瞬間（pointerdown）ではなく、離した時点（pointerup・touchend・click）でしか音を許可しないので、1 回きりの解除にしない。BGM が本当に鳴っているかは `audioDebug()` の `time`（再生位置）で確かめる。
 - 特別作戦の名前は、そのヒーローのパッシブスキル名（カタログの `passive`）をそのまま使う。効果は `cards.ts` の `KIND`。
 - 試合は乱数を `MatchState.rng` だけから取る。同じ種と同じ選択なら同じ試合になること（テストあり）。試合の途中経過はプレーごとにセーブする。
 - 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAR_MUL`・`STAT_COST`・`OFF_POLICY`）、体力（`PRACTICE` の `sta`・`REST_STA`・`STA_TIRED`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5 割・決勝 3〜4 割前後。
