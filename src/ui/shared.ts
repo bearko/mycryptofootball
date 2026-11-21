@@ -149,6 +149,7 @@ export function settingsModal(): void {
       row('効果音', '歓声もふくむ', slider(p.se, (v) => { p.se = v; }, () => sfx.cardConfirm())),
       row('演出', 'ゆれ・光・スロー', seg(p.motion, [[true, 'フル'], [false, 'ひかえめ']], (v) => { p.motion = v; })),
       row('試合の速さ', '', seg(save().fast, [[false, 'ふつう'], [true, '2倍速']], (v) => { save().fast = v; })),
+      row('リプレイ', '大きなプレーをもう一度', seg(p.replay, [[true, 'ON'], [false, 'OFF']], (v) => { p.replay = v; })),
       row('文字', '', seg(p.text, [[1, '標準'], [1.15, '大きめ']], (v) => { p.text = v; })),
       row('色の補助', '色に形と記号を足す', seg(p.colorSafe, [[false, 'OFF'], [true, 'ON']], (v) => { p.colorSafe = v; })),
       row('振動', '対応するスマホのみ', seg(p.haptics, [[true, 'ON'], [false, 'OFF']], (v) => { p.haptics = v; })),

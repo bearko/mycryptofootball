@@ -21,6 +21,7 @@ import {
 } from './stadium/choreo';
 import { CHUNK, CONFETTI, Fx, GLINT, MOTE, PUFF, SPARK, burst } from './stadium/fx';
 import { Guide } from './stadium/guide';
+import { drawSticks } from './stadium/sticks';
 import {
   BOARD, CART, CENTER, DUMMIES, Ground, SLED, STATIONS, buildDrill, propsOf, spotOf, stationsFor,
   type DrillHooks, type DrillKind, type DrillPlan, type GCue, type Painter, type Post, type Prop, type Station,
@@ -212,7 +213,7 @@ interface Actor extends Ref {
   sx: number; sy: number; ss: number; sd: number; vis: boolean;
 }
 
-type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract';
+type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract' | 'replay';
 
 interface ChalkLine {
   /** x,y,z triples */
@@ -323,6 +324,11 @@ export class Stadium {
   private toGo = 10;
   private sceneN = 0;
   private hasScene = false;
+  /** which down it is (0: not known, no sideline sign), and whether this is the try after a touchdown */
+  private down = 0;
+  private tryScene = false;
+  /** when the sideline sign last changed */
+  private sticksAt = 0;
   // play
   private script: Script | null = null;
   private playing = false;
@@ -330,6 +336,10 @@ export class Stadium {
   private playSpeed = 1;
   private playFast = false;
   private cinematic = false;
+  /** the play is being shown a second time: another angle, slow at its key moments, no shake or flashes */
+  private replaying = false;
+  private replayEnd = 0;
+  private replayKeys: number[] = [];
   private cueIdx = 0;
   private hooks: PlayHooks | undefined;
   private endFired = false;
@@ -489,6 +499,7 @@ export class Stadium {
     this.toGo = st.toGo;
     this.sceneN = st.n;
     this.hasScene = true;
+    this.setDown(st.down, !!st.tfp);
     this.script = null;
     this.chalk = null;
     this.guide = null;
@@ -498,6 +509,12 @@ export class Stadium {
     this.ballTrail.length = 0;
     this.speedLines = 0;
     this.setCam(this.motion ? 'establish' : 'calm', st.n % 3, first);
+  }
+
+  private setDown(down: number, tfp: boolean): void {
+    if (down !== this.down || tfp !== this.tryScene) this.sticksAt = this.clock;
+    this.down = down;
+    this.tryScene = tfp;
   }
 
   /**
@@ -538,6 +555,25 @@ export class Stadium {
       this.teams = res.off === 0 ? [sheet, this.teams[1]] : [this.teams[0], sheet];
     }
     return this.run(specOf(res), speed, hooks, false);
+  }
+
+  /**
+   * Shows a play once more, from the snap, from another angle: from behind the goal when it was a touchdown (the
+   * scorer comes at the lens down the lit road), otherwise from high behind the offense, where the lines read best.
+   * It slows down around the catch and the finish. Resolves when it is over (or skip() was called).
+   */
+  replay(res: PlayResult, speed: number): Promise<void> {
+    if (res.kick) return Promise.resolve();
+    this.endPlay(true);
+    this.leaveGround();
+    this.attractOn = false;
+    this.hasScene = true;
+    return this.run(specOf(res), speed, undefined, false, true);
+  }
+
+  /** Ends the play (or replay) being shown at once, on its last picture. */
+  skip(): void {
+    this.endPlay(true);
   }
 
   /** 0..1: how worked-up the crowd is (camera flashes, waving, light flicker). Smoothly approached. */
@@ -849,7 +885,8 @@ export class Stadium {
 
   private fontTexts(): string[] {
     return [this.teams[0].name, this.teams[1].name, this.teams[0].short, this.teams[1].short,
-      'GO! マイクリ ナイスプレー！ ファイト！ タッチダウン！！ 攻守交代！ 勝利！ おめでとう！ MY CRYPTO FOOTBALL TOUCHDOWN TURNOVER VICTORY DEFENSE'];
+      'GO! マイクリ ナイスプレー！ ファイト！ タッチダウン！！ 攻守交代！ 勝利！ おめでとう！ MY CRYPTO FOOTBALL TOUCHDOWN TURNOVER VICTORY DEFENSE',
+      '1st 2nd 3rd 4th & GOAL TFP +-0123456789'];
   }
 
   private bakeRibbons(): Record<'main' | 'td' | 'turnover' | 'win', Ribbon> {
@@ -963,12 +1000,13 @@ export class Stadium {
 
   // ------------------------------------------------------------------ running a play
 
-  private run(spec: PlaySpec, speed: number, hooks: PlayHooks | undefined, cinematic: boolean): Promise<void> {
+  private run(spec: PlaySpec, speed: number, hooks: PlayHooks | undefined, cinematic: boolean, replay = false): Promise<void> {
     const sp = Math.max(0.05, Number.isFinite(speed) ? speed : 1);
     this.offense = spec.off;
     this.los = spec.los;
     this.toGo = spec.toGo;
     this.sceneN = spec.n;
+    this.setDown(cinematic ? 0 : spec.down ?? 0, !!spec.tfp);
     this.chalk = null;
     // make sure everyone who is in this play is on the field
     const spots = lineUp(this.teams, spec.off, spec.los);
@@ -987,7 +1025,8 @@ export class Stadium {
     this.actors = keep;
     this.playFast = sp >= 8;
     const script = buildScript(this.teams, spec, (team, id) => {
-      const ac = this.find(team, id);
+      // a replay starts from the line-up, not from where the play left everybody
+      const ac = replay ? null : this.find(team, id);
       return ac ? [ac.x, ac.z] : null;
     }, this.playFast);
     for (const ac of this.actors) {
@@ -1008,17 +1047,40 @@ export class Stadium {
     this.playSpeed = sp;
     this.cinematic = cinematic;
     this.cueIdx = 0;
+    this.replaying = replay;
+    if (replay) {
+      // from just before the snap to just after the finish
+      this.playT = Math.max(0, script.snap - 0.3);
+      while (this.cueIdx < script.cues.length && script.cues[this.cueIdx]!.t < this.playT) this.cueIdx += 1;
+      this.replayEnd = Math.min(script.dur, (script.tTD > 0 ? script.tTD + 1.0 : script.tEnd + 0.8));
+      this.replayKeys = [script.tCatch, script.tTD > 0 ? script.tTD : script.tEnd].filter((t) => t > 0);
+      for (const ac of this.actors) {
+        if (ac.keys) {
+          evalKeys(ac.keys, this.playT, tmp);
+          ac.x = tmp.x;
+          ac.z = tmp.z;
+        }
+        ac.y = 0;
+        ac.tumT0 = -1;
+        ac.downUntil = 0;
+      }
+      this.confettiUntil = 0;
+      this.fade = 1;
+    }
     this.hooks = hooks;
     this.endFired = false;
     this.speedLines = 0;
     this.broke = false;
     this.ballTrail.length = 0;
-    if (!cinematic) this.pickShot(script);
+    if (replay) {
+      this.camSide = spec.n % 2 ? 1 : -1;
+      this.setCam(this.motion ? 'replay' : 'calm', spec.td ? 1 : 0, true);
+    } else if (!cinematic) this.pickShot(script);
     clearTimeout(this.watchdog);
     return new Promise<void>((resolve) => {
       this.resolve = resolve;
       // the picture is driven by animation frames; if they stop (hidden tab), the play still ends
-      const ms = (script.dur / sp) * 1000;
+      const ms = (script.dur / sp) * 1000 * (replay ? 2.2 : 1);
       this.watchdog = window.setTimeout(() => this.endPlay(true), ms * 1.2 + 2000);
     });
   }
@@ -1027,6 +1089,7 @@ export class Stadium {
   private endPlay(force: boolean): void {
     if (!this.playing) return;
     this.playing = false;
+    this.replaying = false;
     clearTimeout(this.watchdog);
     const script = this.script;
     if (script && force && this.playT < script.dur) {
@@ -1069,7 +1132,7 @@ export class Stadium {
 
   private cue(c: Cue, script: Script): void {
     const hooks = this.hooks;
-    const fancy = this.motion && !this.playFast && !this.cinematic;
+    const fancy = this.motion && !this.playFast && !this.cinematic && !this.replaying;
     const dir = script.dir;
     switch (c.c) {
       case 'ignite': {
@@ -1503,7 +1566,14 @@ export class Stadium {
       const k = this.slowLeft < 0.15 ? lerp(1, this.slowAmt, sat(this.slowLeft / 0.15)) : this.slowAmt;
       sdt = dt * k;
     }
-    const pdt = sdt * (this.playing ? this.playSpeed : this.drilling ? this.gSpeed : 1);
+    let rate = this.playing ? this.playSpeed : this.drilling ? this.gSpeed : 1;
+    if (this.playing && this.replaying) {
+      // a replay runs a little under speed, and slow where it matters: the catch, the hit, the goal line
+      let near = 9;
+      for (const k of this.replayKeys) near = Math.min(near, Math.abs(this.playT - k));
+      rate *= lerp(0.3, 0.8, smooth(near / 0.45));
+    }
+    const pdt = sdt * rate;
     this.sim += pdt;
 
     // the play
@@ -1516,7 +1586,8 @@ export class Stadium {
         this.cue(c, script);
         if (!this.playing) break;
       }
-      if (this.playing && this.playT >= script.dur) this.endPlay(false);
+      if (this.playing && this.replaying && this.playT >= this.replayEnd) this.endPlay(true);
+      else if (this.playing && this.playT >= script.dur) this.endPlay(false);
     }
     if (this.attractOn) this.stepAttract(dt);
 
@@ -1532,7 +1603,7 @@ export class Stadium {
           where: (r) => this.find(r.team, r.id),
         });
         // the road to the goal is lit: look down it from behind the runner
-        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit') this.setCam('chase', this.camVar, false);
+        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit' && !this.replaying) this.setCam('chase', this.camVar, false);
       } else guide.tick(this.clock);
       if (guide.dead) this.guide = null;
     }
@@ -1759,6 +1830,20 @@ export class Stadium {
       case 'low': {
         ex = fx - dir * 9.5; ey = 4; ez = Math.min(fz + 17, AZ1 - 1.3);
         tx = fx + dir * 2.5; ty = 1.8; tz = fz - 1.5; fov = 0.58; om = 5;
+        break;
+      }
+      case 'replay': {
+        if (this.camVar) {
+          // from the corner behind the goal line the offense attacks (clear of the goal post): the scorer comes at the lens
+          const g = dir > 0 ? FIELD + END : -END;
+          ex = g + dir * 2.5; ey = 6; ez = this.camSide > 0 ? WIDTH + 4.5 : -4.5;
+          tx = lerp(fx, g, 0.25); ty = 1.4; tz = fz; fov = 0.6; om = 3.2;
+        } else {
+          // high behind the offense: the whole play and every line drawn over it
+          const far = Math.abs(fx - L);
+          ex = lerp(L, fx, 0.45) - dir * 23; ey = 17 + far * 0.2; ez = 12 + this.camSide * 3.5;
+          tx = lerp(L, fx, 0.7) + dir * 6; ty = 0; tz = 12 + (fz - 12) * 0.45; fov = 0.62; om = 3.4;
+        }
         break;
       }
       case 'sky': {
@@ -2605,6 +2690,7 @@ export class Stadium {
     const g1 = cam.project(FIELD + END + 0.6, 0, MID_Z) ? cam.sd : -1;
     let goals = (g0 > 0 ? 1 : 0) | (g1 > 0 ? 2 : 0);
     this.drawPylons();
+    this.drawSideline('poles');
     for (const ac of order) {
       if ((goals & 1) && g0 > ac.sd) { this.drawGoal(-END - 0.6); goals &= ~1; }
       if ((goals & 2) && g1 > ac.sd) { this.drawGoal(FIELD + END + 0.6); goals &= ~2; }
@@ -2625,6 +2711,7 @@ export class Stadium {
       pi += 1;
     }
     if (!ballDrawn) this.drawBall();
+    this.drawSideline('plates');
     if (ground) this.drawGroundBalls();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
@@ -2729,6 +2816,18 @@ export class Stadium {
     for (const d of field.decals) this.texQuad(d.tex, 0, 0, d.tex.width, d.tex.height, d.quad, 1, 1, 2.6 * px, 4);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawMarkings();
+  }
+
+  /** The down sign and the first-down stick on the far sideline. */
+  private drawSideline(layer: 'poles' | 'plates'): void {
+    if (!this.hasScene || this.attractOn || this.groundOn || this.down < 1) return;
+    const gain = this.los + this.toGo;
+    this.painter.px = this.dpr;
+    drawSticks(this.painter, {
+      losX: worldX(this.offense, this.los), gainX: gain < FIELD ? worldX(this.offense, gain) : null,
+      dir: this.offense === 0 ? 1 : -1, down: this.down, toGo: this.toGo, tfp: this.tryScene,
+      team: this.col[this.offense], since: this.clock - this.sticksAt, clock: this.clock, top: this.insTop,
+    }, layer);
   }
 
   private order: Actor[] = [];

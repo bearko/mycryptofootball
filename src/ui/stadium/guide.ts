@@ -5,11 +5,13 @@
 //  - the pass (or kick): its whole arc ahead of the ball, and a ring where it will come down
 //  - on a touchdown: a lit road from the runner to the goal line while he is still on his way, and afterwards the
 //    whole way the ball went, from the snap to the end zone
+//  - the yards: a number that counts up beside the hero with the ball once he is past the line of scrimmage, and,
+//    when he is down, the ground won (or lost) shaded from the line to the spot
 //
 // Everything is in world coordinates (x along the field, z across); the caller owns the camera.
 
 import { FIELD } from '../../game/match';
-import { END, WIDTH } from './assets';
+import { DISPLAY_FONT, END, WIDTH } from './assets';
 import { evalKeys, type BallSeg, type Design, type Ref, type Script } from './choreo';
 import type { Painter } from './ground';
 import { TAU, clamp, css, easeOut, lerp, mix, sat, type RGB } from './math';
@@ -258,6 +260,12 @@ export class Guide {
   private endAt = -1;
   private planOff: number;
   private gold = false;
+  /** whole yards past the line of scrimmage, while an offensive hero carries the ball; where he is; when it last grew */
+  private gain = 0;
+  private gainAt = -9;
+  private carried = false;
+  private cx = 0;
+  private cz = 0;
 
   constructor(private script: Script, team: RGB, clock: number) {
     this.col = team;
@@ -291,7 +299,7 @@ export class Guide {
 
   /** True once nothing is left to draw. */
   get dead(): boolean {
-    return this.endAt >= 0 && this.clock - this.endAt > 0.8;
+    return this.endAt >= 0 && this.clock - this.endAt > 1.7;
   }
 
   touchdown(clock: number): void {
@@ -344,6 +352,21 @@ export class Guide {
       }
     }
     if (this.arc && this.arc.landed < 0 && f.t >= this.arc.seg.t1) this.arc.landed = f.clock;
+    // the yards so far, once the ball is in the hands of the hero who runs with it
+    const got = sc.pass ? sc.tCatch : sc.tHand;
+    const who = f.held && f.held.team === o ? f.where(f.held) : null;
+    this.carried = !sc.spec.kick && got > 0 && f.t >= got && f.t <= sc.tEnd + 0.5 && !!who;
+    if (this.carried && who) {
+      // never more than the play is worth: the picture runs the hero a step past the spot before he goes down
+      const most = sc.spec.td ? FIELD - sc.spec.los : sc.spec.outcome === 'gain' ? sc.spec.yards : 0;
+      const g = Math.min(most, Math.floor((who.x - sc.losX) * sc.dir + 0.35));
+      if (g !== this.gain) {
+        if (g > this.gain) this.gainAt = f.clock;
+        this.gain = g;
+      }
+      this.cx = who.x;
+      this.cz = who.z;
+    }
     // a touchdown on the way: light the road from the runner to the goal while he is still running
     if (sc.spec.td && !sc.spec.kick && !this.roadTried && sc.tTD > 0) {
       const got = sc.pass ? sc.tCatch : sc.tHand;
@@ -481,6 +504,41 @@ export class Guide {
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    // ---- the ground won or lost, once the hero is down: shaded from the line of scrimmage to the spot
+    const sp = sc.spec;
+    if (!sp.kick && !sp.td && sp.yards !== 0 && (sp.outcome === 'gain' || sp.outcome === 'loss' || sp.outcome === 'sack') && this.t >= sc.tEnd) {
+      const late = this.endAt < 0 ? 1 : 1 - sat((clock - this.endAt - 0.9) / 0.7);
+      const r = easeOut((this.t - sc.tEnd) / 0.3);
+      if (late > 0.01 && r > 0.01) {
+        const c: RGB = sp.yards < 0 ? [255, 84, 96] : sp.yards >= sp.toGo ? GOLD : this.bright;
+        const x0 = sc.losX;
+        const x1 = sc.losX + sc.dir * sp.yards * r;
+        p.fill([x0, Y, 0, x1, Y, 0, x1, Y, WIDTH, x0, Y, WIDTH], css(c, 0.2 * late));
+        ctx.globalCompositeOperation = 'lighter';
+        p.fill([x0, Y, 0, x1, Y, 0, x1, Y, WIDTH, x0, Y, WIDTH], css(c, 0.12 * late));
+        ctx.globalCompositeOperation = 'source-over';
+        // the new spot
+        const e = 0.14 * (x1 > x0 ? 1 : -1);
+        p.fill([x1 - e, Y, 0, x1 + e, Y, 0, x1 + e, Y, WIDTH, x1 - e, Y, WIDTH], css(mix(c, WHITE, 0.35), 0.9 * late));
+        // arrowheads across the shaded ground, from the old line to the new one
+        const span = Math.abs(sp.yards) * r;
+        if (span > 2.5) {
+          const way = sp.yards > 0 ? sc.dir : -sc.dir;
+          const n = Math.max(1, Math.min(4, Math.floor(span / 3)));
+          for (const z of [4.6, 12, 19.4]) {
+            for (let k = 0; k < n; k += 1) {
+              at.x = x0 + way * ((k + 0.5 + ((clock * 0.9) % 1)) * (span / (n + 0.5)));
+              if ((at.x - x0) * way > span - 0.4) continue;
+              at.z = z;
+              at.tx = way;
+              at.tz = 0;
+              chevron(p, 0.8, 0.42, css(mix(c, WHITE, 0.3), 0.55 * late));
+            }
+          }
+        }
+      }
+    }
+
     // ---- where the ball has gone
     const tr = this.track;
     if (tr.total > 0.6) {
@@ -577,6 +635,39 @@ export class Guide {
     p.fill(poly, style);
   }
 
+  /** The yards so far, beside the hero with the ball. */
+  private drawGain(p: Painter, all: number): void {
+    if (!this.carried || this.gain < 1 || this.tdAt >= 0) return;
+    const cam = p.cam;
+    if (!cam.project(this.cx, 0, this.cz)) return;
+    const ctx = p.ctx;
+    const px = p.px;
+    const ss = cam.ss;
+    const sp = this.script.spec;
+    const pop = 1 + 0.45 * (1 - easeOut((this.clock - this.gainAt) / 0.22));
+    const u = clamp(ss * 1.05, 15 * px, 34 * px) * pop;
+    // beside the pointer over his head, on the side he came from (so it never covers where he is going)
+    const behind = cam.project(this.cx - this.script.dir, 0, this.cz) ? cam.sx : -1e9;
+    cam.project(this.cx, 0, this.cz);
+    const side = behind >= cam.sx ? 1 : -1;
+    const x = cam.sx + side * Math.max(1.5 * ss, 20 * px);
+    const y = cam.sy - 3.3 * ss;
+    const first = !sp.td && this.gain >= sp.toGo;
+    const text = `+${this.gain}`;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = all;
+    ctx.font = `${Math.round(u)}px ${DISPLAY_FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(10,16,40,0.92)';
+    ctx.lineWidth = Math.max(3 * px, u * 0.26);
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = first ? '#ffd23f' : '#ffffff';
+    ctx.fillText(text, x, y);
+    ctx.globalAlpha = 1;
+  }
+
   /** Over the heroes: the lines once more, faintly (a hero never hides them), and the pass in the air. */
   drawAir(p: Painter): void {
     const all = this.fadeOut();
@@ -590,6 +681,7 @@ export class Guide {
       const n = cut(this.road.way, this.road.from, lerp(this.road.from, this.road.way.total, easeOut((this.clock - this.road.t0) / 0.32)));
       hair(p, n, 2, css(mix(GOLD, WHITE, 0.4), 0.3 * all));
     }
+    this.drawGain(p, all);
     const arc = this.arc;
     if (!arc) return;
     const seg = arc.seg;

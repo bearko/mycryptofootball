@@ -19,9 +19,11 @@ export interface Prefs {
   text: number;
   /** adds shapes and patterns wherever a color carries meaning */
   colorSafe: boolean;
+  /** touchdowns, big gains and lost balls are shown once more from another angle */
+  replay: boolean;
 }
 
-export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false });
+export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true });
 
 export interface SaveData {
   v: 1;
