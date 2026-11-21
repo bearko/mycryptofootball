@@ -66,6 +66,10 @@ export interface PlaySpec {
   td: boolean;
   los: number;
   toGo: number;
+  /** which down it was (missing: a made-up play, no sideline sign) */
+  down?: number;
+  /** the try after a touchdown */
+  tfp?: boolean;
   carrier: number;
   defender: number;
   offStar: number | null;
@@ -126,6 +130,8 @@ export function specOf(res: PlayResult): PlaySpec {
     td: res.td,
     los: res.before.pos,
     toGo: res.before.toGo,
+    down: res.before.down,
+    tfp: !!res.tfp,
     carrier: res.carrier,
     defender: res.defender,
     offStar: res.offPick.special ? res.offPick.special.owner : null,

@@ -8,7 +8,7 @@
   - `src/core/` 乱数（`rng.ts`）、セーブ（`save.ts`）、音（`audio.ts` と `audio/`）、DOM の小道具（`dom.ts`）、デバッグ用 URL（`debug.ts`）、アプリとして入れる案内（`install.ts`）
   - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 12 人）、`teams.ts`（対戦校）、`lineup.ts`（編成）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会）
   - `src/ui/` 画面：`title.ts`、`recruit.ts`（入部説明会）、`club.ts` と `ground/`（練習グラウンド。ふだんいる画面）、`policy.ts`（育成方針）、`lineupScreen.ts`（編成）、`matchScreen.ts`（試合）、`endScreen.ts`。共通の部品は `kit.ts`・`shared.ts`・`cardView.ts`、演出は `fx.ts`、画面の切り替えは `nav.ts`
-  - `src/ui/stadium.ts` と `stadium/`：試合のスタジアムと練習グラウンドを描く Canvas の描画（疑似 3D）。画面からは `Stadium` クラスだけを使う。プレーの台本は `stadium/choreo.ts`（`Script`。作戦として描いた道すじは `design`）、プレー中に重ねる中継の補助表示（作戦の線・ボールの帯・パスの軌道・ゴールまでの道）は `stadium/guide.ts`
+  - `src/ui/stadium.ts` と `stadium/`：試合のスタジアムと練習グラウンドを描く Canvas の描画（疑似 3D）。画面からは `Stadium` クラスだけを使う。プレーの台本は `stadium/choreo.ts`（`Script`。作戦として描いた道すじは `design`）、プレー中に重ねる中継の補助表示（作戦の線・ボールの帯・パスの軌道・ゴールまでの道・獲得ヤード）は `stadium/guide.ts`、サイドラインの標識（「2nd & 7」と「1st」の棒）は `stadium/sticks.ts`。リプレイは `Stadium.replay()`（同じ台本を別のカメラで。出すかどうかは `matchScreen.ts` と設定の `prefs().replay`）
   - `src/styles/` 画面ごとの CSS。共通は `base.css` と `cards.css`
   - `lab/`：描画と音を単体で試すページ（`/lab/stadium.html`・`/lab/audio.html`。開発サーバーでだけ開ける）
 - 見た目と部品の決まりは `docs/UI_STYLE.md`。画面を作る・直すときは先に読む。

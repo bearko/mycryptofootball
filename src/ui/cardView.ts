@@ -146,7 +146,7 @@ export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): 
   if (opts.ev !== undefined && opts.ev !== null) {
     const tier = opts.ev >= 7 ? 'hi' : opts.ev >= 4 ? 'mid' : 'lo';
     btn.classList.add('has-ev');
-    btn.append(h('span.card-ev', { class: tier, title: `期待値の目安 ${opts.ev}（10段階）。相手のカードしだいで変わる` }, h('i', '期待'), h('b', String(opts.ev))));
+    btn.append(h('span.card-ev', { class: tier, title: `期待値の目安 ${opts.ev}（10段階）。相手のカードしだいで変わる` }, h('b', String(opts.ev))));
   }
   if (opts.key && opts.index !== undefined) inner.append(h('span.card-key', String(opts.index + 1)));
   if (!opts.small) tilt(btn, 9);

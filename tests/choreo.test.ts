@@ -92,3 +92,26 @@ describe('the play as it was drawn up (the lines the picture shows over a play)'
     }
   });
 });
+
+describe('the sideline sign', () => {
+  it('says which down it is and how far there is to go', async () => {
+    const { sticksText } = await import('../src/ui/stadium/sticks');
+    expect(sticksText({ down: 1, toGo: 10, tfp: false, gainX: 30 })).toBe('1st & 10');
+    expect(sticksText({ down: 2, toGo: 7, tfp: false, gainX: 30 })).toBe('2nd & 7');
+    expect(sticksText({ down: 3, toGo: 1, tfp: false, gainX: 30 })).toBe('3rd & 1');
+    // the goal line is nearer than ten yards: there is no line to reach but the goal
+    expect(sticksText({ down: 4, toGo: 6, tfp: false, gainX: null })).toBe('4th & GOAL');
+    expect(sticksText({ down: 1, toGo: 3, tfp: true, gainX: null })).toBe('TFP');
+  });
+
+  it('every play carries its down to the picture', () => {
+    const st = createMatch(HOME, opponentSheet(1), 3);
+    for (let i = 0; i < 12 && !st.over; i += 1) {
+      const down = st.down;
+      const o = st.poss;
+      const def = autoPick(st, (1 - o) as 0 | 1);
+      const res = resolvePlay(st, autoPick(st, o, def), def);
+      expect(specOf(res).down).toBe(down);
+    }
+  });
+});

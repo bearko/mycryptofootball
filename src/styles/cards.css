@@ -90,8 +90,7 @@
 
 /* the outlook, 1..10: a round stamp on the top right corner */
 .card-ev { position: absolute; right: -0.6rem; top: -0.9rem; z-index: 4; width: 2.4rem; height: 2.4rem; display: grid; place-content: center; justify-items: center; border-radius: 50%; color: var(--ink); background: var(--yellow); border: 0.18rem solid var(--ink); box-shadow: 0.16rem 0.16rem 0 var(--ink); transform: rotate(8deg); pointer-events: none; }
-.card-ev i { font-style: normal; font-size: 0.62rem; line-height: 1; letter-spacing: 0.02em; }
-.card-ev b { font-family: var(--display); font-weight: 400; font-size: 1.35rem; line-height: 0.95; }
+.card-ev b { font-family: var(--display); font-weight: 400; font-size: 1.6rem; line-height: 1; }
 .card-ev.hi { background: var(--lime); }
 .card-ev.lo { color: var(--chalk); background: #c2274a; }
 .card.small .card-ev { display: none; }

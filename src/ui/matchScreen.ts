@@ -10,7 +10,7 @@
 import { crowd, duck, playBgm, sfx, vibrate } from '../core/audio';
 import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
-import { commit, loadMatch, save, storeMatch } from '../core/save';
+import { commit, loadMatch, prefs, save, storeMatch } from '../core/save';
 import {
   DEF_INFO, DEF_TYPES, KICK_INFO, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isKick, isRun, type DefType, type OffType, type SpecialCard,
 } from '../game/cards';
@@ -75,6 +75,8 @@ export function matchScreen(): [HTMLElement, () => void] {
   /** the heroes the considered card is about, and their tags on the field */
   let keys3: { id: number; el: HTMLElement }[] = [];
   const touchy = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+  /** a gain of this many yards is shown once more */
+  const BIG_PLAY = 15;
   const booth = speech('announcer');
   booth.el.classList.add('booth');
   const stage = h('div.stage');
@@ -678,6 +680,22 @@ export function matchScreen(): [HTMLElement, () => void] {
     telop.classList.add('out');
     await pause(200);
     telop.remove();
+
+    // ---- once more, from another angle: a touchdown, a big gain, a ball taken away. A tap skips it
+    const worthAnotherLook = !kick && !tried && (res.td || res.turnover === 'int' || res.turnover === 'fumble' || (res.outcome === 'gain' && res.yards >= BIG_PLAY));
+    if (worthAnotherLook && prefs().replay && !debug.bot) {
+      const tag = h('div.replay-tag', h('i'), h('b', 'リプレイ'), h('span', touchy ? 'タップでとばす' : 'クリックでとばす'));
+      root.append(tag);
+      sfx.transition();
+      skip = () => {
+        skip = null;
+        stadium.skip();
+      };
+      await stadium.replay(res, speed());
+      skip = null;
+      tag.remove();
+      if (!alive) return;
+    }
 
     // ---- the clock
     if (res.period === 'half' || res.period === 'sudden') {
