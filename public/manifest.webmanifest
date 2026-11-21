@@ -1,7 +1,7 @@
 {
   "name": "My Crypto Football",
   "short_name": "MC Football",
-  "description": "一芸もちのヒーロー7人のアメフト部を率いて、作戦カードで地区大会の頂点へ（非公式ファンゲーム）",
+  "description": "一芸もちのヒーロー7人でアメフト部をつくり、練習カードで鍛えて、作戦カードの読み合いで地区大会の頂点へ（非公式ファンゲーム）",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
