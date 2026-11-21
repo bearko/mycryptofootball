@@ -28,6 +28,8 @@ export const TIERS: readonly Tier[] = [
   { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 30, join: 21, size: 11 },
   { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 36, join: 25, size: 11 },
 ];
+/** the tournaments, the smallest first */
+export const CUPS: readonly string[] = ['地区大会', '県大会', '地方大会', '全国大会'];
 export const TOP_TIER = TIERS.length - 1;
 export const FAME_MAX = 100;
 /** the gauge after going up a step / after going down one */

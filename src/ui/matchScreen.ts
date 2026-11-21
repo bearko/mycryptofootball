@@ -23,7 +23,7 @@ import {
 } from '../game/match';
 import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
 import { opponentSheet } from '../game/teams';
-import { SCHEDULE, clubSheet, finishMatch, labelOf, plan } from '../game/season';
+import { SCHEDULE, clubSheet, finishMatch, labelOf, plan, schoolId } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
@@ -58,7 +58,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
-  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!)), newSeed());
+  const st: MatchState = loadMatch() ?? createMatch(clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!), schoolId(s, p.opp)), newSeed());
   storeMatch(st);
   const [home, away] = st.teams;
   const firstEver = save().seasons === 0 && s.results.length === 0;

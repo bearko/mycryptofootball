@@ -12,10 +12,10 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, labelOf, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
-import { OPPONENTS, aces } from '../game/teams';
+import { aces } from '../game/teams';
 import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
 import { calendar } from './ground/calendar';
@@ -69,7 +69,7 @@ function contextLine(s: Season): Line {
   if (policyOpen(s) && s.day > 0) return ['練習試合、おつかれさまでした！ いまだけ「方針」を見直せます。カードを出すと締め切りです。', 'point'];
   if (last && last.day === s.day - 1) {
     return last.win
-      ? [`${OPPONENTS[last.opp]!.name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
+      ? [`${schoolAt(s, last.opp).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
   if (s.day === 0 && s.year > 1 && sizeOf(s.lineup!) === 11) return [`今年は${cupOf(s)}。試合は11人制です！ 「編成」で、11人の並びを見ておきましょう。`, 'point'];
@@ -82,7 +82,7 @@ function contextLine(s: Season): Line {
   if (near && TRUST_LEARN - near.trust <= 12) {
     return [`${shortName(near.id)}はあと信頼${TRUST_LEARN - near.trust}で特別作戦を覚えます。マンツーマンのカードが近道ですよ。`, 'point'];
   }
-  if (next) return [`${OPPONENTS[next.opp]!.name}との${shortLabel(next)}まで、あと${next.n - s.day}日。きょうの1枚をどうぞ！`, 'smile'];
+  if (next) return [`${schoolAt(s, next.opp).name}との${shortLabel(next)}まで、あと${next.n - s.day}日。きょうの1枚をどうぞ！`, 'smile'];
   return ['きょうの1枚をえらびましょう！', 'smile'];
 }
 
@@ -423,9 +423,9 @@ export function clubScreen(): [HTMLElement, () => void] {
     show(...matchScreen());
   };
   const vsBanner = (p: DayPlan): HTMLElement => {
-    const opp = OPPONENTS[p.opp]!;
+    const opp = schoolAt(s, p.opp);
     const studied = scoutedKeys(s);
-    const stars = aces(p.opp);
+    const stars = aces(schoolId(s, p.opp), p.opp, sizeOf(s.lineup!));
     return h('footer.pg-vs', { style: { '--oc': opp.color } },
       studied.length ? h('div.vs-warn', { role: 'alert' }, icon(ICON.warn), h('b', '研究されている！'),
         h('span', `「${studied.map((k) => hero(Number(k)).passive).join('」「')}」は、最初から少し読まれる`)) : null,
