@@ -20,6 +20,7 @@ import {
   type Cue, type Key, type PlaySpec, type Ref, type Script,
 } from './stadium/choreo';
 import { CHUNK, CONFETTI, Fx, GLINT, MOTE, PUFF, SPARK, burst } from './stadium/fx';
+import { Guide } from './stadium/guide';
 import {
   BOARD, CART, CENTER, DUMMIES, Ground, SLED, STATIONS, buildDrill, propsOf, spotOf, stationsFor,
   type DrillHooks, type DrillKind, type DrillPlan, type GCue, type Painter, type Post, type Prop, type Station,
@@ -378,6 +379,8 @@ export class Stadium {
   // chalk preview
   private chalk: { lines: ChalkLine[]; zones: ChalkZone[]; t0: number; tint: RGB; owner: Ref | null } | null = null;
   private chalkKey = '';
+  /** the lines drawn over a running play (see stadium/guide.ts) */
+  private guide: Guide | null = null;
   // practice ground (see stadium/ground.ts)
   private painter: Painter;
   private g: Ground | null = null;
@@ -488,6 +491,7 @@ export class Stadium {
     this.hasScene = true;
     this.script = null;
     this.chalk = null;
+    this.guide = null;
     this.place(this.offense, this.los, first);
     this.ballHeld = this.find(this.offense, this.teams[this.offense].lineup.off.QB);
     this.ballAir = false;
@@ -513,6 +517,7 @@ export class Stadium {
     const key = `${side}:${pick.type}:${pick.special ? pick.special.key : ''}:${playerTeam}:${this.sceneN}:${this.offense}:${this.los}`;
     if (this.chalk && key === this.chalkKey) return;
     this.chalkKey = key;
+    this.guide = null;
     this.buildChalk(pick, side, playerTeam, stars);
   }
 
@@ -577,6 +582,7 @@ export class Stadium {
     this.attractOn = true;
     this.hasScene = false;
     this.chalk = null;
+    this.guide = null;
     this.script = null;
     this.attractShot = Math.floor(this.rnd() * 5);
     this.attractShotT = 0;
@@ -606,6 +612,7 @@ export class Stadium {
     const first = !this.groundOn;
     this.attractOn = false;
     this.hasScene = false;
+    this.guide = null;
     this.script = null;
     this.chalk = null;
     const day = Number.isFinite(opts.day) ? (opts.day as number) : 0;
@@ -994,6 +1001,8 @@ export class Stadium {
       if (ac.tumT0 >= 0) ac.downUntil = Math.min(ac.downUntil, this.sim);
     }
     this.script = script;
+    // the title screen's plays and the fast-forward run without the drawn lines
+    this.guide = cinematic || this.playFast ? null : new Guide(script, this.col[spec.off], this.clock);
     this.playing = true;
     this.playT = 0;
     this.playSpeed = sp;
@@ -1038,6 +1047,7 @@ export class Stadium {
       this.endFired = true;
       if (!this.dead) this.safe(() => this.hooks?.onEnd?.());
     }
+    this.guide?.finish(this.clock);
     this.hooks = undefined;
     const done = this.resolve;
     this.resolve = null;
@@ -1229,6 +1239,7 @@ export class Stadium {
           this.trauma = Math.max(this.trauma, 0.35);
           this.setCam('orbit', this.camVar, false);
         }
+        this.guide?.touchdown(this.clock);
         this.safe(() => hooks?.onTouchdown?.());
         break;
       }
@@ -1241,6 +1252,7 @@ export class Stadium {
         break;
       }
       case 'end': {
+        this.guide?.finish(this.clock);
         if (!this.endFired) {
           this.endFired = true;
           this.safe(() => hooks?.onEnd?.());
@@ -1511,6 +1523,19 @@ export class Stadium {
     if (this.groundOn) this.stepGround(dt);
     this.stepActors(pdt, dt);
     if (!this.groundOn) this.stepBall(pdt);
+    const guide = this.guide;
+    if (guide) {
+      if (this.playing && script) {
+        guide.step({
+          t: this.playT, clock: this.clock, bx: this.bx, by: this.by, bz: this.bz, air: this.ballAir,
+          held: this.ballHeld ? { team: this.ballHeld.team, id: this.ballHeld.id } : null,
+          where: (r) => this.find(r.team, r.id),
+        });
+        // the road to the goal is lit: look down it from behind the runner
+        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit') this.setCam('chase', this.camVar, false);
+      } else guide.tick(this.clock);
+      if (guide.dead) this.guide = null;
+    }
     this.fx.step(sdt);
     this.stepShow(dt);
 
@@ -2529,6 +2554,10 @@ export class Stadium {
 
     this.drawLines();
     if (this.chalk) this.drawChalk(1);
+    if (this.guide && !ground) {
+      this.painter.px = px;
+      this.guide.drawGround(this.painter);
+    }
     this.drawDecals();
 
     // ---- everybody, far to near
@@ -2601,6 +2630,7 @@ export class Stadium {
     ctx.globalAlpha = 1;
     // the routes once more, faintly, over the heroes: like a telestrator, never hidden
     if (this.chalk) this.drawChalk(0.4);
+    if (this.guide && !ground) this.guide.drawAir(this.painter);
     this.drawMarkers(order);
     // equipment is pointed at only while a drill is being considered, not while it runs
     if (ground && this.gHint && !this.drilling) ground.pointers(this.painter, this.clock);
@@ -2994,6 +3024,8 @@ export class Stadium {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  private ringPts: number[] = [];
+
   /** Shadows and rings on the turf under every hero. */
   private drawDecals(): void {
     const ctx = this.ctx;
@@ -3007,16 +3039,25 @@ export class Stadium {
         this.rings.splice(i, 1);
         continue;
       }
-      if (!this.groundMatrix(r.x, r.z)) continue;
+      // a true ring on the turf (clipped against the lens: the camera may stand inside it)
       const rad = r.r * easeOut(f);
+      const half = (0.32 * (1 - f) + 0.06) / 2;
+      const N = 28;
+      const ring = this.ringPts;
+      ring.length = 0;
+      for (let k = 0; k <= N; k += 1) {
+        const a = (k / N) * TAU;
+        ring.push(r.x + Math.cos(a) * (rad + half), 0.02, r.z + Math.sin(a) * (rad + half));
+      }
+      for (let k = N; k >= 0; k -= 1) {
+        const a = (k / N) * TAU;
+        ring.push(r.x + Math.cos(a) * Math.max(0, rad - half), 0.02, r.z + Math.sin(a) * Math.max(0, rad - half));
+      }
       ctx.globalAlpha = (1 - f) * 0.9;
-      ctx.strokeStyle = r.color;
-      ctx.lineWidth = 0.32 * (1 - f) + 0.06;
-      ctx.beginPath();
-      ctx.arc(0, 0, rad, 0, TAU);
-      ctx.stroke();
+      this.fillPoly(ring, r.color);
     }
     ctx.globalAlpha = 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = true;
     for (const ac of this.actors) {
       if (!cam.project(ac.x, 0, ac.z) || cam.sd < 1.5) continue;
