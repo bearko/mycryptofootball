@@ -17,7 +17,7 @@ const SE = ((catalog as { se?: unknown }).se ?? {}) as Record<string, string>;
 export type BgmKey = 'club' | 'match' | 'final' | '';
 
 /** Bus levels at a volume setting of 1. The music files are mastered hot; the band sits on top of them. */
-const MUSIC_BASE = 0.42;
+const MUSIC_BASE = 0.55;
 const SFX_BASE = 1;
 const CROWD_BASE = 0.8;
 /** Cross-fade between tracks, in seconds. */
@@ -78,6 +78,8 @@ interface Track {
   level: number;
   target: number;
   stop: ReturnType<typeof setTimeout> | null;
+  /** the browser has let this element play once (after that it may be started from anywhere) */
+  primed: boolean;
 }
 
 const tracks = new Map<string, Track>();
@@ -121,7 +123,7 @@ function trackFor(key: string): Track | null {
   const el = new Audio(url);
   el.loop = true;
   el.preload = 'auto';
-  const tr: Track = { el, gain: null, level: 0, target: 0, stop: null };
+  const tr: Track = { el, gain: null, level: 0, target: 0, stop: null, primed: false };
   if (live) {
     try {
       const ctx = live.ctx as AudioContext;
@@ -151,7 +153,10 @@ function ramp(tr: Track, to: number): void {
 const start = (tr: Track): void => {
   if (muted() || asleep) return;
   try {
-    void tr.el.play().catch(() => undefined);
+    // refused (no gesture yet, or the phone just came back): the next tap tries again, see unlockAudio()
+    void tr.el.play().then(() => {
+      tr.primed = true;
+    }, () => undefined);
   } catch {
     /* ignore */
   }
@@ -283,10 +288,17 @@ export function vibrate(pattern: number | number[]): void {
   }
 }
 
-/** Call from the first tap or key press (browsers only allow sound after a gesture). Safe to call again and again. */
+/**
+ * Call from EVERY tap and key press (it is cheap). Browsers only allow sound after a gesture, and a phone does not
+ * count the moment a finger lands (pointerdown) as one: only lifting it (pointerup, touchend, click) does.
+ * So this is not a one-off: whatever the browser refused before is tried again here, until the music really plays.
+ * It also repairs what a lost event can leave behind: a context that stayed suspended, a page that still thinks it is hidden.
+ */
 export function unlockAudio(): void {
   if (!hasWindow) return;
   try {
+    // somebody is touching the page, so it is in front: never stay asleep because a "wake" event got lost
+    if (asleep && document.visibilityState !== 'hidden') setAsleep(false);
     if (!live) {
       const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AC) {
@@ -309,21 +321,23 @@ export function unlockAudio(): void {
   try {
     const first = !unlocked;
     unlocked = true;
-    if (first) {
-      // Phones only let an <audio> element start inside a gesture: touch every track now (silently),
-      // so that a later playBgm() from a timer or a screen change is allowed to start it.
-      for (const key of Object.keys(BGM)) {
-        if (key === want) continue;
-        const tr = trackFor(key);
-        if (!tr) continue;
-        void tr.el.play().then(() => {
-          if (tr.target === 0) tr.el.pause();
-        }, () => undefined);
-      }
-      syncMusic();
-    } else if (want) {
-      const tr = tracks.get(want);
-      if (tr && tr.el.paused) start(tr);
+    if (asleep || muted()) return;
+    // Phones only let an <audio> element start inside a gesture: touch every track now (silently),
+    // so that a later playBgm() from a timer or a screen change is allowed to start it.
+    for (const key of Object.keys(BGM)) {
+      if (key === want) continue;
+      const tr = trackFor(key);
+      if (!tr || tr.primed || tr.target !== 0 || !tr.el.paused) continue;
+      void tr.el.play().then(() => {
+        tr.primed = true;
+        if (tr.target === 0) tr.el.pause();
+      }, () => undefined);
+    }
+    if (first) syncMusic();
+    const tr = want ? tracks.get(want) ?? trackFor(want) : null;
+    if (tr) {
+      if (tr.target !== 1) syncMusic();
+      else if (tr.el.paused) start(tr);
     }
   } catch {
     /* no music */
@@ -517,9 +531,14 @@ export function se(key: string, volume = 0.7): void {
 // ------------------------------------------------------------------------------------------------ lab hooks
 
 /** Dev only (lab/audio.html): the state of the live engine and a post-limiter analyser for meters. */
-export function audioDebug(): { unlocked: boolean; state: string; voices: number; booked: number; tap: AnalyserNode | null } {
+export function audioDebug(): { unlocked: boolean; state: string; voices: number; booked: number; tap: AnalyserNode | null; bgm?: string; playing?: boolean; asleep?: boolean; time?: number } {
   try {
+    const tr = want ? tracks.get(want) : undefined;
     return {
+      bgm: want,
+      playing: !!tr && !tr.el.paused,
+      time: tr ? tr.el.currentTime : 0,
+      asleep,
       unlocked,
       state: live ? (live.ctx as AudioContext).state : 'none',
       voices: live ? sounding(live) : 0,
