@@ -1,1 +1,48 @@
-/* training policy meeting */
+/* 「ミーティング」 the training policy: seven heroes side by side, six abilities each, one of them lit. */
+
+.modal-panel.pol-panel { width: min(69rem, 100%); padding-bottom: 0.8rem; }
+.pol-panel .modal-title { margin-bottom: 0.5rem; }
+.pol { display: grid; gap: 0.5rem; }
+.pol-lead { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: var(--fs-s); line-height: 1.35; }
+.pol-lead p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.3rem; }
+.pol-lead b { font-family: var(--display); font-weight: 400; color: var(--yellow); }
+.pol-lead .cico { width: 1.4rem; height: 1.4rem; color: var(--yellow); margin-right: 0.3rem; }
+.pol-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.3rem; }
+.pol-col { display: grid; gap: 0.3rem; padding: 0.2rem 0.15rem 0.3rem; background: rgba(6, 8, 26, 0.45); border-top: 0.3rem solid var(--violet); animation: fade-up 0.35s var(--spring) backwards; animation-delay: calc(var(--i) * 40ms); min-width: 0; }
+.pol-who { display: flex; flex-direction: column; align-items: center; line-height: 1.2; min-width: 0; }
+.pol-who .portrait { width: 3rem; }
+.pol-who b { font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); white-space: nowrap; letter-spacing: -0.04em; }
+.pol-who span { display: flex; flex-direction: column; align-items: center; min-height: 2.4em; font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); white-space: nowrap; letter-spacing: -0.08em; }
+.pol-who i { font-style: normal; }
+.pol-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem; }
+.pol-stat { position: relative; display: grid; grid-template-columns: auto auto; justify-content: center; align-items: center; gap: 0 0.15rem; min-height: 4.4rem; padding: 0.5rem 0 0.1rem; color: var(--chalk); background: #0d1136; border: 0.18rem solid var(--ink); transition: transform 0.14s var(--spring), background 0.14s, box-shadow 0.14s; min-width: 0; }
+.pol-stat .ticon svg { width: 1.3rem; height: 1.3rem; }
+.pol-stat b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.2; }
+.pol-stat span { grid-column: 1 / -1; text-align: center; font-size: var(--fs-xs); line-height: 1.25; white-space: nowrap; letter-spacing: -0.07em; }
+.pol-stat span.is-long { font-size: calc(var(--fs-xs) * 0.95); letter-spacing: -0.11em; }
+button.pol-stat { box-shadow: 0.2rem 0.2rem 0 var(--ink); background: linear-gradient(180deg, #2a3186, #1a1f5c); }
+@media (hover: hover) { button.pol-stat:hover { transform: translateY(-0.25rem); background: linear-gradient(180deg, #3a42a8, #232a78); } }
+button.pol-stat:active { transform: translate(0.12rem, 0.12rem); box-shadow: 0.05rem 0.05rem 0 var(--ink); }
+.pol-stat.is-worst:not(.is-on) { color: var(--dim); }
+.pol-stat.is-on { color: var(--ink); background: var(--tc); border-color: var(--ink); box-shadow: 0 0 0 0.22rem var(--yellow), 0.3rem 0.4rem 0 var(--ink); transform: translateY(-0.2rem) rotate(-1.5deg); z-index: 1; }
+.pol-stat.is-on .ticon { color: var(--ink); }
+.pol-stat.is-on::after { content: '方針'; position: absolute; right: -0.6rem; top: 0.9rem; font-family: var(--display); font-size: 0.85rem; line-height: 1.5; padding: 0 0.35rem; color: var(--chalk); background: #d21f1a; border: 0.12rem solid var(--ink); transform: rotate(6deg); }
+.pol-stat.is-pick { animation: pol-pick 0.3s var(--spring); }
+@keyframes pol-pick { from { transform: scale(1.5) rotate(8deg); filter: brightness(1.8); } }
+.pol-stat.is-nudge { animation: pol-nudge 0.3s var(--spring); }
+@keyframes pol-nudge { 40% { transform: translateY(-0.6rem) rotate(-3deg); } }
+.pol-rec, .pol-hard { font-style: normal; font-family: var(--display); line-height: 1.35; white-space: nowrap; }
+.pol-rec { font-size: 0.85rem; padding: 0 0.3rem; color: var(--ink); background: var(--yellow); border: 0.1rem solid var(--ink); }
+.pol-hard { font-size: var(--fs-xs); color: var(--pink); }
+.pol-stat .pol-rec { position: absolute; left: 50%; top: -0.45rem; transform: translateX(-50%); letter-spacing: -0.06em; }
+.pol-stat .pol-hard { position: absolute; right: 0.15rem; top: 0; }
+.pol-stat.is-on .pol-hard { color: var(--ink); }
+.pol.is-locked .pol-stat:not(.is-on) { opacity: 0.6; }
+.pol-foot { display: flex; align-items: center; gap: 1rem; margin-top: 0.3rem; }
+.pol-presets { display: flex; align-items: center; gap: 0.5rem; font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); white-space: nowrap; }
+.pol-presets .btn-face { padding: 0 1rem; font-size: var(--fs-s); }
+.pol-presets .btn.is-on .btn-face { background: var(--cyan); color: var(--ink); }
+.pol-presets .btn.is-on .btn-face::after { height: 0.3rem; background: var(--chalk); }
+.pol-legend { flex: none; display: flex; gap: 1rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--dim); white-space: nowrap; }
+.pol-legend i { margin-right: 0.3rem; }
+.pol-foot > .btn { margin-left: auto; }

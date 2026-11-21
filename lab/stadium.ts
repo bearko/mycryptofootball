@@ -14,6 +14,10 @@
 //   ui=0              hide the control strip
 //   q=auto|0.5..1     resolution scale (default auto, like the game; q=1 keeps screenshots sharp on a slow machine)
 //   seed=, home=, away= (0..3), pos=, poss=   set up the match
+//   ground=1          start on the practice ground (team 0 becomes a club of seven recruits)
+//   day=0..27         the day on the practice ground (changes the light)
+//   drill=dash|pass|catch|hit|tackle|study|game|solo|special   run this drill first; hint=<kind> only hints at it
+//   lead=0..6         which member leads a solo / special drill
 
 import '@fontsource/dela-gothic-one/japanese-400.css';
 import '@fontsource/dela-gothic-one/latin-400.css';
@@ -22,17 +26,29 @@ import '@fontsource/dotgothic16/latin-400.css';
 import { DEF_INFO, DEF_TYPES, KIND, OFF_INFO, OFF_TYPES, type DefType, type OffType } from '../src/game/cards';
 import {
   FIELD, autoPeek, autoPick, createMatch, resolvePlay, specialPick,
-  type MatchState, type Pick, type PlayResult,
+  type MatchState, type Pick, type PlayResult, type TeamSheet,
 } from '../src/game/match';
+import { RECRUITS, hero, specialOf } from '../src/game/heroes';
+import { bestLineup } from '../src/game/lineup';
 import { opponentSheet } from '../src/game/teams';
-import { Stadium, type PlayHooks } from '../src/ui/stadium';
+import { Stadium, type DrillHooks, type DrillKind, type PlayHooks } from '../src/ui/stadium';
 
 const q = new URLSearchParams(location.search);
 const num = (k: string, d: number): number => (q.has(k) && q.get(k) !== '' ? Number(q.get(k)) : d);
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-const home = opponentSheet(num('home', 3));
+/** A club of seven recruits (six regulars and a substitute), like the one the practice screen shows. */
+function clubOfSeven(): TeamSheet {
+  const seven = [0, 2, 4, 6, 8, 10, 5].map((i) => RECRUITS[i]!);
+  const players = seven.map((r) => ({ id: r.id, name: hero(r.id).name, stats: r.stats }));
+  return {
+    name: 'マイクリ学園', short: 'マイクリ', color: '#ffd84a', players, lineup: bestLineup(players),
+    specials: seven.map((r) => specialOf(r.id, r.kind)), runBias: 0.5, smart: 0.7,
+  };
+}
+const startOnGround = q.get('ground') === '1';
+const home = startOnGround || q.get('club') === '1' ? clubOfSeven() : opponentSheet(num('home', 3));
 const away = opponentSheet(num('away', 0));
 let seed = num('seed', 7);
 let st: MatchState = createMatch(home, away, seed);
@@ -60,11 +76,15 @@ stadium.setExcitement(num('exc', 0.25));
 
 const insetTop = el('inset-top');
 const insetBottom = el('inset-bottom');
+let onGround = false;
 function applySafe(phase: 'choose' | 'play'): void {
   const mode = safe === 'auto' ? phase : safe;
   const h = canvas.getBoundingClientRect().height;
-  const top = mode === 'none' ? 0 : Math.round(h * 0.14);
-  const bottom = mode === 'none' ? 0 : Math.round(h * (mode === 'choose' ? 0.38 : 0.08));
+  // on the practice ground a calendar strip sits on top and the hand of practice cards stays below
+  const top = mode === 'none' ? 0 : Math.round(h * (onGround ? 0.18 : 0.14));
+  const bottom = mode === 'none' ? 0 : Math.round(h * (onGround ? (mode === 'play' && safe !== 'auto' ? 0.08 : 0.36) : mode === 'choose' ? 0.38 : 0.08));
+  insetTop.textContent = onGround ? 'カレンダーがここに重なる' : 'スコア表示がここに重なる';
+  insetBottom.textContent = onGround ? '練習カードがここに重なる' : '作戦カードがここに重なる';
   insetTop.style.height = `${top}px`;
   insetBottom.style.height = `${bottom}px`;
   insetTop.style.display = top ? 'flex' : 'none';
@@ -152,10 +172,48 @@ function forced(kind: string): PlayResult {
   }
 }
 
+// ------------------------------------------------------------------ practice ground
+
+const DRILLS: [DrillKind, string][] = [['dash', '走りこみ'], ['pass', 'パス'], ['catch', '捕球'], ['hit', '当たり'], ['tackle', 'タックル'], ['study', '座学'], ['game', '紅白戦'], ['solo', '個人'], ['special', '特別']];
+let day = num('day', 0);
+let leadIndex = num('lead', 0);
+let hinting = false;
+const drillHooks: DrillHooks = {
+  onStep: () => log.push('step'),
+  onThrow: () => log.push('throw'),
+  onCatch: () => log.push('catch'),
+  onImpact: (p) => log.push(`impact ${p.toFixed(2)}`),
+  onChalk: () => log.push('chalk'),
+  onWhistle: () => log.push('whistle'),
+  onPayoff: (id) => log.push(`payoff ${id}`),
+  onEnd: () => log.push('end'),
+};
+const members = (): number[] => home.players.map((p) => p.id);
+function toGround(): void {
+  attract = false;
+  onGround = true;
+  stadium.ground({ heroes: members(), day, color: home.color });
+  phase = 'choose';
+  applySafe(phase);
+}
+async function runDrill(kind: DrillKind): Promise<void> {
+  if (!onGround) toGround();
+  const lead = members()[leadIndex % members().length];
+  if (hinting) {
+    stadium.hintDrill(kind, lead);
+    return;
+  }
+  log.length = 0;
+  const t0 = performance.now();
+  await stadium.drill(kind, { lead, speed }, drillHooks);
+  log.push(`(${Math.round(performance.now() - t0)} ms)`);
+}
+
 async function next(kind?: string): Promise<void> {
   if (busy) return;
   busy = true;
   attract = false;
+  onGround = false;
   const res = kind ? forced(kind) : real();
   log.length = 0;
   phase = 'play';
@@ -248,12 +306,48 @@ btn('消す', () => showPreview(null));
 sep();
 btn('タイトル用', () => {
   attract = true;
+  onGround = false;
   stadium.attract();
+  applySafe(phase);
 });
 btn('試合に戻る', () => {
   attract = false;
+  onGround = false;
   stadium.setScene(st);
+  applySafe(phase);
 });
+sep();
+btn('練習場', () => toGround());
+for (const [kind, label] of DRILLS) btn(label, () => void runDrill(kind));
+btn('ヒントだけ：切', (b) => {
+  hinting = !hinting;
+  b.textContent = hinting ? 'ヒントだけ：入' : 'ヒントだけ：切';
+  b.classList.toggle('on', hinting);
+  if (!hinting) stadium.hintDrill(null);
+});
+btn(`先頭：${leadIndex}`, (b) => {
+  leadIndex = (leadIndex + 1) % Math.max(1, members().length);
+  b.textContent = `先頭：${leadIndex}`;
+});
+{
+  const label = document.createElement('label');
+  const text = document.createElement('span');
+  text.textContent = `日 ${day} `;
+  const r = document.createElement('input');
+  r.type = 'range';
+  r.min = '0';
+  r.max = '27';
+  r.step = '1';
+  r.value = String(day);
+  r.addEventListener('input', () => {
+    day = Number(r.value);
+    text.textContent = `日 ${day} `;
+    if (onGround) stadium.ground({ heroes: members(), day, color: home.color });
+  });
+  label.append(text, r);
+  bar.append(label);
+}
+sep();
 btn(motion ? '動き：フル' : '動き：ひかえめ', (b) => {
   motion = !motion;
   stadium.setMotion(motion);
@@ -297,13 +391,13 @@ function tick(): void {
 }
 requestAnimationFrame(tick);
 function follow(): void {
-  const id = st.teams[st.poss].lineup.off.QB;
-  const p = attract ? null : stadium.screenPos(st.poss, id);
+  const id = onGround ? members()[leadIndex % members().length]! : st.teams[st.poss].lineup.off.QB;
+  const p = attract ? null : stadium.screenPos(onGround ? 0 : st.poss, id);
   if (p && !document.body.classList.contains('bare')) {
     tag.style.display = 'block';
     tag.style.left = `${p.x}px`;
     tag.style.top = `${p.y + 4}px`;
-    tag.textContent = st.teams[st.poss].players.find((x) => x.id === id)?.name ?? '';
+    tag.textContent = (onGround ? home : st.teams[st.poss]).players.find((x) => x.id === id)?.name ?? '';
   } else tag.style.display = 'none';
   requestAnimationFrame(follow);
 }
@@ -312,10 +406,13 @@ requestAnimationFrame(follow);
 // ------------------------------------------------------------------ start
 
 applySafe(phase);
-if (attract) stadium.attract();
+if (startOnGround) toGround();
+else if (attract) stadium.attract();
 else stadium.setScene(st);
+if (startOnGround && q.has('hint')) setTimeout(() => stadium.hintDrill(q.get('hint') as DrillKind, members()[leadIndex % members().length]), 600);
+if (startOnGround && q.has('drill')) setTimeout(() => void runDrill(q.get('drill') as DrillKind), num('delay', 1500));
 if (q.has('preview')) setTimeout(() => showPreview(q.get('preview')), 300);
-if (auto) void autoLoop();
+if (startOnGround) { /* the practice ground runs by itself */ } else if (auto) void autoLoop();
 else if (q.has('force')) setTimeout(() => void next(q.get('force')!), num('delay', 900));
 
-Object.assign(window, { __lab: { stadium, next, forced, showPreview, log, state: () => st, stats: () => stadium.stats(), busy: () => busy } });
+Object.assign(window, { __lab: { stadium, next, forced, showPreview, runDrill, toGround, members, log, state: () => st, stats: () => stadium.stats(), busy: () => busy } });

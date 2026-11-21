@@ -20,9 +20,15 @@ import {
 } from './stadium/choreo';
 import { CHUNK, CONFETTI, Fx, GLINT, MOTE, PUFF, SPARK, burst } from './stadium/fx';
 import {
+  BOARD, CART, CENTER, DUMMIES, Ground, SLED, STATIONS, buildDrill, propsOf, spotOf,
+  type DrillHooks, type DrillKind, type DrillPlan, type GCue, type Painter, type Prop,
+} from './stadium/ground';
+import {
   Camera, Spring, TAU, clamp, css, damp, easeOut, hash, lerp, mix, noise, rgbOf, sat, scale, seeded, smooth,
   type RGB,
 } from './stadium/math';
+
+export type { DrillHooks, DrillKind } from './stadium/ground';
 
 export interface PlayHooks {
   /** fired in sync with the picture so the caller can play sounds / shake DOM / vibrate */
@@ -181,11 +187,28 @@ interface Actor extends Ref {
   aura: boolean;
   trail: number[];
   trailT: number;
+  // practice ground
+  /** warm-up station (index into STATIONS) */
+  station: number;
+  /** carries a ball in its hands */
+  carry: boolean;
+  /** 0..1: runs on the spot */
+  jog: number;
+  /** which way to look while standing (0: toward the other team) */
+  faceLock: 0 | 1 | -1;
+  /** ring colour instead of the team's */
+  ring: string | null;
+  /** steps forward and waves (a drill is being considered for this hero) */
+  wave: boolean;
+  /** start of a quick spin on the spot */
+  flipT0: number;
+  /** time the warm-up routine last ran, to catch its beats */
+  rt: number;
   // projection of the feet this frame
   sx: number; sy: number; ss: number; sd: number; vis: boolean;
 }
 
-type CamMode = 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract';
+type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract';
 
 interface ChalkLine {
   /** x,y,z triples */
@@ -201,6 +224,8 @@ interface ChalkZone { x0: number; x1: number; z0: number; z1: number; delay: num
 const tmp = { x: 0, z: 0 };
 
 const W_PAD = 0.5;
+/** the practice ground's turf: a little drier than the stadium's */
+const GROUND_BANDS = ['#3f8f52', '#377f49'] as const;
 const FIELD_QUAD = Float64Array.from([FX0, 0, FZ0, FX1, 0, FZ0, FX0, 0, FZ1, FX1, 0, FZ1]);
 const quadTmp = new Float64Array(12);
 /** Reorders a top-left, top-right, bottom-left, bottom-right quad into an outline. */
@@ -265,10 +290,10 @@ export class Stadium {
   private H = 0;
   private dpr = 1;
   // textures
-  private field: FieldArt;
+  private field: FieldArt | null = null;
   private crowdCalm: Tex[] = [];
   private crowdHot: Tex[] = [];
-  private ribbons: Record<'main' | 'td' | 'turnover' | 'win', Ribbon>;
+  private ribbons: Record<'main' | 'td' | 'turnover' | 'win', Ribbon> | null = null;
   private ribbonMode: 'main' | 'td' | 'turnover' | 'win' = 'main';
   private ribbonUntil = 0;
   private sprites: Sprites;
@@ -348,6 +373,34 @@ export class Stadium {
   // chalk preview
   private chalk: { lines: ChalkLine[]; zones: ChalkZone[]; t0: number; tint: RGB; owner: Ref | null } | null = null;
   private chalkKey = '';
+  // practice ground (see stadium/ground.ts)
+  private painter: Painter;
+  private g: Ground | null = null;
+  private groundOn = false;
+  private gKey = '';
+  private gField: FieldArt | null = null;
+  private gClub: { short: string; color: string } = { short: '', color: '#ffffff' };
+  private gCol: RGB = [255, 255, 255];
+  private gPlan: DrillPlan | null = null;
+  private drilling = false;
+  /** picture time at which the drill began, and seconds of drill gone by */
+  private gSim0 = 0;
+  private gT = 0;
+  private gReal = 0;
+  private gSpeed = 1;
+  private gCue = 0;
+  private gHooks: DrillHooks | undefined;
+  private gEndFired = false;
+  private gResolve: (() => void) | null = null;
+  private gWatch = 0;
+  private gLines = false;
+  private gHint: { kind: DrillKind; lead: number | undefined; x: number; z: number } | null = null;
+  private gBalls: { s0: number; s1: number; from: [number, number, number]; to: [number, number, number]; h: number; catcher: Actor | null; trail: number[]; x: number; y: number; z: number }[] = [];
+  private gTossAt = 0;
+  private gShot = 0;
+  private gShotT = 0;
+  private gShotLen = 14;
+  private propOrder: Prop[] = [];
   // attract mode
   private attractOn = false;
   private attractShot = 0;
@@ -358,6 +411,8 @@ export class Stadium {
   // resolution scale (see setQuality)
   private quality = 1;
   private qualityAuto = true;
+  /** a frame has been drawn at least once (so a resize may redraw at once) */
+  private drawn = false;
   private frameEma = 16;
   private frameDev = 0;
   private slowFor = 0;
@@ -373,16 +428,24 @@ export class Stadium {
     this.col = [rgbOf(teams[0].color), rgbOf(teams[1].color)];
     this.zoneCss = [css(zoneColor(teams[0].color)), css(zoneColor(teams[1].color))];
     for (const t of teams) for (const p of t.players) heroArt(p.id);
-    this.field = bakeField(teams);
     this.sprites = bakeSprites(teams);
-    this.ribbons = this.bakeRibbons();
-    this.bakeCrowds();
-    // textures use web fonts: bake again once they can be drawn
+    // the big textures are baked when they are first drawn (the practice ground never needs the stands);
+    // they use web fonts, so they are thrown away once the fonts can be drawn
     void loadFonts(this.fontTexts()).then(() => {
       if (this.dead) return;
-      this.field = bakeField(this.teams);
-      this.ribbons = this.bakeRibbons();
+      this.field = null;
+      this.ribbons = null;
+      this.gField = null;
+      if (this.g) this.g.repaint();
     });
+    this.painter = {
+      ctx: this.ctx, cam: this.cam, px: 1, W: 1, H: 1,
+      fill: (pts, style) => this.fillPoly(pts, style),
+      tex: (img, sx, sy, sw, sh, quad, nu, nv, tol, depth, smooth) => {
+        this.ctx.imageSmoothingEnabled = smooth;
+        this.texQuad(img, sx, sy, sw, sh, quad, nu, nv, tol, depth);
+      },
+    };
     const sr = seeded(9);
     for (let i = 0; i < 70; i += 1) {
       const az = sr() * TAU;
@@ -404,7 +467,8 @@ export class Stadium {
   /** Both teams line up for the next play; camera eases to a pre-snap establishing shot. Idle life continues forever. */
   setScene(st: MatchState): void {
     this.endPlay(true);
-    const first = !this.hasScene || this.attractOn;
+    const first = !this.hasScene || this.attractOn || this.groundOn;
+    this.leaveGround();
     this.attractOn = false;
     this.teams = st.teams;
     this.offense = st.poss;
@@ -443,6 +507,7 @@ export class Stadium {
   /** Plays the play back with camera work. speed 1 = normal, 2 = fast, 12 = debug bot. Resolves when the picture has settled. */
   play(res: PlayResult, speed: number, hooks?: PlayHooks): Promise<void> {
     this.endPlay(true);
+    this.leaveGround();
     this.attractOn = false;
     this.hasScene = true;
     return this.run(specOf(res), speed, hooks, false);
@@ -486,6 +551,7 @@ export class Stadium {
   /** Title-screen mode: slow cinematic camera moves over the lit stadium while the two teams run plays on their own, forever. */
   attract(): void {
     this.endPlay(true);
+    this.leaveGround();
     this.attractOn = true;
     this.hasScene = false;
     this.chalk = null;
@@ -505,6 +571,168 @@ export class Stadium {
     this.setCam('attract', 0, true);
   }
 
+  // ------------------------------------------------------------------ practice ground: public API
+
+  /**
+   * Practice ground: no match state. `heroes` are the club's members (up to seven), all team 0.
+   * `day` 0..27 changes the light from day to day (Monday bright late afternoon … Saturday deep sunset, weeks differ a little).
+   * The heroes warm up by themselves forever; the camera drifts and now and then cuts to another relaxed angle.
+   */
+  ground(opts: { heroes: number[]; day?: number; color?: string }): void {
+    this.endPlay(true);
+    this.endDrill(true);
+    const first = !this.groundOn;
+    this.attractOn = false;
+    this.hasScene = false;
+    this.script = null;
+    this.chalk = null;
+    const day = Number.isFinite(opts.day) ? (opts.day as number) : 0;
+    const color = opts.color ?? this.teams[0].color;
+    const short = this.teams[0].short;
+    const key = `${day}|${color}|${short}`;
+    if (!this.g || key !== this.gKey) {
+      this.g = new Ground(short, color, day);
+      this.gKey = key;
+    }
+    if (color !== this.gClub.color || short !== this.gClub.short) this.gField = null;
+    this.gClub = { short, color };
+    this.gCol = rgbOf(color);
+    this.groundOn = true;
+    this.gHint = null;
+    this.g.highlight([]);
+    const keep: Actor[] = [];
+    opts.heroes.slice(0, STATIONS.length).forEach((id, i) => {
+      const st = STATIONS[i]!;
+      let ac = this.find(0, id);
+      if (!ac) ac = this.newActor(0, id, st.x, st.z);
+      else if (first) {
+        ac.x = st.x;
+        ac.z = st.z;
+      }
+      this.plain(ac);
+      ac.station = i;
+      ac.faceLock = st.face;
+      ac.onOffense = true;
+      ac.pos = '';
+      keep.push(ac);
+    });
+    this.actors = keep;
+    this.ballHeld = null;
+    this.ballAir = false;
+    this.ballTrail.length = 0;
+    this.gBalls.length = 0;
+    this.speedLines = 0;
+    if (keep[0]) keep[0].carry = true;
+    this.gTossAt = this.sim + 1;
+    if (first) {
+      this.gShot = 0;
+      this.gShotT = 0;
+      this.gShotLen = 13;
+      this.fx.clear(false);
+      for (let i = 0; i < 44; i += 1) this.spawnMote(true);
+      this.setCam('ground', 0, true);
+    }
+    void loadFonts([short, '紅白0-']).then(() => {
+      if (this.dead || !this.groundOn) return;
+      this.gField = null;
+      this.g?.repaint();
+    });
+  }
+
+  /**
+   * Everyone (for 'solo' one hero, the others carrying on behind; for 'special' the lead shows and the rest copy)
+   * performs the drill for about 1.5 s at speed 1 with a purposeful camera move, then the scene settles back into
+   * the warm-up. Resolves when it has settled; never hangs. Calling it again mid-drill fast-forwards the old one.
+   */
+  drill(kind: DrillKind, opts: { lead?: number; speed?: number } = {}, hooks?: DrillHooks): Promise<void> {
+    this.endDrill(true);
+    const g = this.g;
+    if (!this.groundOn || !g || !this.actors.length || this.dead) {
+      this.safe(() => hooks?.onEnd?.());
+      return Promise.resolve();
+    }
+    const sp = Math.max(0.05, Number.isFinite(opts.speed) ? (opts.speed as number) : 1);
+    this.clearHint();
+    const needsLead = kind === 'solo' || kind === 'special';
+    const lead = opts.lead !== undefined && this.find(0, opts.lead) ? opts.lead : needsLead ? this.actors[0]!.id : undefined;
+    const who = kind === 'solo' ? this.actors.filter((a) => a.id === lead) : this.actors;
+    const plan = buildDrill(kind, who.map((a) => ({ id: a.id, x: a.x, z: a.z })), lead, this.bestOf(lead));
+    // the warm-up's ball is put away
+    this.gBalls.length = 0;
+    for (const ac of this.actors) {
+      const keys = plan.keys.get(ac.id) ?? null;
+      ac.keys = keys;
+      if (!keys) continue;
+      ac.carry = false;
+      ac.hasGoal = false;
+      ac.jog = 0;
+      ac.wave = false;
+      ac.crouchTo = 0;
+      ac.faceLock = plan.face.get(ac.id) ?? 0;
+      ac.ring = plan.rings.get(ac.id) ?? null;
+      if (ac.tumT0 >= 0) ac.downUntil = Math.min(ac.downUntil, this.sim);
+    }
+    g.highlight(propsOf(kind, plan.solo));
+    for (const b of plan.balls) {
+      this.gBalls.push({ s0: this.sim + b.t0, s1: this.sim + b.t1, from: b.from, to: b.to, h: b.h, catcher: null, trail: [], x: b.from[0], y: b.from[1], z: b.from[2] });
+    }
+    this.gPlan = plan;
+    this.drilling = true;
+    this.gSim0 = this.sim;
+    this.gT = 0;
+    this.gReal = 0;
+    this.gSpeed = sp;
+    this.gCue = 0;
+    this.gHooks = hooks;
+    this.gEndFired = false;
+    this.gLines = false;
+    clearTimeout(this.gWatch);
+    return new Promise<void>((resolve) => {
+      this.gResolve = resolve;
+      // frames may stop coming (hidden tab): the drill still ends
+      this.gWatch = window.setTimeout(() => this.endDrill(true), (plan.dur / sp) * 1000 * 1.2 + 1800);
+    });
+  }
+
+  /**
+   * A practice card is only being considered: the heroes turn toward the spot, the equipment lights up,
+   * and for 'solo' / 'special' the lead steps forward and waves. null clears it.
+   */
+  hintDrill(kind: DrillKind | null, lead?: number): void {
+    const g = this.g;
+    if (!this.groundOn || !g) return;
+    if (!kind) {
+      this.clearHint();
+      return;
+    }
+    if (this.drilling) return;
+    if (this.gHint && this.gHint.kind === kind && this.gHint.lead === lead) return;
+    this.clearHint();
+    const needsLead = kind === 'solo' || kind === 'special';
+    const leadAc = (lead !== undefined ? this.find(0, lead) : null) ?? (needsLead ? this.actors[0] ?? null : null);
+    const best = this.bestOf(leadAc?.id);
+    const [x, z] = spotOf(kind, best);
+    this.gHint = { kind, lead, x, z };
+    g.highlight(propsOf(kind, best));
+    this.actors.forEach((ac, i) => {
+      if (Math.abs(x - ac.x) > 1) ac.faceLock = x > ac.x ? 1 : -1;
+      // a little hop of attention, one after the other
+      ac.jumpT0 = this.sim + i * 0.05;
+      ac.jumpDur = 0.24;
+      ac.jumpH = 0.3;
+    });
+    if (needsLead && leadAc) {
+      leadAc.wave = true;
+      if (kind === 'special') leadAc.aura = true;
+      else {
+        const coach = g.find('coach');
+        coach.x = clamp(leadAc.x + (leadAc.x > 30 ? -3.2 : 3.2), 2, 46);
+        coach.z = clamp(leadAc.z + 4.6, 2, WIDTH - 0.5);
+        coach.aTo = 1;
+      }
+    }
+  }
+
   /** Where a hero currently is on screen in CSS px relative to the canvas (feet); null if not on field. `scale` is CSS px per sprite pixel, `h` the sprite's height. */
   screenPos(team: 0 | 1, heroId: number): { x: number; y: number; scale: number; h: number } | null {
     const ac = this.actors.find((a) => a.team === team && a.id === heroId);
@@ -522,8 +750,8 @@ export class Stadium {
       this.hitStop = 0;
       this.slowLeft = 0;
       this.speedLines = 0;
-      if (!this.attractOn) this.setCam('calm', 0, false);
-    } else if (!this.playing && !this.attractOn && this.hasScene) this.setCam('establish', this.sceneN % 3, false);
+      if (!this.attractOn && !this.groundOn) this.setCam('calm', 0, false);
+    } else if (!this.playing && !this.attractOn && !this.groundOn && this.hasScene) this.setCam('establish', this.sceneN % 3, false);
   }
 
   /**
@@ -573,10 +801,15 @@ export class Stadium {
     this.observer?.disconnect();
     this.observer = null;
     clearTimeout(this.watchdog);
+    clearTimeout(this.gWatch);
     const done = this.resolve;
     this.resolve = null;
     this.playing = false;
     done?.();
+    const drilled = this.gResolve;
+    this.gResolve = null;
+    this.drilling = false;
+    drilled?.();
   }
 
   // ------------------------------------------------------------------ set-up helpers
@@ -606,6 +839,12 @@ export class Stadium {
     };
   }
 
+  private ensureArt(): void {
+    if (!this.field) this.field = bakeField(this.teams);
+    if (!this.ribbons) this.ribbons = this.bakeRibbons();
+    if (!this.crowdCalm.length) this.bakeCrowds();
+  }
+
   private bakeCrowds(): void {
     this.crowdCalm = [0, 1, 2].map((f) => bakeCrowd(this.teams, f, false));
     this.crowdHot = [0, 1, 2].map((f) => bakeCrowd(this.teams, f, true));
@@ -631,6 +870,14 @@ export class Stadium {
     this.H = h;
     this.canvas.width = w;
     this.canvas.height = h;
+    // the canvas is empty now; a resize seen between two frames would show as a black flash
+    if (this.drawn) {
+      try {
+        this.draw();
+      } catch {
+        /* the next frame draws it */
+      }
+    }
   }
 
   private find(team: 0 | 1, id: number): Actor | null {
@@ -646,6 +893,7 @@ export class Stadium {
       keys: null, goalX: x, goalZ: z, hasGoal: false, crouchTo: 0, crouch: 0,
       jumpT0: -9, jumpDur: 0.4, jumpH: 0, tumT0: -1, tumDur: 0.5, tumDir: 1, downUntil: 0,
       celebrate: false, celT0: 0, flash: 0, aura: false, trail: [], trailT: 0,
+      station: 0, carry: false, jog: 0, faceLock: 0, ring: null, wave: false, flipT0: -9, rt: 0,
       sx: 0, sy: 0, ss: 0, sd: 0, vis: false,
     };
   }
@@ -662,6 +910,7 @@ export class Stadium {
         ac.x = s.x;
         ac.z = s.z;
       }
+      this.plain(ac);
       ac.pos = s.pos;
       ac.onOffense = s.offense;
       ac.keys = null;
@@ -695,6 +944,11 @@ export class Stadium {
       const ac = this.find(s.team, s.id) ?? this.newActor(s.team, s.id, s.x, s.z);
       ac.pos = s.pos;
       ac.onOffense = s.offense;
+      ac.carry = false;
+      ac.jog = 0;
+      ac.faceLock = 0;
+      ac.ring = null;
+      ac.wave = false;
       keep.push(ac);
     }
     this.actors = keep;
@@ -1042,7 +1296,9 @@ export class Stadium {
   }
 
   private spawnMote(anywhere: boolean): void {
-    const p = this.fx.spawn(MOTE, lerp(-12, FIELD + 12, Math.random()), 1.5 + Math.random() * 15, lerp(-4, WIDTH + 12, Math.random()));
+    // on the practice ground the dust hangs low, where the sun catches it
+    const low = this.groundOn;
+    const p = this.fx.spawn(MOTE, lerp(low ? 0 : -12, low ? 44 : FIELD + 12, Math.random()), low ? 0.6 + Math.random() * 6 : 1.5 + Math.random() * 15, lerp(low ? 2 : -4, low ? WIDTH + 14 : WIDTH + 12, Math.random()));
     p.vx = (Math.random() - 0.5) * 0.8;
     p.vy = (Math.random() - 0.4) * 0.3;
     p.vz = (Math.random() - 0.5) * 0.5;
@@ -1117,12 +1373,12 @@ export class Stadium {
     let rate = 0.6 + e * e * 22;
     if (this.flashStorm > 0) rate += 70;
     if (!this.motion) rate = Math.min(rate, 6);
-    let n = rate * dt;
+    let n = this.groundOn ? 0 : rate * dt;
     while (n > 0) {
       if (Math.random() < n) this.crowdFlash();
       n -= 1;
     }
-    if (Math.random() < dt * 4 && this.fx.count < 700) this.spawnMote(false);
+    if (Math.random() < dt * (this.groundOn ? 7 : 4) && this.fx.count < 700) this.spawnMote(false);
   }
 
   // ------------------------------------------------------------------ frame
@@ -1137,6 +1393,8 @@ export class Stadium {
     if (!(dt > 0)) dt = 0;
     const raw = dt * 1000;
     if (dt > 0.1) dt = 0.1;
+    // a change of resolution empties the canvas: it has to happen before this frame is drawn, never after
+    if (this.qualityAuto && raw > 0 && raw < 250 && document.visibilityState !== 'hidden') this.adapt(raw);
     try {
       this.update(dt);
       if (this.W > 1 && this.H > 1) this.draw();
@@ -1145,7 +1403,6 @@ export class Stadium {
       // never leave a caller waiting for a play that cannot be drawn
       this.endPlay(true);
     }
-    if (this.qualityAuto && raw > 0 && raw < 250 && document.visibilityState !== 'hidden') this.adapt(raw);
     if (raw > 0 && raw < 1000) {
       this.statDt.push(raw);
       this.statCpu.push(performance.now() - t0);
@@ -1202,7 +1459,7 @@ export class Stadium {
       const k = this.slowLeft < 0.15 ? lerp(1, this.slowAmt, sat(this.slowLeft / 0.15)) : this.slowAmt;
       sdt = dt * k;
     }
-    const pdt = sdt * (this.playing ? this.playSpeed : 1);
+    const pdt = sdt * (this.playing ? this.playSpeed : this.drilling ? this.gSpeed : 1);
     this.sim += pdt;
 
     // the play
@@ -1219,8 +1476,9 @@ export class Stadium {
     }
     if (this.attractOn) this.stepAttract(dt);
 
+    if (this.groundOn) this.stepGround(dt);
     this.stepActors(pdt, dt);
-    this.stepBall(pdt);
+    if (!this.groundOn) this.stepBall(pdt);
     this.fx.step(sdt);
     this.stepShow(dt);
 
@@ -1232,7 +1490,7 @@ export class Stadium {
     this.trauma = Math.max(0, this.trauma - dt * 2.1);
     this.punch = damp(this.punch, 0, 5.5, dt);
     this.fade = Math.max(0, this.fade - dt * 2.8);
-    if (this.speedLines > 0 && !(this.playing && script && this.playT < script.tEnd)) this.speedLines = Math.max(0, this.speedLines - dt * 3);
+    if (this.speedLines > 0 && !this.gLines && !(this.playing && script && this.playT < script.tEnd)) this.speedLines = Math.max(0, this.speedLines - dt * 3);
     if (this.ribbonMode !== 'main' && this.clock > this.ribbonUntil) this.ribbonMode = 'main';
     this.insTop = damp(this.insTop, this.insTopTo * this.dpr, 9, dt);
     this.insBot = damp(this.insBot, this.insBotTo * this.dpr, 9, dt);
@@ -1241,12 +1499,13 @@ export class Stadium {
   }
 
   private stepActors(pdt: number, dt: number): void {
-    const playing = this.playing && this.script;
+    const playing = (this.playing && this.script) || this.drilling;
+    const kt = this.drilling ? this.gT : this.playT;
     for (const ac of this.actors) {
       const ox = ac.x;
       const oz = ac.z;
       if (playing && ac.keys) {
-        evalKeys(ac.keys, this.playT, tmp);
+        evalKeys(ac.keys, kt, tmp);
         ac.x = tmp.x;
         ac.z = tmp.z;
       } else if (ac.hasGoal && pdt > 0) {
@@ -1269,19 +1528,19 @@ export class Stadium {
         ac.vx += ((ac.x - ox) / pdt - ac.vx) * k;
         ac.vz += ((ac.z - oz) / pdt - ac.vz) * k;
         ac.speed = Math.hypot(ac.vx, ac.vz);
-        ac.cyc += ac.speed * pdt * 1.75;
-        ac.run = damp(ac.run, sat(ac.speed / 4.5), 12, pdt);
+        ac.cyc += (ac.speed * 1.75 + ac.jog * 9) * pdt;
+        ac.run = damp(ac.run, Math.max(sat(ac.speed / 4.5), ac.jog), 12, pdt);
         // which way the hero looks: where it runs, or toward the other team when standing
         const home: 1 | -1 = ac.team === 0 ? 1 : -1;
         if (ac.vx > 2.2) ac.face = 1;
         else if (ac.vx < -2.2) ac.face = -1;
-        else if (ac.speed < 1) ac.face = home;
+        else if (ac.speed < 1) ac.face = ac.faceLock || home;
         ac.crouch = damp(ac.crouch, ac.crouchTo, 13, pdt);
         // jump
         const jp = (this.sim - ac.jumpT0) / ac.jumpDur;
         ac.y = jp >= 0 && jp < 1 ? ac.jumpH * Math.sin(Math.PI * jp) : 0;
         // standing around: now and then somebody shifts their weight with a little hop
-        if (!playing && !ac.hasGoal && ac.speed < 0.3 && ac.tumT0 < 0 && !ac.celebrate && jp > 1.6 && Math.random() < pdt * 0.1) {
+        if (!playing && !this.groundOn && !ac.hasGoal && ac.speed < 0.3 && ac.tumT0 < 0 && !ac.celebrate && jp > 1.6 && Math.random() < pdt * 0.1) {
           ac.jumpT0 = this.sim;
           ac.jumpDur = 0.26;
           ac.jumpH = 0.22;
@@ -1400,6 +1659,12 @@ export class Stadium {
     let ex = 25; let ey = 15; let ez = 46; let tx = 25; let ty = 1; let tz = 11; let fov = 0.56; let om = 2.4;
     const sc = this.script;
     switch (this.camMode) {
+      case 'ground': {
+        this.groundPose(fx, fz);
+        const o = this.pose;
+        ex = o.ex; ey = o.ey; ez = o.ez; tx = o.tx; ty = o.ty; tz = o.tz; fov = o.fov; om = o.om;
+        break;
+      }
       case 'establish': {
         const c = L + dir * 3.5;
         const creep = Math.min(t, 14) * 0.1 * dir;
@@ -1518,10 +1783,18 @@ export class Stadium {
       const p = Math.max(0, this.punch) * 0.07;
       ex += (tx - ex) * p; ey += (ty - ey) * p; ez += (tz - ez) * p;
     }
-    // stay inside the bowl and above the seats
-    ex = clamp(ex, AX0 - STAND_D + 2, AX1 + STAND_D - 2);
-    ez = clamp(ez, AZ0 - STAND_D + 2, AZ1 + STAND_D - 2);
-    ey = Math.max(ey, 1.6, standY(ex, ez) + (standY(ex, ez) > 0 ? 2.4 : 0));
+    const open = this.groundOn;
+    if (open) {
+      // the practice ground has no stands: stay on this side of the fences
+      ex = clamp(ex, -7, FIELD + 9);
+      ez = clamp(ez, 1, 44);
+      ey = Math.max(ey, 1.6);
+    } else {
+      // stay inside the bowl and above the seats
+      ex = clamp(ex, AX0 - STAND_D + 2, AX1 + STAND_D - 2);
+      ez = clamp(ez, AZ0 - STAND_D + 2, AZ1 + STAND_D - 2);
+      ey = Math.max(ey, 1.6, standY(ex, ez) + (standY(ex, ez) > 0 ? 2.4 : 0));
+    }
 
     if (this.camSnap) {
       this.camSnap = false;
@@ -1541,7 +1814,7 @@ export class Stadium {
     }
     cam.ex = this.sEx.x;
     cam.ez = this.sEz.x;
-    cam.ey = Math.max(this.sEy.x, 1.4, standY(cam.ex, cam.ez) + (standY(cam.ex, cam.ez) > 0 ? 1.6 : 0));
+    cam.ey = open ? Math.max(this.sEy.x, 1.4) : Math.max(this.sEy.x, 1.4, standY(cam.ex, cam.ez) + (standY(cam.ex, cam.ez) > 0 ? 1.6 : 0));
     cam.tx = this.sTx.x; cam.ty = this.sTy.x; cam.tz = this.sTz.x;
     cam.fov = clamp(this.sFov.x, 0.25, 1.3);
 
@@ -1563,6 +1836,585 @@ export class Stadium {
       cam.roll = noise(this.clock * 30, 3) * s * 0.035;
     }
     cam.setup(this.W, H, cx, cy, zoom);
+  }
+
+  // ------------------------------------------------------------------ practice ground: inner workings
+
+  /** Takes the practice-only state off a hero. */
+  private plain(ac: Actor): void {
+    ac.keys = null;
+    ac.hasGoal = false;
+    ac.carry = false;
+    ac.jog = 0;
+    ac.faceLock = 0;
+    ac.ring = null;
+    ac.wave = false;
+    ac.aura = false;
+    ac.celebrate = false;
+    ac.crouchTo = 0;
+    ac.trail.length = 0;
+    ac.y = 0;
+    if (ac.tumT0 >= 0) ac.downUntil = Math.min(ac.downUntil, this.sim);
+  }
+
+  private leaveGround(): void {
+    if (!this.groundOn) return;
+    this.endDrill(true);
+    this.groundOn = false;
+    this.gHint = null;
+    this.gBalls.length = 0;
+    this.gLines = false;
+    this.speedLines = 0;
+    this.fx.clear(false);
+    for (let i = 0; i < 34; i += 1) this.spawnMote(true);
+  }
+
+  private clearHint(): void {
+    const g = this.g;
+    if (!g) return;
+    this.gHint = null;
+    if (!this.drilling) g.highlight([]);
+    g.find('coach').aTo = 0;
+    for (const ac of this.actors) {
+      ac.wave = false;
+      if (!this.drilling) {
+        ac.aura = false;
+        ac.faceLock = STATIONS[ac.station]?.face ?? 1;
+      }
+    }
+  }
+
+  /** What a hero is best at, as far as the club's sheet says. */
+  private bestOf(id: number | undefined): DrillPlan['solo'] {
+    const p = id === undefined ? undefined : this.teams[0].players.find((q) => q.id === id);
+    if (!p) return 'spd';
+    let best: DrillPlan['solo'] = 'spd';
+    for (const k of ['spd', 'pas', 'cat', 'blk', 'tkl', 'iq'] as const) if (p.stats[k] > p.stats[best]) best = k;
+    return best;
+  }
+
+  /** Ends the drill that is running, if any. `force`: jump to its last picture. */
+  private endDrill(force: boolean): void {
+    if (!this.drilling) return;
+    this.drilling = false;
+    clearTimeout(this.gWatch);
+    const plan = this.gPlan;
+    const g = this.g;
+    if (plan && force) {
+      for (const ac of this.actors) {
+        if (!ac.keys) continue;
+        evalKeys(ac.keys, plan.dur, tmp);
+        ac.x = tmp.x;
+        ac.z = tmp.z;
+      }
+      this.hitStop = 0;
+      this.slowLeft = 0;
+    }
+    // back to the warm-up: paths, props and looks are let go
+    for (const ac of this.actors) {
+      const drilled = !!ac.keys;
+      ac.keys = null;
+      if (!drilled) continue;
+      ac.carry = false;
+      ac.aura = false;
+      ac.ring = null;
+      ac.crouchTo = 0;
+      ac.trail.length = 0;
+      ac.faceLock = STATIONS[ac.station]?.face ?? 1;
+      if (ac.tumT0 >= 0) ac.downUntil = Math.min(ac.downUntil, this.sim + 0.1);
+    }
+    if (g) {
+      g.highlight([]);
+      for (const p of g.props) {
+        if (p.kind === 'sled' || p.kind === 'dummy') p.vTo = 0;
+        if (p.kind === 'coach') p.aTo = 0;
+      }
+    }
+    this.gBalls.length = 0;
+    this.gLines = false;
+    this.speedLines = 0;
+    this.gTossAt = this.sim + 1.6;
+    const first = this.actors.find((a) => a.station === 0);
+    if (first) first.carry = true;
+    if (!this.gEndFired) {
+      this.gEndFired = true;
+      if (!this.dead) this.safe(() => this.gHooks?.onEnd?.());
+    }
+    this.gHooks = undefined;
+    const done = this.gResolve;
+    this.gResolve = null;
+    done?.();
+  }
+
+  private hop(ac: Actor, h: number, dur: number): void {
+    ac.jumpT0 = this.sim;
+    ac.jumpDur = dur;
+    ac.jumpH = h;
+  }
+
+  /** One hero's self-directed warm-up: where it wants to be right now and what it is doing there. */
+  private routine(ac: Actor): void {
+    const st = STATIONS[ac.station] ?? STATIONS[0]!;
+    const t = this.sim + ac.phase * 7;
+    const beat = (period: number): boolean => Math.floor(t / period) !== Math.floor(ac.rt / period);
+    let x = st.x;
+    let z = st.z;
+    let crouch = 0;
+    ac.jog = 0;
+    switch (st.job) {
+      case 'sled': {
+        // step in, lean on the pads, step back
+        const c = (t % 2.3) / 2.3;
+        const push = c < 0.2 ? c / 0.2 : c < 0.42 ? 1 : c < 0.6 ? 1 - (c - 0.42) / 0.18 : 0;
+        x = st.x + push * 0.95;
+        if (c >= 0.2 && (ac.rt % 2.3) / 2.3 < 0.2 && this.g && !this.drilling) {
+          const sled = this.g.find('sled');
+          if (Math.abs(sled.vTo) < 0.01) {
+            sled.v = 0.28;
+            this.dust(SLED.x + 0.6, SLED.z, 2, 1.2, false);
+          }
+        }
+        crouch = c > 0.66 && c < 0.9 ? 0.7 : 0;
+        break;
+      }
+      case 'jog':
+        ac.jog = 0.85;
+        x += Math.sin(t * 0.5) * 0.5;
+        break;
+      case 'hops':
+        if (beat(1.25)) this.hop(ac, 0.5, 0.34);
+        crouch = t % 1.25 > 0.98 ? 0.8 : 0;
+        break;
+      case 'shuttle': {
+        const c = (t % 5.4) / 5.4;
+        x = st.x + (c < 0.5 ? smooth(c * 2) : 1 - smooth((c - 0.5) * 2)) * 7;
+        break;
+      }
+      case 'sway':
+        x += Math.sin(t * 1.6) * 0.7;
+        if (beat(2.7)) this.hop(ac, 0.3, 0.26);
+        break;
+      default:
+        // the two with the ball shift their feet between throws
+        x += Math.sin(t * 0.9) * 0.25;
+        break;
+    }
+    if (ac.wave) {
+      // called out: a couple of steps toward the camera, waving
+      z = Math.min(WIDTH - 1, z + 4);
+      ac.jog = 0;
+      crouch = 0;
+      if (beat(0.62)) {
+        this.hop(ac, 0.6, 0.32);
+        ac.flipT0 = this.sim;
+      }
+    }
+    ac.crouchTo = crouch;
+    ac.goalX = x;
+    ac.goalZ = z;
+    ac.hasGoal = Math.hypot(ac.x - x, ac.z - z) > 0.02;
+    ac.rt = t;
+  }
+
+  private stepGround(dt: number): void {
+    const g = this.g;
+    if (!g) return;
+    g.step(dt);
+    // the drill
+    const plan = this.gPlan;
+    if (this.drilling && plan) {
+      this.gT = this.sim - this.gSim0;
+      this.gReal += dt;
+      while (this.drilling && this.gCue < plan.cues.length && plan.cues[this.gCue]!.t <= this.gT) {
+        const c = plan.cues[this.gCue]!;
+        this.gCue += 1;
+        this.gcue(c);
+      }
+      if (this.drilling && this.gT >= plan.dur) this.endDrill(false);
+    }
+    // everybody who is not in a drill warms up
+    for (const ac of this.actors) if (!ac.keys) this.routine(ac);
+    // the two at the first stations toss a ball back and forth
+    const a = this.actors.find((ac) => ac.station === 0);
+    const b = this.actors.find((ac) => ac.station === 1);
+    if (a && b && !a.keys && !b.keys && !a.wave && !b.wave && this.sim >= this.gTossAt && !this.gBalls.length) {
+      const near = (ac: Actor): boolean => Math.hypot(ac.x - ac.goalX, ac.z - ac.goalZ) < 0.8;
+      if (near(a) && near(b)) {
+        if (!a.carry && !b.carry) a.carry = true;
+        const from = a.carry ? a : b;
+        const to = a.carry ? b : a;
+        from.carry = false;
+        this.hop(from, 0.26, 0.26);
+        this.gBalls.push({
+          s0: this.sim, s1: this.sim + 0.82, from: [from.x + from.face * 0.5, 1.8, from.z], to: [to.x, 1.7, to.z], h: 2.3,
+          catcher: to, trail: [], x: from.x, y: 1.8, z: from.z,
+        });
+        this.gTossAt = this.sim + 1.75 + hash(Math.floor(this.sim * 3)) * 0.5;
+      } else this.gTossAt = this.sim + 0.4;
+    }
+    // balls in the air
+    for (let i = this.gBalls.length - 1; i >= 0; i -= 1) {
+      const ball = this.gBalls[i]!;
+      const f = (this.sim - ball.s0) / Math.max(0.01, ball.s1 - ball.s0);
+      if (f < 0) continue;
+      if (f >= 1) {
+        if (ball.catcher && !ball.catcher.keys) {
+          ball.catcher.carry = true;
+          this.hop(ball.catcher, 0.2, 0.2);
+        }
+        this.gBalls.splice(i, 1);
+        continue;
+      }
+      ball.x = lerp(ball.from[0], ball.to[0], f);
+      ball.z = lerp(ball.from[2], ball.to[2], f);
+      ball.y = lerp(ball.from[1], ball.to[1], f) + ball.h * 4 * f * (1 - f);
+      ball.trail.push(ball.x, ball.y, ball.z);
+      if (ball.trail.length > 24) ball.trail.splice(0, 3);
+    }
+    // what the camera watches: the drill's heroes, or the whole group
+    let n = 0;
+    let sx = 0;
+    let sz = 0;
+    for (const ac of this.actors) {
+      if (this.drilling && plan && !plan.focus.includes(ac.id)) continue;
+      sx += ac.x;
+      sz += ac.z;
+      n += 1;
+    }
+    this.bx = n ? sx / n : CENTER.x;
+    this.bz = n ? sz / n : CENTER.z;
+    this.by = 1.2;
+    // now and then, another relaxed angle
+    this.gShotT += dt;
+    if (this.motion && !this.drilling && !this.gHint) {
+      if (this.gShotT > this.gShotLen) {
+        this.gShot = (this.gShot + 1 + Math.floor(Math.random() * 3)) % 4;
+        this.gShotT = 0;
+        this.gShotLen = 12 + Math.random() * 6;
+        this.fade = 1;
+        this.camSnap = true;
+      } else if (this.gShotT > this.gShotLen - 0.3) this.fade = Math.max(this.fade, (this.gShotT - (this.gShotLen - 0.3)) / 0.3);
+    } else if (this.gShotT > this.gShotLen - 1) this.gShotT = this.gShotLen - 1;
+  }
+
+  /** One beat of a drill: effects on the ground and the caller's hook. */
+  private gcue(c: GCue): void {
+    const g = this.g;
+    if (!g) return;
+    const hooks = this.gHooks;
+    const fancy = this.motion && this.gSpeed < 8;
+    const who = (id: number | undefined): Actor | null => (id === undefined ? null : this.find(0, id));
+    switch (c.c) {
+      case 'step':
+        this.safe(() => hooks?.onStep?.());
+        break;
+      case 'whistle': {
+        const ac = who(c.who);
+        if (ac) this.glints(ac.x, 3.2, ac.z, 3, 0.5);
+        this.safe(() => hooks?.onWhistle?.());
+        break;
+      }
+      case 'throw': {
+        const ac = who(c.who);
+        if (ac && this.sim - ac.jumpT0 > ac.jumpDur) this.hop(ac, 0.28, 0.24);
+        this.safe(() => hooks?.onThrow?.());
+        break;
+      }
+      case 'catch': {
+        const ac = who(c.who);
+        if (ac) {
+          this.rings.push({ x: ac.x, z: ac.z, t: this.clock, dur: 0.35, r: 2.6, color: 'rgba(255,255,255,0.85)' });
+          this.glints(ac.x, 2.6 + ac.y, ac.z, 3, 0.8);
+        }
+        this.safe(() => hooks?.onCatch?.());
+        break;
+      }
+      case 'impact': {
+        const pw = c.power;
+        this.dust(c.x, c.z, 4 + Math.round(pw * 8), 2 + pw * 2.6, pw > 0.5);
+        this.rings.push({ x: c.x, z: c.z, t: this.clock, dur: 0.3 + pw * 0.2, r: 2.4 + pw * 3, color: 'rgba(255,250,230,0.85)' });
+        this.bursts.push({ x: c.x, y: 1.5, z: c.z, t: this.clock, dur: 0.17 + pw * 0.1, size: 1 + pw * 1.3, seed: Math.floor(this.clock * 31) });
+        for (const id of [c.a, c.b]) {
+          const ac = who(id);
+          if (ac) ac.flash = 0.05 + pw * 0.04;
+        }
+        if (fancy) {
+          this.trauma = Math.max(this.trauma, 0.2 + pw * 0.45);
+          this.hitStop = Math.max(this.hitStop, 0.03 + pw * 0.05);
+          this.punch = Math.max(this.punch, 0.3 + pw * 0.5);
+        }
+        this.safe(() => hooks?.onImpact?.(pw));
+        break;
+      }
+      case 'chalk': {
+        for (let i = 0; i < 3; i += 1) {
+          const p = this.fx.spawn(PUFF, BOARD.x + (Math.random() - 0.5) * 3.6, 1.4 + Math.random() * 1.6, BOARD.z + 0.2);
+          p.tex = 1;
+          p.vy = -0.6;
+          p.vz = 0.5;
+          p.max = 0.5;
+          p.size = 0.2;
+          p.grow = 0.6;
+          p.alpha = 0.6;
+        }
+        this.safe(() => hooks?.onChalk?.());
+        break;
+      }
+      case 'payoff': {
+        const ac = who(c.who);
+        if (ac) {
+          this.rings.push({ x: ac.x, z: ac.z, t: this.clock, dur: 0.5, r: 3.4, color: css(mix(this.gCol, [255, 255, 255], 0.5)) });
+          this.glints(ac.x, 3.3 + ac.y, ac.z, 4, 0.7);
+          for (let i = 0; i < 6; i += 1) this.auraSpark(ac, 1.2);
+        }
+        this.safe(() => hooks?.onPayoff?.(c.who));
+        break;
+      }
+      case 'jump': {
+        const ac = who(c.who);
+        if (ac) this.hop(ac, c.h, c.dur);
+        break;
+      }
+      case 'crouch': {
+        const ac = who(c.who);
+        if (ac) ac.crouchTo = c.on ? 1 : 0;
+        break;
+      }
+      case 'tumble': {
+        const ac = who(c.who);
+        if (ac) this.tumble(ac, c.dir, 0.34, c.down);
+        break;
+      }
+      case 'flip': {
+        const ac = who(c.who);
+        if (ac) ac.flipT0 = this.sim;
+        break;
+      }
+      case 'topple': {
+        const p = g.find('dummy', c.i);
+        // which way "+x" is on screen decides which way it falls
+        const cam = this.cam;
+        let s = c.dir;
+        if (cam.project(p.x, 0, p.z)) {
+          const x0 = cam.sx;
+          if (cam.project(p.x + c.dir, 0, p.z) && Math.abs(cam.sx - x0) > 0.5) s = cam.sx > x0 ? 1 : -1;
+        }
+        p.a = s;
+        p.aTo = s;
+        p.vTo = 1.45;
+        this.dust(p.x + c.dir * 1.2, p.z, 6, 2.6, false);
+        break;
+      }
+      case 'rock': {
+        const p = g.find('dummy', c.i);
+        if (p.vTo < 1) p.v = 0.42;
+        break;
+      }
+      case 'sled': {
+        const p = g.find('sled');
+        p.vTo += c.dx;
+        this.dust(SLED.x + p.v + 1, SLED.z, 5, 2, false);
+        break;
+      }
+      case 'aura': {
+        const ac = who(c.who);
+        if (!ac) break;
+        ac.aura = c.on;
+        if (c.on) {
+          this.rings.push({ x: ac.x, z: ac.z, t: this.clock, dur: 0.6, r: 5, color: css(mix(this.gCol, [255, 255, 255], 0.5)) });
+          this.bursts.push({ x: ac.x, y: 1.5, z: ac.z, t: this.clock, dur: 0.36, size: 2.2, seed: ac.id });
+          for (let i = 0; i < 12; i += 1) this.auraSpark(ac, 1.6);
+          if (fancy) this.punch = Math.max(this.punch, 0.4);
+        }
+        break;
+      }
+      case 'carry': {
+        const ac = who(c.who);
+        if (ac) ac.carry = c.on;
+        break;
+      }
+      case 'lines':
+        this.gLines = c.on && fancy;
+        if (this.gLines) this.speedLines = 1;
+        break;
+      case 'dust':
+        this.dust(c.x, c.z, 6, 2.6, false);
+        break;
+      case 'coach': {
+        const p = g.find('coach');
+        p.x = c.x;
+        p.z = c.z;
+        p.aTo = 1;
+        break;
+      }
+      case 'board':
+        g.board = 0;
+        g.boardTo = 1;
+        g.boardRate = c.rate;
+        break;
+      case 'end':
+        if (!this.gEndFired) {
+          this.gEndFired = true;
+          this.safe(() => hooks?.onEnd?.());
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** The shot on the practice ground: eye-level and relaxed while warming up, purposeful during a drill. Writes into `pose`. */
+  private groundPose(fx: number, fz: number): void {
+    const o = this.pose;
+    const t = this.gShotT;
+    const plan = this.gPlan;
+    if (this.drilling && plan && this.motion && this.gSpeed < 8) {
+      const td = this.gReal;
+      o.om = 3.6;
+      switch (plan.kind) {
+        case 'dash':
+          o.ex = fx + 5; o.ey = 2.6; o.ez = 35; o.tx = fx + 2.5; o.ty = 1.8; o.tz = fz; o.fov = 0.6; o.om = 4.2;
+          break;
+        case 'pass':
+          o.ex = fx - 2 + td * 1.5; o.ey = 5.2 - td * 0.5; o.ez = 37 - td * 1.4; o.tx = fx; o.ty = 2; o.tz = fz - 1; o.fov = 0.6;
+          break;
+        case 'catch':
+          o.ex = CART.x - 9.5; o.ey = 4.2; o.ez = CART.z + 8.5; o.tx = lerp(CART.x + 12, fx + 4, 0.5); o.ty = 2.4 + sat(td - 0.3) * 1.2; o.tz = lerp(CART.z, fz, 0.6); o.fov = 0.72;
+          break;
+        case 'hit':
+          o.ex = SLED.x + 9 - td; o.ey = 2.5; o.ez = SLED.z + 13; o.tx = SLED.x + 0.5; o.ty = 1.6; o.tz = SLED.z - 1.5; o.fov = 0.56;
+          break;
+        case 'tackle':
+          o.ex = DUMMIES[1]![0] + 8.5; o.ey = 2.6; o.ez = 23.5; o.tx = DUMMIES[1]![0] - 3; o.ty = 1.4; o.tz = DUMMIES[1]![1] - 0.5; o.fov = 0.66;
+          break;
+        case 'study':
+          o.ex = BOARD.x + 1.5; o.ey = 3.6; o.ez = 17 - td * 1.6; o.tx = BOARD.x; o.ty = 2.3; o.tz = BOARD.z; o.fov = 0.6;
+          break;
+        case 'game':
+          o.ex = plan.camX - 1.5; o.ey = 4.4; o.ez = 36; o.tx = plan.camX + 1.2 + sat(td - 0.6) * 2; o.ty = 1.5; o.tz = plan.camZ; o.fov = 0.52; o.om = 4;
+          break;
+        case 'solo':
+          o.ex = fx + plan.camX * 2.5; o.ey = 2.5; o.ez = fz + 12.5; o.tx = fx + plan.camX * 0.8; o.ty = 1.9; o.tz = fz; o.fov = 0.54; o.om = 5;
+          break;
+        default: {
+          const a = -0.5 + td * 0.34;
+          o.ex = fx + Math.sin(a) * 9.5; o.ey = 2.5; o.ez = fz + Math.cos(a) * 11; o.tx = fx - 0.5; o.ty = 2.1; o.tz = fz - 2.5; o.fov = 0.62; o.om = 4;
+          break;
+        }
+      }
+      return;
+    }
+    // warm-up: four relaxed angles; with reduced motion only the first
+    const k = this.motion ? this.gShot : 0;
+    const drift = Math.sin(t * 0.11 + k) * 1.2;
+    if (k === 1) {
+      // three-quarters from the left corner, a little higher
+      o.ex = 1 + drift; o.ey = 7.5; o.ez = 35.5; o.tx = 21; o.ty = 1.2; o.tz = 10.5; o.fov = 0.6;
+    } else if (k === 2) {
+      // low, from behind the bench
+      o.ex = 14 + drift * 0.6; o.ey = 2.3; o.ez = 32.5; o.tx = 21.5; o.ty = 2.1; o.tz = 9; o.fov = 0.68;
+    } else if (k === 3) {
+      // down the field, into the evening sun
+      o.ex = 40 - t * 0.12; o.ey = 3.4; o.ez = 21 + drift * 0.3; o.tx = 12; o.ty = 2.3; o.tz = 10.5; o.fov = 0.6;
+    } else {
+      // eye level from the sideline: heads against the sky
+      o.ex = CENTER.x + 1.5 + drift; o.ey = 3.1; o.ez = 38.5; o.tx = CENTER.x + drift * 0.4; o.ty = 2.2; o.tz = 9; o.fov = 0.56;
+    }
+    o.om = this.drilling ? 2.2 : 1.8;
+    if (this.drilling && plan) {
+      // calm mode: only lean toward where the drill is
+      o.tx = lerp(o.tx, fx, 0.45);
+      o.ex = lerp(o.ex, fx, 0.3);
+    } else if (this.gHint) {
+      o.tx = lerp(o.tx, this.gHint.x, 0.3);
+      o.tz = lerp(o.tz, this.gHint.z, 0.2);
+      o.fov *= 0.97;
+    }
+  }
+
+  private pose = { ex: 0, ey: 3, ez: 38, tx: 0, ty: 2, tz: 9, fov: 0.56, om: 2 };
+
+  /** Sky, scenery and turf of the practice ground. */
+  private drawGroundWorld(horizon: number): void {
+    const g = this.g!;
+    const ctx = this.ctx;
+    const px = this.dpr;
+    const P = this.painter;
+    P.px = px;
+    P.W = this.W;
+    P.H = this.H;
+    g.sky(P, this.clock, horizon, this.stars);
+    g.far(P, this.clock);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // a school ground: bare earth around the turf, trodden paler along the sidelines
+    const dirt = g.light.dirt;
+    this.fillPoly([-9.2, 0, -5, 62.8, 0, -5, 62.8, 0, 29, -9.2, 0, 29], css(dirt));
+    this.fillPoly([FX0, 0, FZ0, FX1, 0, FZ0, FX1, 0, FZ1, FX0, 0, FZ1], css(mix(dirt, [236, 214, 170], 0.3)));
+    for (let i = 0; i < FIELD / 5; i += 1) {
+      this.fillPoly([i * 5, 0, 0, i * 5 + 5.05, 0, 0, i * 5 + 5.05, 0, WIDTH, i * 5, 0, WIDTH], GROUND_BANDS[i % 2]!);
+    }
+    const zone = css(zoneColor(this.gClub.color));
+    this.fillPoly([-END, 0, 0, 0, 0, 0, 0, 0, WIDTH, -END, 0, WIDTH], zone);
+    this.fillPoly([FIELD, 0, 0, FIELD + END, 0, 0, FIELD + END, 0, WIDTH, FIELD, 0, WIDTH], zone);
+    if (!this.gField) {
+      const club = { ...this.teams[0], short: this.gClub.short, color: this.gClub.color };
+      this.gField = bakeField([club, club]);
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'low';
+    const ov = this.gField.overlay;
+    this.tqPad = 0.2;
+    this.texQuad(ov, 0, 0, ov.width, ov.height, FIELD_QUAD, 6, 2, 6 * px, 6);
+    this.tqPad = 0.75;
+    for (const d of this.gField.decals) this.texQuad(d.tex, 0, 0, d.tex.width, d.tex.height, d.quad, 1, 1, 2.6 * px, 4);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawMarkings();
+    g.shadows(P);
+    ctx.globalCompositeOperation = 'lighter';
+    g.glows(P, this.clock, this.sprites.warm);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** Balls in the air over the practice ground. */
+  private drawGroundBalls(): void {
+    const ctx = this.ctx;
+    const cam = this.cam;
+    for (const b of this.gBalls) {
+      if (this.sim < b.s0) continue;
+      if (this.groundMatrix(b.x, b.z)) {
+        ctx.fillStyle = 'rgba(22,10,40,0.3)';
+        ctx.beginPath();
+        ctx.arc(0, 0, 0.4, 0, TAU);
+        ctx.fill();
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const n = b.trail.length / 3;
+      let ang = this.sim * 12;
+      if (n > 1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        let ok = cam.project(b.trail[0]!, b.trail[1]!, b.trail[2]!);
+        let lx = cam.sx; let ly = cam.sy;
+        for (let i = 1; i < n; i += 1) {
+          const vis = cam.project(b.trail[i * 3]!, b.trail[i * 3 + 1]!, b.trail[i * 3 + 2]!);
+          if (vis && ok) {
+            const f = i / n;
+            ctx.strokeStyle = `rgba(255,236,200,${0.04 + 0.3 * f * f})`;
+            ctx.lineWidth = Math.max(1, cam.ss * 0.3 * f);
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(cam.sx, cam.sy);
+            ctx.stroke();
+            if (i === n - 1) ang = Math.atan2(cam.sy - ly, cam.sx - lx) + Math.sin(this.sim * 30) * 0.08;
+          }
+          ok = vis;
+          lx = cam.sx; ly = cam.sy;
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      if (!cam.project(b.x, b.y, b.z)) continue;
+      this.ballShape(cam.sx, cam.sy, Math.max(3, 0.5 * cam.ss), ang, 0.9);
+    }
   }
 
   // ------------------------------------------------------------------ attract mode
@@ -1607,6 +2459,7 @@ export class Stadium {
   // ------------------------------------------------------------------ drawing
 
   private draw(): void {
+    this.drawn = true;
     const ctx = this.ctx;
     const cam = this.cam;
     const W = this.W;
@@ -1617,8 +2470,132 @@ export class Stadium {
     ctx.globalCompositeOperation = 'source-over';
     const exc = sat(this.exc + this.excBoost);
 
-    // ---- sky
     const horizon = cam.cy + (cam.f * cam.fy) / Math.max(0.05, Math.hypot(cam.fx, cam.fz));
+    const ground = this.groundOn && this.g ? this.g : null;
+    if (ground) this.drawGroundWorld(horizon);
+    else this.drawStadiumWorld(horizon, exc);
+
+    this.drawLines();
+    if (this.chalk) this.drawChalk(1);
+    this.drawDecals();
+
+    // ---- everybody, far to near
+    const order = this.order;
+    order.length = 0;
+    for (const ac of this.actors) {
+      ac.vis = cam.project(ac.x, 0, ac.z);
+      ac.sx = cam.sx; ac.sy = cam.sy; ac.ss = cam.ss; ac.sd = cam.sd;
+      // which way is "toward +x" on screen right now
+      if (cam.project(ac.x + ac.face * 0.5, 0, ac.z)) {
+        const d = cam.sx - ac.sx;
+        if (Math.abs(d) > ac.ss * 0.14) ac.look = d > 0 ? 1 : -1;
+        else if (ac.speed > 3 && cam.project(ac.x + ac.vx * 0.1, 0, ac.z + ac.vz * 0.1)) {
+          const m = cam.sx - ac.sx;
+          if (Math.abs(m) > ac.ss * 0.12) ac.look = m > 0 ? 1 : -1;
+        }
+      }
+      if (ac.vis && ac.sd > 1.2) order.push(ac);
+    }
+    order.sort((a, b) => b.sd - a.sd);
+    // equipment on the practice ground stands in the same depth order
+    const props = this.propOrder;
+    props.length = 0;
+    if (ground) {
+      for (const p of ground.props) {
+        if (p.kind === 'coach' && p.a < 0.04) continue;
+        if (!cam.project(p.x + (p.kind === 'sled' ? p.v : 0), 0, p.z) || cam.sd < 1) continue;
+        p.sd = cam.sd;
+        props.push(p);
+      }
+      props.sort((a, b) => b.sd - a.sd);
+    }
+    let pi = 0;
+    const ballFree = !this.ballHeld && !ground;
+    let ballDrawn = !ballFree;
+    let ballDepth = 0;
+    const ballSeen = cam.project(this.bx, this.by, this.bz);
+    // only what stands between the lens and the ball may fade out
+    this.subjectDepth = ballSeen ? cam.sd : 99;
+    if (ballFree && ballSeen) ballDepth = cam.sd;
+    else ballDrawn = true;
+    if (ballFree) this.drawBallShadow();
+    // the two goals stand in the same depth order as the heroes
+    const g0 = cam.project(-END - 0.6, 0, MID_Z) ? cam.sd : -1;
+    const g1 = cam.project(FIELD + END + 0.6, 0, MID_Z) ? cam.sd : -1;
+    let goals = (g0 > 0 ? 1 : 0) | (g1 > 0 ? 2 : 0);
+    this.drawPylons();
+    for (const ac of order) {
+      if ((goals & 1) && g0 > ac.sd) { this.drawGoal(-END - 0.6); goals &= ~1; }
+      if ((goals & 2) && g1 > ac.sd) { this.drawGoal(FIELD + END + 0.6); goals &= ~2; }
+      while (ground && pi < props.length && props[pi]!.sd > ac.sd) {
+        ground.drawProp(this.painter, props[pi]!, this.clock);
+        pi += 1;
+      }
+      if (!ballDrawn && ballDepth > ac.sd) {
+        this.drawBall();
+        ballDrawn = true;
+      }
+      this.drawActor(ac);
+    }
+    if (goals & 1) this.drawGoal(-END - 0.6);
+    if (goals & 2) this.drawGoal(FIELD + END + 0.6);
+    while (ground && pi < props.length) {
+      ground.drawProp(this.painter, props[pi]!, this.clock);
+      pi += 1;
+    }
+    if (!ballDrawn) this.drawBall();
+    if (ground) this.drawGroundBalls();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    // the routes once more, faintly, over the heroes: like a telestrator, never hidden
+    if (this.chalk) this.drawChalk(0.4);
+    this.drawMarkers(order);
+    // equipment is pointed at only while a drill is being considered, not while it runs
+    if (ground && this.gHint && !this.drilling) ground.pointers(this.painter, this.clock);
+
+    // ---- particles and light
+    ctx.imageSmoothingEnabled = true;
+    this.fx.drawSolid(ctx, cam, this.sprites);
+    ctx.globalCompositeOperation = 'lighter';
+    this.fx.drawGlow(ctx, cam, this.sprites, px);
+    this.drawBursts();
+    if (!ground) this.drawLights(exc, horizon);
+    if (this.speedLines > 0.01) this.drawSpeedLines();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    // the evening light lies over everything on the practice ground
+    if (ground) ground.wash(this.painter);
+
+    // ---- lens: vignette, flash, fade
+    {
+      const g = ctx.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.hypot(W, H) * 0.62);
+      g.addColorStop(0, ground ? 'rgba(30,10,30,0)' : 'rgba(3,6,20,0)');
+      g.addColorStop(1, ground ? `rgba(30,10,30,${0.3 + 0.1 * this.punch})` : `rgba(3,6,20,${0.5 + 0.12 * this.punch})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (this.flash > 0.01 && this.motion) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(235,240,255,${Math.min(0.45, this.flash)})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    if (this.fade > 0.01) {
+      ctx.fillStyle = ground ? `rgba(30,16,30,${sat(this.fade)})` : `rgba(4,7,22,${sat(this.fade)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  /** Night sky, towers, stands and the stadium's turf. */
+  private drawStadiumWorld(horizon: number, exc: number): void {
+    const ctx = this.ctx;
+    const cam = this.cam;
+    const W = this.W;
+    const H = this.H;
+    const px = this.dpr;
+    this.ensureArt();
+    const field = this.field!;
+    // ---- sky
     {
       const g = ctx.createLinearGradient(0, horizon - H * 1.1, 0, horizon + H * 0.05);
       g.addColorStop(0, '#04071a');
@@ -1661,99 +2638,15 @@ export class Stadium {
     this.fillPoly([FIELD, 0, 0, FIELD + END, 0, 0, FIELD + END, 0, WIDTH, FIELD, 0, WIDTH], this.zoneCss[1]);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'low';
-    const ov = this.field.overlay;
+    const ov = field.overlay;
     this.tqPad = 0.2;
     this.texQuad(ov, 0, 0, ov.width, ov.height, FIELD_QUAD, 6, 2, 6 * px, 6);
     this.tqPad = 0.75;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawPooling();
-    for (const d of this.field.decals) this.texQuad(d.tex, 0, 0, d.tex.width, d.tex.height, d.quad, 1, 1, 2.6 * px, 4);
+    for (const d of field.decals) this.texQuad(d.tex, 0, 0, d.tex.width, d.tex.height, d.quad, 1, 1, 2.6 * px, 4);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawMarkings();
-
-    this.drawLines();
-    if (this.chalk) this.drawChalk(1);
-    this.drawDecals();
-
-    // ---- everybody, far to near
-    const order = this.order;
-    order.length = 0;
-    for (const ac of this.actors) {
-      ac.vis = cam.project(ac.x, 0, ac.z);
-      ac.sx = cam.sx; ac.sy = cam.sy; ac.ss = cam.ss; ac.sd = cam.sd;
-      // which way is "toward +x" on screen right now
-      if (cam.project(ac.x + ac.face * 0.5, 0, ac.z)) {
-        const d = cam.sx - ac.sx;
-        if (Math.abs(d) > ac.ss * 0.14) ac.look = d > 0 ? 1 : -1;
-        else if (ac.speed > 3 && cam.project(ac.x + ac.vx * 0.1, 0, ac.z + ac.vz * 0.1)) {
-          const m = cam.sx - ac.sx;
-          if (Math.abs(m) > ac.ss * 0.12) ac.look = m > 0 ? 1 : -1;
-        }
-      }
-      if (ac.vis && ac.sd > 1.2) order.push(ac);
-    }
-    order.sort((a, b) => b.sd - a.sd);
-    const ballFree = !this.ballHeld;
-    let ballDrawn = !ballFree;
-    let ballDepth = 0;
-    const ballSeen = cam.project(this.bx, this.by, this.bz);
-    // only what stands between the lens and the ball may fade out
-    this.subjectDepth = ballSeen ? cam.sd : 99;
-    if (ballFree && ballSeen) ballDepth = cam.sd;
-    else ballDrawn = true;
-    if (ballFree) this.drawBallShadow();
-    // the two goals stand in the same depth order as the heroes
-    const g0 = cam.project(-END - 0.6, 0, MID_Z) ? cam.sd : -1;
-    const g1 = cam.project(FIELD + END + 0.6, 0, MID_Z) ? cam.sd : -1;
-    let goals = (g0 > 0 ? 1 : 0) | (g1 > 0 ? 2 : 0);
-    this.drawPylons();
-    for (const ac of order) {
-      if ((goals & 1) && g0 > ac.sd) { this.drawGoal(-END - 0.6); goals &= ~1; }
-      if ((goals & 2) && g1 > ac.sd) { this.drawGoal(FIELD + END + 0.6); goals &= ~2; }
-      if (!ballDrawn && ballDepth > ac.sd) {
-        this.drawBall();
-        ballDrawn = true;
-      }
-      this.drawActor(ac);
-    }
-    if (goals & 1) this.drawGoal(-END - 0.6);
-    if (goals & 2) this.drawGoal(FIELD + END + 0.6);
-    if (!ballDrawn) this.drawBall();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = 1;
-    // the routes once more, faintly, over the heroes: like a telestrator, never hidden
-    if (this.chalk) this.drawChalk(0.4);
-    this.drawMarkers(order);
-
-    // ---- particles and light
-    ctx.imageSmoothingEnabled = true;
-    this.fx.drawSolid(ctx, cam, this.sprites);
-    ctx.globalCompositeOperation = 'lighter';
-    this.fx.drawGlow(ctx, cam, this.sprites, px);
-    this.drawBursts();
-    this.drawLights(exc, horizon);
-    if (this.speedLines > 0.01) this.drawSpeedLines();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-
-    // ---- lens: vignette, flash, fade
-    {
-      const g = ctx.createRadialGradient(W / 2, H * 0.5, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.hypot(W, H) * 0.62);
-      g.addColorStop(0, 'rgba(3,6,20,0)');
-      g.addColorStop(1, `rgba(3,6,20,${0.5 + 0.12 * this.punch})`);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-    }
-    if (this.flash > 0.01 && this.motion) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = `rgba(235,240,255,${Math.min(0.45, this.flash)})`;
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'source-over';
-    }
-    if (this.fade > 0.01) {
-      ctx.fillStyle = `rgba(4,7,22,${sat(this.fade)})`;
-      ctx.fillRect(0, 0, W, H);
-    }
   }
 
   private order: Actor[] = [];
@@ -1934,7 +2827,7 @@ export class Stadium {
     const rate = hot ? 7 + exc * 4 : 2.2 + exc * 3;
     const frame = Math.floor(this.clock * rate) % 3;
     const crowd = (hot ? this.crowdHot : this.crowdCalm)[frame]!;
-    const rib = this.ribbons[this.ribbonMode];
+    const rib = this.ribbons![this.ribbonMode];
     const scroll = (this.clock * (this.ribbonMode === 'main' ? 26 : 60)) % rib.period;
     const blink = this.ribbonMode !== 'main' && this.motion && Math.floor(this.clock * 7) % 2 === 0;
     // far stretches first, so a nearer one may cover a farther one where they meet in a corner
@@ -2083,7 +2976,21 @@ export class Stadium {
       const gzx = cam.sx; const gzy = cam.sy;
       // four shadows, one for each floodlight tower
       const art = ac.art;
-      if (art.ready && art.dark) {
+      if (art.ready && art.dark && this.groundOn && this.g) {
+        // one long shadow, away from the low sun
+        const l = this.g.light;
+        const k = HERO_H / ART;
+        const len = l.shLen * 0.74;
+        const ux = (gxx * l.shX + gzx * l.shZ) * k * len;
+        const uy = (gxy * l.shX + gzy * l.shZ) * k * len;
+        const rx = (gxx * -l.shZ + gzx * l.shX) * k * 0.9;
+        const ry = (gxy * -l.shZ + gzy * l.shX) * k * 0.9;
+        const off = ac.y * len;
+        ctx.globalAlpha = Math.min(0.5, l.shA + 0.08);
+        ctx.setTransform(rx, ry, -ux, -uy, fsx + (gxx * l.shX + gzx * l.shZ) * off, fsy + (gxy * l.shX + gzy * l.shZ) * off);
+        ctx.drawImage(art.dark, -ART / 2, -art.foot);
+        ctx.globalAlpha = 1;
+      } else if (art.ready && art.dark) {
         const k = HERO_H / ART;
         ctx.globalAlpha = 0.15;
         for (const [lx, lz] of TOWERS) {
@@ -2109,7 +3016,7 @@ export class Stadium {
       ctx.beginPath();
       ctx.arc(0, 0, 0.85 - Math.min(0.4, ac.y * 0.2), 0, TAU);
       ctx.fill();
-      const c = this.col[ac.team];
+      const c = ac.ring ? rgbOf(ac.ring) : this.groundOn ? this.gCol : this.col[ac.team];
       const holder = this.ballHeld === ac;
       const beat = holder ? 0.12 * Math.sin(now * 9) : 0;
       ctx.strokeStyle = css(mix(c, [255, 255, 255], holder ? 0.35 : 0.1), 0.9);
@@ -2235,6 +3142,9 @@ export class Stadium {
       ky *= 1 - 0.16 * (1 - q);
       kx *= 1 + 0.12 * (1 - q);
     }
+    // a quick spin on the spot: the sprite flips back and forth
+    const fl = this.sim - ac.flipT0;
+    if (fl >= 0 && fl < 0.32 && Math.floor(fl / 0.08) % 2 === 0) look = -look as 1 | -1;
     if (ac.celebrate) {
       const c = (this.sim - ac.celT0) * 8.5 + ac.phase * 5;
       const hy = Math.abs(Math.sin(c));
@@ -2300,7 +3210,10 @@ export class Stadium {
 
     // somebody who wanders right in front of the lens goes translucent instead of hiding the play
     let alpha = 1;
-    if (ac.sd < 13 && ac.sd < this.subjectDepth - 1.5 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
+    if (this.groundOn) {
+      // on the practice ground everybody is worth seeing: only somebody right on the lens fades
+      alpha = sat((ac.sd - 2.2) / 2.5);
+    } else if (ac.sd < 13 && ac.sd < this.subjectDepth - 1.5 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
       const sc = this.script;
       const star = sc && sc.star.team === ac.team && sc.star.id === ac.id;
       if (!star) alpha = sat((ac.sd - 6) / 7) ** 1.4;
@@ -2323,7 +3236,7 @@ export class Stadium {
     }
     ctx.globalAlpha = 1;
     // the ball in the carrier's hands
-    if (this.ballHeld === ac) {
+    if (this.ballHeld === ac || ac.carry) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const bob = Math.sin(ac.cyc * 2) * 0.05 * run;
       const hx = ac.sx + look * 0.5 * ss + sn * 1.1 * ss;
@@ -2334,11 +3247,20 @@ export class Stadium {
 
   /** The bouncing marker over the ball carrier. */
   private drawMarkers(order: Actor[]): void {
-    const ctx = this.ctx;
-    const px = this.dpr;
+    if (this.groundOn) {
+      // on the practice ground the pointer marks the hero who has been called out
+      for (const ac of order) if (ac.wave) this.marker(ac);
+      return;
+    }
     const ac = this.ballHeld;
     if (!ac || !ac.vis || !order.includes(ac)) return;
     if (ac.tumT0 >= 0) return;
+    this.marker(ac);
+  }
+
+  private marker(ac: Actor): void {
+    const ctx = this.ctx;
+    const px = this.dpr;
     const ss = ac.ss;
     const h = HERO_H * ss * ((ac.art.ready ? ac.art.foot - ac.art.top : ART) / ART) * (1 - 0.2 * ac.crouch);
     const bounce = Math.abs(Math.sin(this.clock * 5.5)) * Math.min(0.28 * ss, 9 * px);

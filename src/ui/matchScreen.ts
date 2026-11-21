@@ -629,7 +629,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         row('タッチダウン', totals[0].td, totals[1].td, 2),
         row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
       changes.length ? changeList(s, changes) : null,
-      h('div.modal-actions', button(ended ? '結果を見る' : '部室へもどる', () => {
+      h('div.modal-actions', button(ended ? '結果を見る' : 'グラウンドへもどる', () => {
         closeModal();
         route();
       }, { cls: 'big go' }))), { sticky: true, cls: 'wide', quiet: true });
