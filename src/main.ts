@@ -69,6 +69,10 @@ function jump(to: string): void {
     s.fame = 40;
     s.year = 1 + s.tier;
     if (to === 'recruit') {
+      // three of the founders are in their last year: the briefing follows a graduation
+      s.members.forEach((m, i) => {
+        m.grade = i < 3 ? 3 : i < 5 ? 2 : 1;
+      });
       s.phase = 'done';
       nextYear(s, debug.seed ?? 7);
       show(recruitScreen());
@@ -79,6 +83,10 @@ function jump(to: string): void {
     const have = new Set(s.members.map((m) => m.id));
     s.candidates = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
     if (joinCount(s) > 0) signRecruits(s, s.candidates.slice(0, joinCount(s)));
+    // every school year is there: the founders are in their last one
+    s.members.forEach((m, i) => {
+      m.grade = i < ROSTER_SIZE ? 3 : i % 2 ? 2 : 1;
+    });
   }
   if (debug.trust !== null) for (const m of s.members) m.trust = debug.trust;
   const firstMatch = SCHEDULE.findIndex((w) => w.t === 'match');

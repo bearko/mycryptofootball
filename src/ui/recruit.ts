@@ -10,10 +10,10 @@ import { KIND } from '../game/cards';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat, type Stats } from '../game/model';
 import { tierOf } from '../game/prestige';
-import { joinCount, signRecruits } from '../game/season';
+import { founding as isFounding, genOf, joinCount, needsCaptain, signRecruits } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { burst, center, confetti, flash, flip, glitter, kick, kinetic, motion, pop, ring, shake, typewriter, type Typing } from './fx';
-import { TALENT_COLOR, backdrop, button, cheerAt, modalOpen, portrait, radar, speech, sprite, statIcon, talentChip } from './kit';
+import { TALENT_COLOR, backdrop, button, cheerAt, genChip, modalOpen, portrait, radar, speech, sprite, statIcon, talentChip } from './kit';
 import { route } from './nav';
 import { bestRoles } from './shared';
 import { guideEvent } from './platform';
@@ -36,7 +36,11 @@ export function recruitScreen(): HTMLElement {
   /** how many sign today */
   const NEED = joinCount(season);
   /** the club is being founded: the first hero signed becomes its captain */
-  const founding = !season.members.length;
+  const founding = isFounding(season);
+  /** the first hero signed becomes captain (a new club, or one whose heroes have all graduated) */
+  const lead = needsCaptain(season);
+  /** how many left when the last year ended */
+  const gone = founding ? 0 : (season.left ?? []).length;
   /** what a newcomer to a club of this standing has on top of a beginner's abilities */
   const plus = founding ? 0 : tierOf(season.tier).join;
   const joinStats = (id: number): Stats => {
@@ -87,6 +91,7 @@ export function recruitScreen(): HTMLElement {
     pic,
     talentChip(recruit(id).stats),
     h('span.rc-name', nameNodes(hero(id).name)),
+    genChip(genOf(season, id)),
     h('span.rc-ask', { 'aria-hidden': 'true' }, '入部？'),
     h('span.rc-stamp', { 'aria-hidden': 'true' }, '入部'),
     h('span.rc-cap', { 'aria-hidden': 'true' }, '★主将'));
@@ -157,7 +162,7 @@ export function recruitScreen(): HTMLElement {
     const pic = portrait(focus, { color: TALENT_COLOR[best] });
     big.replaceChildren(pic);
     kick(pic, 'hop');
-    who.replaceChildren(kinetic(name));
+    who.replaceChildren(kinetic(name), genChip(genOf(season, focus)) ?? '');
     who.classList.toggle('long', name.length > 6);
     chipBox.replaceChildren(talentChip(r.stats));
     formNo.textContent = `No.${ids.indexOf(focus) + 1}/${ids.length}`;
@@ -198,9 +203,9 @@ export function recruitScreen(): HTMLElement {
 
   const tokens = new Map<number, HTMLElement>();
   const slots = Array.from({ length: NEED }, (_, i) => {
-    const el = h('div.rc-slot', { class: founding && i === 0 ? 'cap' : '' });
+    const el = h('div.rc-slot', { class: lead && i === 0 ? 'cap' : '' });
     el.innerHTML = `<svg viewBox="0 0 40 38" aria-hidden="true"><path d="${JERSEY}"/><text x="20" y="29" font-size="14" text-anchor="middle">${old.length + i + 1}</text></svg>`;
-    if (founding && i === 0) el.append(h('span.rc-armband', '主将'));
+    if (lead && i === 0) el.append(h('span.rc-armband', '主将'));
     return el;
   });
   const lamps = new Map<Stat, HTMLElement>(STATS.map((k) => [k, h('div.rc-lamp', { class: `t-${k}` }, statIcon(k), h('span', STAT_LABEL[k]), h('u'))]));
@@ -274,6 +279,8 @@ export function recruitScreen(): HTMLElement {
     const miss = STATS.filter((k) => !covered(k));
     const names = miss.slice(0, 2).map((k) => `「${STAT_LABEL[k]}」`).join('と');
     if (!picked.length && founding) tell('まずは主将をえらびましょう！ さいしょの1人は、特別作戦をすぐに使えますよ。', 'point');
+    else if (!picked.length && lead) tell(`部員はみんな卒業しました。新しい部のはじまりです！ まずは主将をえらびましょう。`, 'point');
+    else if (!picked.length && gone) tell(`3年生が${gone}人、卒業しました。新しい部員を${NEED}人むかえましょう！`, 'point');
     else if (!picked.length) tell(`${tierOf(season.tier).name}になって、部員を${NEED}人むかえられます！ ${miss.length ? `${names}が得意な子がほしいですね。` : 'だれをむかえましょう？'}`, 'point');
     else if (left === 0 && !miss.length) tell(founding ? `6つの能力がぜんぶそろった、いいチームです！ この${NEED}人でいきましょう、監督！` : `これで部員は${old.length + NEED}人！ たのもしくなりますね、監督！`, 'sparkle');
     else if (left === 0) tell(`${NEED}人そろいました！ ${names}は手うすですが、練習でおぎなえますよ。`, 'smile');
@@ -332,7 +339,7 @@ export function recruitScreen(): HTMLElement {
     const isIn = picked.includes(focus);
     for (const [id, el] of cands) {
       el.classList.toggle('focus', id === focus);
-      el.classList.toggle('cap', founding && picked[0] === id);
+      el.classList.toggle('cap', lead && picked[0] === id);
       el.setAttribute('aria-pressed', String(picked.includes(id)));
     }
     root.classList.toggle('full', full());
@@ -340,7 +347,7 @@ export function recruitScreen(): HTMLElement {
     signBtn.className = `btn ${isIn ? 'alt' : full() ? 'off' : ''}`;
     startBtn.className = `btn ${full() ? 'go' : 'alt'}`;
     startLabel.textContent = full() ? (founding ? `この${NEED}人ではじめる` : `この${NEED}人をむかえる`) : picked.length ? 'のこりはおまかせ' : 'おまかせでえらぶ';
-    sealed.textContent = !isIn ? '' : founding && picked[0] === focus ? '主将' : '入部';
+    sealed.textContent = !isIn ? '' : lead && picked[0] === focus ? '主将' : '入部';
     paper.classList.toggle('signed', isIn);
     placeSpot();
   };
@@ -375,12 +382,12 @@ export function recruitScreen(): HTMLElement {
       flash('#ffe14a', 260, 0.35);
       vibrate([20, 50, 40]);
     } else sfx.trustUp();
-    tell(`${hero(id).name}が主将ですね！ 特別作戦「${hero(id).passive}」を、最初から使えます。`, 'cheer');
+    tell(founding ? `${hero(id).name}が主将ですね！ 特別作戦「${hero(id).passive}」を、最初から使えます。` : `${hero(id).name}が新しい主将ですね！ たのもしいです。`, 'cheer');
   };
 
   const sign = (id: number): void => {
     const el = cands.get(id)!;
-    const isCaptain = founding && picked.length === 0;
+    const isCaptain = lead && picked.length === 0;
     picked.push(id);
     el.classList.remove('out');
     el.classList.add('in');
@@ -444,7 +451,7 @@ export function recruitScreen(): HTMLElement {
 
   const unsign = (id: number): void => {
     const el = cands.get(id)!;
-    const wasCaptain = founding && picked[0] === id;
+    const wasCaptain = lead && picked[0] === id;
     picked.splice(picked.indexOf(id), 1);
     el.classList.remove('in');
     kick(el, 'out');
@@ -481,7 +488,7 @@ export function recruitScreen(): HTMLElement {
     backdrop(['ROOKIES WANTED', '新入部員 大募集'], ['#3a1f8a', '#090d24', '#ffb648']),
     h('header.head.pad',
       h('h2', '入部説明会'),
-      h('p', h('span', `${ids.length}人から${NEED}人をえらぼう。`), h('span', founding ? 'さいしょの1人が主将になる！' : `${season.year}年目の春。格は「${tierOf(season.tier).name}」！`)),
+      h('p', h('span', `${ids.length}人から${NEED}人をえらぼう。`), h('span', founding ? 'さいしょの1人が主将になる！' : lead ? `${season.year}年目の春。さいしょの1人が主将になる！` : `${season.year}年目の春。格は「${tierOf(season.tier).name}」！`)),
       h('div.row.rc-score', h('div.rc-cov', h('small', 'チームの得意'), h('div.rc-lamps', [...lamps.values()])))),
     h('main.rc-body.pad', stage, rack, clip),
     h('footer.foot.pad', mgr.el, h('div.row', signBtn, startBtn)));

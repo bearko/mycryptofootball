@@ -42,3 +42,6 @@
   .end-main h1 { font-size: 4.4rem; }
   .end-sub { font-size: var(--fs-s); }
 }
+/* the heroes in their last year: a ribbon says so */
+.end-grad { position: absolute; right: 0; bottom: 1.3rem; z-index: 2; font-style: normal; font-family: var(--display); font-size: 0.8rem; line-height: 1.4; padding: 0 0.5rem; color: var(--ink); background: var(--pink); transform: rotate(-6deg); box-shadow: 0.12rem 0.12rem 0 var(--ink); }
+.end-team.is-many .end-grad { bottom: 0; right: -0.1rem; font-size: 0.62rem; padding: 0 0.3rem; }

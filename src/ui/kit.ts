@@ -6,7 +6,7 @@ import { setMuffled, sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { hero, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, rank, type Stat, type Stats } from '../game/model';
-import { TRUST_BOOST, TRUST_LEARN, TRUST_MAX } from '../game/season';
+import { GRADES, TRUST_BOOST, TRUST_LEARN, TRUST_MAX } from '../game/season';
 import { burst, center, kick, ring, tween, typewriter, type Typing } from './fx';
 
 const CHARS = catalog.chars as Record<string, string>;
@@ -79,6 +79,12 @@ export const TALENT_COLOR: Record<Stat, string> = { spd: '#ffe14a', pas: '#37e3f
 
 /** The rank of an ability value as a small coloured letter (G … SS). */
 export const rankChip = (v: number): HTMLElement => h('i.rank', { class: `r-${rank(v)}`, title: `ランク ${rank(v)}` }, rank(v));
+
+/** A hero's school year as a small chip ("3年"; the last year stands out: this hero leaves when it is over). */
+export const gradeChip = (grade: number): HTMLElement =>
+  h('i.grade', { class: grade >= GRADES ? 'is-last' : '', title: grade >= GRADES ? `${grade}年生（今年で卒業）` : `${grade}年生` }, `${grade}年`);
+/** "2代目": the hero carries on the name of one who graduated from this club. Nothing for the first of the name. */
+export const genChip = (gen: number | undefined): HTMLElement | null => (gen && gen > 1 ? h('i.gen', { title: `この部で${gen}人目の同じ名前のヒーロー` }, `${gen}代目`) : null);
 
 export function statIcon(k: Stat): HTMLElement {
   const el = h('span.ticon', { class: `t-${k}` });

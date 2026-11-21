@@ -12,7 +12,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, graduating, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { aces } from '../game/teams';
@@ -23,7 +23,7 @@ import type { PracticeCard } from '../game/season';
 import { makeGround, postText, postsOf } from './ground/ground';
 import { cardEffect, drillKind, practiceCard } from './ground/pcard';
 import { cutIn, eventScene, type Prize } from './ground/scenes';
-import { button, gauge, modalOpen, speech, sprite, statIcon } from './kit';
+import { button, gauge, gradeChip, modalOpen, speech, sprite, statIcon } from './kit';
 import { lineupScreen } from './lineupScreen';
 import { matchScreen } from './matchScreen';
 import { show } from './nav';
@@ -72,7 +72,13 @@ function contextLine(s: Season): Line {
       ? [`${schoolAt(s, last.opp).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
-  if (s.day === 0 && s.year > 1 && sizeOf(s.lineup!) === 11) return [`今年は${cupOf(s)}。試合は11人制です！ 「編成」で、11人の並びを見ておきましょう。`, 'point'];
+  if (s.day === 0 && s.year > 1 && s.results.length === 0) {
+    const last = graduating(s);
+    const gone = (s.left ?? []).length;
+    // the first words of a new year: who has gone, and whose last year this is
+    if (gone && sizeOf(s.lineup!) !== 11) return [`3年生が${gone}人卒業して、新しい1年が始まります。${last.length ? `今年の3年生は${last.length}人。悔いのない年にしましょう！` : 'じっくり育てていきましょう！'}`, 'point'];
+  }
+  if (s.day === 0 && s.year > 1 && sizeOf(s.lineup!) === 11) return [`今年は${cupOf(s)}。試合は11人制です！ ${(s.left ?? []).length ? `3年生が${(s.left ?? []).length}人卒業したので、` : ''}「編成」で、11人の並びを見ておきましょう。`, 'point'];
   if (s.day === 0) return ['下のカードが今日の練習メニュー。1枚えらぶと1日進みます。', 'wave'];
   const worn = s.members.filter(tired);
   if (worn.length >= 3) return [`${worn.length}人がバテ気味です。バテると練習が身につきにくい…「休養」も立派な練習ですよ。`, 'think'];
@@ -159,7 +165,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     t.sta.style.width = `${(m.sta / STA_MAX) * 100}%`;
     t.tag.classList.toggle('is-tired', tired(m));
     t.tag.classList.toggle('is-spent', m.sta < STA_TIRED / 2);
-    t.el.setAttribute('aria-label', `${hero(m.id).name}（${postText(post)}、方針：${STAT_LABEL[m.focus]}、信頼${m.trust}、体力${m.sta}）`);
+    t.el.setAttribute('aria-label', `${hero(m.id).name}（${m.grade}年生、${postText(post)}、方針：${STAT_LABEL[m.focus]}、信頼${m.trust}、体力${m.sta}）`);
   };
   const heroes = h('div.pg-heroes', s.members.map((m) => {
     const g = gauge(m.trust / TRUST_MAX, { cls: 'trust', marks: [TRUST_LEARN / TRUST_MAX] });
@@ -170,7 +176,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       step: 0, home: 0, dx: 0, bx: 0,
     };
     g.title = '信頼';
-    t.tag.append(h('span.pg-line', t.aim, h('span.pg-name', shortName(m.id)), h('em.pg-worn', 'バテ'), t.state), g,
+    t.tag.append(h('span.pg-line', t.aim, h('span.pg-name', shortName(m.id)), gradeChip(m.grade), h('em.pg-worn', 'バテ'), t.state), g,
       h('span.pg-sta', { title: '体力' }, t.sta, t.ghost));
     t.el.append(h('span.pg-hit'), t.say, t.badge, t.tag);
     t.el.addEventListener('click', (ev) => {
