@@ -81,4 +81,17 @@ export interface Player {
   stats: Stats;
 }
 
-export type Lineup = { off: Record<OffPos, number>; def: Record<DefPos, number> };
+/**
+ * Who plays where. `k` is the kicker: any hero of the club, starter or not (null or missing: nobody kicks,
+ * so no field goals, no punts, and only two-point tries after a touchdown).
+ */
+export type Lineup = { off: Record<OffPos, number>; def: Record<DefPos, number>; k?: number | null };
+
+/** What kicking takes: an accurate foot and a cool head. */
+export const KICK_WEIGHTS: Partial<Stats> = { pas: 0.6, iq: 0.4 };
+/** How good these stats are at kicking (0-100). */
+export function kickFit(stats: Stats): number {
+  let v = 0;
+  for (const [k, w] of Object.entries(KICK_WEIGHTS)) v += stats[k as Stat] * (w as number);
+  return v;
+}

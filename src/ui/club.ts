@@ -145,7 +145,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     const t = tags.get(m.id)!;
     // the position on offense and on defense, the way a depth chart writes it
     const post = posts[m.id];
-    t.aim.className = `pg-aim ${post && (post.off || post.def) ? '' : 'is-sub'}`;
+    t.aim.className = `pg-aim ${post && (post.off || post.def || post.k) ? '' : 'is-sub'}`;
     t.aim.textContent = postText(post);
     t.aim.title = `ポジション（攻撃/守備）。方針：${STAT_LABEL[m.focus]}`;
     t.state.className = `pg-state ${learned(m) ? 'is-on' : ''}`;

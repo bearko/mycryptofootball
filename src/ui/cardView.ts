@@ -3,7 +3,9 @@
 
 import { h } from '../core/dom';
 import { sfx } from '../core/audio';
-import { DEF_INFO, KIND, OFF_INFO, READ_LABEL, READ_MAX, isRun, type DefType, type OffType, type SpecialCard } from '../game/cards';
+import {
+  DEF_INFO, KICK_INFO, KIND, OFF_INFO, READ_LABEL, READ_MAX, isKick, isRun, type DefType, type KickType, type OffType, type SpecialCard,
+} from '../game/cards';
 import { hero } from '../game/heroes';
 import type { Pick } from '../game/match';
 import { ROLE_LABEL } from '../game/model';
@@ -48,6 +50,23 @@ export function diagram(type: OffType | DefType, side: 'off' | 'def'): HTMLEleme
   return box;
 }
 
+/** The picture on a kick card: the goal and the ball's flight (a punt: a long arc down the field). */
+function kickArt(type: KickType): HTMLElement {
+  const box = h('span.card-art.art-kick');
+  box.innerHTML = type === 'punt'
+    ? `<svg viewBox="0 0 100 74" aria-hidden="true">
+        <path class="los" d="M3,60 H97"/>
+        ${line('pass', 'M14,58 Q46,-14 84,50')}${line('head', 'M75,45 L85,51 L87,40')}
+        <ellipse class="ball" cx="14" cy="57" rx="5" ry="3.2" transform="rotate(-30 14 57)"/>
+      </svg>`
+    : `<svg viewBox="0 0 100 74" aria-hidden="true">
+        <path class="post" d="M50,70 V48 M30,48 H70 M30,48 V10 M70,48 V10"/>
+        ${line('pass', 'M16,66 Q30,10 50,26')}${line('head', 'M42,22 L51,26 L47,35')}
+        <ellipse class="ball" cx="16" cy="65" rx="5" ry="3.2" transform="rotate(-50 16 65)"/>
+      </svg>`;
+  return box;
+}
+
 export interface CardOpts {
   onpick?: () => void;
   selected?: boolean;
@@ -66,14 +85,18 @@ export interface CardOpts {
   small?: boolean;
   /** the card's outlook for this team against this opponent, 1..10 (a guide shown in the corner) */
   ev?: number | null;
+  /** a kick card: what it is worth and how likely it is, e.g. ['3点', '成功 78%'] */
+  note?: string[];
 }
 
 export const cardName = (pick: Pick, side: 'off' | 'def'): string =>
-  pick.special ? pick.special.name : side === 'off' ? OFF_INFO[pick.type as OffType].name : DEF_INFO[pick.type as DefType].name;
+  pick.special ? pick.special.name
+    : isKick(pick.type) ? KICK_INFO[pick.type].name
+      : side === 'off' ? OFF_INFO[pick.type as OffType].name : DEF_INFO[pick.type as DefType].name;
 
 export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): HTMLButtonElement {
   const sp = pick.special;
-  const kind = side === 'def' ? 'def' : isRun(pick.type as OffType) ? 'run' : 'pass';
+  const kind = isKick(pick.type) ? 'kick' : side === 'def' ? 'def' : isRun(pick.type as OffType) ? 'run' : 'pass';
   const cls = [side, kind, sp ? 'special' : '', opts.selected ? 'selected' : '', opts.blocked ? 'blocked' : '', opts.small ? 'small' : '', opts.deal ? 'deal' : '']
     .filter(Boolean).join(' ');
   const inner = h('span.card-in');
@@ -101,11 +124,20 @@ export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): 
         h('span.read', { class: `r${read}`, title: READ_LABEL[read] ?? '' }, Array.from({ length: READ_MAX }, (_, i) => h('i', { class: i < read ? 'on' : '' })), h('u', READ_LABEL[read] ?? ''))),
     );
     if (opts.blocked) inner.append(h('span.card-why', opts.blocked));
+  } else if (isKick(pick.type)) {
+    const [worth, odds] = opts.note ?? [];
+    inner.append(
+      h('span.card-band', h(KICK_INFO[pick.type].name.length > 6 ? 'span.card-name.long' : 'span.card-name', KICK_INFO[pick.type].name)),
+      kickArt(pick.type),
+      h('span.card-vs', h('i.good', worth ?? ''), h('i', odds ?? '')),
+      h('span.card-kind', 'キック'),
+    );
+    if (opts.blocked) inner.append(h('span.card-why', opts.blocked));
   } else {
     const info = side === 'off' ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
     inner.append(
       h('span.card-band', h('span.card-name', info.name), stars(pick.star)),
-      diagram(pick.type, side),
+      diagram(pick.type as OffType | DefType, side),
       h('span.card-vs', h('i.good', h('u', '◎'), info.good), h('i.bad', h('u', '×'), info.bad)),
       h('span.card-kind', kind === 'run' ? 'ラン' : kind === 'pass' ? 'パス' : '守備'),
     );

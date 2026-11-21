@@ -14,7 +14,7 @@
 import { Rng, clamp } from '../core/rng';
 import { READ_MAX } from './cards';
 import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
-import { bestLineup, starters, validLineup } from './lineup';
+import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
 
@@ -710,6 +710,8 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
 /** Brings a season saved by an earlier version up to date (stamina and the rest card came later). */
 export function mend(s: Season): Season {
   for (const m of s.members) if (typeof m.sta !== 'number') m.sta = STA_MAX;
+  // kickers came later still: the club's best foot gets the job
+  if (s.lineup && s.lineup.k === undefined) s.lineup.k = bestKicker(s.members.map(asPlayer), s.lineup);
   if (s.phase === 'club' && plan(s).t === 'train' && !s.hand.some((c) => c.kind === 'rest')) {
     s.hand.push({ uid: s.uid, kind: 'rest' });
     s.uid += 1;

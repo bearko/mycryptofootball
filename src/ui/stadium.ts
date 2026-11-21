@@ -7,8 +7,9 @@
 // World: x along the field (0..FIELD between the goal lines), z across (0 far, WIDTH near the main
 // camera), y up, in yards. Team 0 attacks toward +x.
 
-import { KIND, type DefType, type OffType } from '../game/cards';
+import { KIND, isKick, type DefType, type OffType } from '../game/cards';
 import { FIELD, type MatchState, type Pick, type PlayResult, type TeamSheet } from '../game/match';
+import { OFF_POS } from '../game/model';
 import {
   ART, ART_PAD, BANDS, CHALK, CROWD_ROWS, END, FX0, FX1, FZ0, FZ1, RIBBON_H, RIBBON_PPY, SURROUND, WIDTH,
   bakeCrowd, bakeField, bakeRibbon, bakeSprites, heroArt, ledColor, loadFonts, tinted, zoneColor,
@@ -35,6 +36,8 @@ export interface PlayHooks {
   onSnap?(): void;
   onHandoff?(): void;
   onThrow?(long: boolean): void;
+  /** a field goal, a punt, or the kick after a touchdown leaves the foot */
+  onKick?(): void;
   onCatch?(): void;
   /** incomplete pass hits the turf */
   onDrop?(): void;
@@ -519,6 +522,16 @@ export class Stadium {
     this.leaveGround();
     this.attractOn = false;
     this.hasScene = true;
+    if (res.kick) {
+      // the kicker comes on where the running back stands (for this play only: the next scene puts the line-up back)
+      const t = this.teams[res.off];
+      const off = { ...t.lineup.off };
+      const at = OFF_POS.find((p) => off[p] === res.kick!.kicker);
+      if (at) off[at] = off.RB;
+      off.RB = res.kick.kicker;
+      const sheet: TeamSheet = { ...t, lineup: { ...t.lineup, off } };
+      this.teams = res.off === 0 ? [sheet, this.teams[1]] : [this.teams[0], sheet];
+    }
     return this.run(specOf(res), speed, hooks, false);
   }
 
@@ -1094,6 +1107,12 @@ export class Stadium {
       case 'throw': {
         if (!this.cinematic && this.camMode === 'qb') this.setCam('ball', this.camVar, false);
         this.safe(() => hooks?.onThrow?.(c.long));
+        break;
+      }
+      case 'kick': {
+        if (!this.cinematic && this.camMode === 'qb') this.setCam('ball', this.camVar, false);
+        this.trauma = Math.max(this.trauma, this.motion ? 0.25 : 0);
+        this.safe(() => hooks?.onKick?.());
         break;
       }
       case 'jump': {
@@ -3574,7 +3593,18 @@ export class Stadium {
       const type = base as OffType;
       const qb = at(o, O.lineup.off.QB, f.off.QB);
       const rb = at(o, O.lineup.off.RB, f.off.RB);
-      if (type === 'inside') {
+      if (isKick(pick.type)) {
+        // a kick: the ball's flight, from the spot it is kicked from
+        const spot: [number, number] = [X(los - (pick.type === 'punt' ? 8 : 5.8)), 12];
+        const goal = FIELD + END;
+        if (pick.type === 'punt') path([spot, [X(Math.min(los + 28, goal - 1)), 12]], { dashed: true, width: 0.26, arc: 5, mark: 'ball' });
+        else {
+          path([spot, [X(goal), 12]], { dashed: true, width: 0.26, arc: 3.4, mark: 'ball' });
+          // the uprights it has to pass between
+          path([[X(goal), 12 - 3.2], [X(goal), 12 + 3.2]], { arrow: false, width: 0.3, mark: null });
+        }
+        path([[spot[0] - (X(1) - X(0)) * 2.6, 11], spot], { width: 0.26, delay: 0.05 });
+      } else if (type === 'inside') {
         const lane = 12 + ((n % 3) - 1) * 0.8;
         path([rb, [X(los - 4.6), 12.2], [X(los - 0.8), lane], [X(los + 7.5), lane]], { width: 0.36 });
         for (const p of ['OL1', 'OL2'] as const) {

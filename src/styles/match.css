@@ -153,6 +153,7 @@
 .hand.in { transform: none; }
 .hand-side { position: relative; width: 5.6rem; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; font-size: var(--fs-xs); color: var(--ink); clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); overflow: hidden; }
 .hand-side b { font-family: var(--display); font-weight: 400; font-size: var(--fs-xl); }
+.hand-side b.try { font-size: var(--fs-l); letter-spacing: -0.02em; }
 .hand-side.off { background: var(--yellow); }
 .hand-side.def { background: var(--cyan); }
 .hand-side i { font-style: normal; font-size: var(--fs-xs); letter-spacing: 0.2em; animation: march 0.8s steps(4) infinite; }

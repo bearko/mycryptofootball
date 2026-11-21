@@ -12,14 +12,15 @@ import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, loadMatch, save, storeMatch } from '../core/save';
 import {
-  DEF_INFO, DEF_TYPES, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isRun, type DefType, type OffType, type SpecialCard,
+  DEF_INFO, DEF_TYPES, KICK_INFO, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isKick, isRun, type DefType, type OffType, type SpecialCard,
 } from '../game/cards';
 import { hero } from '../game/heroes';
 import {
-  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, at, autoPick, autoTalk, bestAgainst, createMatch, halftimeTalk, huddle, keyHeroes,
-  outlook, resolvePlay, senseHint, specialBlock, specialPick, usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
+  FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
+  fgChance, halftimeTalk, huddle, keyHeroes, kickBlock, kickPicks, kickerOf, outlook, patChance, resolvePlay, senseHint, specialBlock, specialPick,
+  usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
-import { ROLE_LABEL, fit, roleOf } from '../game/model';
+import { ROLE_LABEL, fit, kickFit, roleOf, type DefPos, type OffPos } from '../game/model';
 import { opponentSheet } from '../game/teams';
 import { SCHEDULE, clubSheet, finishMatch, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
@@ -31,14 +32,19 @@ import { Stadium } from './stadium';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足' } as const;
 
+/** "QB", "LB"... and "K" for the kicker. */
+const posLabel = (pos: OffPos | DefPos | 'K'): string => (pos === 'K' ? 'K' : ROLE_LABEL[roleOf(pos)]);
+
 const hintText = (hint: Hint, onOffense: boolean): string => {
   if (hint === 'special') return '何か仕掛けてくる…！';
+  if (hint === 'kick') return '相手は蹴ってくるぞ';
   if (onOffense) return hint === 'run' ? '相手はランを警戒してる' : hint === 'pass' ? '相手はパスを警戒してる' : '相手が突っこんでくる！';
   return hint === 'run' ? '相手はランの構えだ' : '相手はパスの構えだ';
 };
 
 interface Snap {
   score: [number, number]; mom: [number, number]; poss: 0 | 1; down: number; toGo: number; pos: number; quarter: number; left: number; sudden: boolean;
+  tfp: boolean;
 }
 
 export function matchScreen(): [HTMLElement, () => void] {
@@ -108,7 +114,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   // ------------------------------------------------------------------ scorebug
   const snap = (): Snap => ({
     score: [...st.score] as [number, number], mom: [...st.mom] as [number, number], poss: st.poss, down: st.down, toGo: st.toGo,
-    pos: st.pos, quarter: st.quarter, left: st.left, sudden: st.sudden,
+    pos: st.pos, quarter: st.quarter, left: st.left, sudden: st.sudden, tfp: !!st.tfp,
   });
   let shown: Snap | null = null;
   const scoreEls: HTMLElement[] = [];
@@ -137,9 +143,12 @@ export function matchScreen(): [HTMLElement, () => void] {
       team(0),
       h('div.bug-mid',
         h('div.bug-clock', v.sudden ? h('b.hot', '延長') : h('b', `第${v.quarter}Q`), v.sudden ? h('span', '次の1点で決着') : h('span.plays', plays)),
-        h('div.bug-down', { class: v.down >= 3 ? 'late' : '' },
-          h('span.downs', [1, 2, 3, 4].map((n) => h('i', { class: n < v.down ? 'used' : n === v.down ? 'now' : '' }, String(n)))),
-          h('b', v.toGo >= toGoal ? `ゴールまで${toGoal}` : `あと${v.toGo}`), h('span', 'ヤード')),
+        v.tfp
+          // the try after a touchdown: no downs, one chance
+          ? h('div.bug-down.late', h('span.downs', h('i.now.tfp', 'TFP')), h('b', 'もう1プレー'), h('span', `キック${PAT_POINTS}点・プレー${TWO_POINTS}点`))
+          : h('div.bug-down', { class: v.down >= 3 ? 'late' : '' },
+            h('span.downs', [1, 2, 3, 4].map((n) => h('i', { class: n < v.down ? 'used' : n === v.down ? 'now' : '' }, String(n)))),
+            h('b', v.toGo >= toGoal ? `ゴールまで${toGoal}` : `あと${v.toGo}`), h('span', 'ヤード')),
         map),
       team(1),
       h('div.bug-tools', button('設定', settingsModal, { cls: 'mini alt' })));
@@ -164,7 +173,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     const late = st.quarter >= QUARTERS ? 0.2 : st.quarter >= 3 ? 0.1 : 0;
     return Math.min(1, 0.25 + Math.max(st.mom[0], st.mom[1]) * 0.07 + close + late + (FIELD - st.pos <= 12 ? 0.15 : 0));
   };
-  const isClutch = (): boolean => st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3) || st.sudden;
+  const isClutch = (): boolean => !st.tfp && (st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3) || st.sudden);
 
   // ------------------------------------------------------------------ history (what each side has been calling)
   const history: { mine: boolean; name: string; result: string; special: boolean; good: boolean }[] = [];
@@ -199,6 +208,15 @@ export function matchScreen(): [HTMLElement, () => void] {
     const readerPos = onOffense ? 'QB' : 'S';
     const reader = at(home, readerPos).id;
     const voices = huddle(st, 0);
+    const tfp = !!st.tfp;
+    // the other team kicks for its extra point: there is nothing to choose, the kick just happens
+    if (tfp && !onOffense && isKick(theirs.type)) {
+      hand.classList.remove('in');
+      booth.say(`${away.short}はキックで${PAT_POINTS}点を取りにきます`, 'idle');
+      busy = true;
+      void playOut(theirs, { type: 'zone', star: 1 });
+      return;
+    }
     let selected: Pick | null = null;
     let peeked: null | { ok: boolean } = null;
     let cards: Pick[] = [];
@@ -207,6 +225,8 @@ export function matchScreen(): [HTMLElement, () => void] {
     const theirName = (): string => cardName(theirs, onOffense ? 'def' : 'off');
     const prompt = (): void => {
       if (peeked) booth.say(peeked.ok ? `見えた！ 相手は「${theirName()}」です！` : 'うーん、読めませんでした…。でも好きな作戦をえらべます', peeked.ok ? 'sparkle' : 'sad');
+      else if (tfp && onOffense) booth.say(kickerOf(home) ? `タッチダウンのあとの追加点！ キックなら${PAT_POINTS}点、プレーで押しこめば${TWO_POINTS}点` : `追加点のチャンス！ キッカーがいないので、プレーで${TWO_POINTS}点をねらいます`, 'guts');
+      else if (tfp) booth.say(`${away.short}が${TWO_POINTS}点をねらってきます。ここを止めましょう！`, 'guts');
       else if (onOffense && !taughtOff) booth.say('攻撃です！ カードの◎は得意な相手、×は苦手な相手。相手の守りを予想してえらびましょう', 'wave');
       else if (!onOffense && !taughtDef) booth.say('守備です！ 相手の作戦を予想して止めましょう。4回で10ヤード進ませなければ交代です', 'wave');
       else if (hot) booth.say(onOffense ? `ここが勝負どころ！ ${st.down}回目、あと${st.toGo}ヤード！` : `止めれば流れが来ます！ ${st.down}回目、あと${st.toGo}ヤード`, 'guts');
@@ -225,7 +245,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         title: `判断 ${iq}。判断が高いヒーローほど、言うことが当たる`,
       },
       sprite(id),
-      h('span.voice-who', h('b', ROLE_LABEL[roleOf(pos)]), hero(id).name.split('・').pop()!,
+      h('span.voice-who', h('b', posLabel(pos)), hero(id).name.split('・').pop()!,
         h('i.voice-iq', { class: `iq${trust}` }, '判断', h('u', '●'.repeat(trust) + '○'.repeat(3 - trust)))),
       h('span.voice-text', read ? hintText(hint, onOffense) : v.text));
     };
@@ -242,7 +262,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     const markVoices = (pick: Pick | null): void => {
       const type = pick ? (pick.special ? KIND[pick.special.kind].base : pick.type) : '';
       // a defensive call is about the plays it is meant to stop
-      const about: string[] = !pick ? [] : onOffense ? [type]
+      const about: string[] = !pick ? [] : isKick(pick.type) ? ['kick'] : onOffense ? [type]
         : ({ stuff: ['inside'], contain: ['outside'], zone: ['short'], deep: ['long'], blitz: ['long', 'inside'] } as Record<string, string[]>)[type] ?? [];
       for (const el of huddleEl.querySelectorAll<HTMLElement>('.voice')) el.classList.toggle('is-rel', about.includes(el.dataset.topic ?? '-'));
     };
@@ -253,7 +273,8 @@ export function matchScreen(): [HTMLElement, () => void] {
         id: k.id,
         el: h('div.keytag', { class: n === 0 ? 'is-lead' : '', style: { '--i': String(n) } },
           h('div.keytag-in', n === 0 ? h('em', '主役') : null,
-            h('b', ROLE_LABEL[roleOf(k.pos)]), h('span', hero(k.id).name.split('・').pop()!), h('i', String(Math.round(fit(at(home, k.pos).stats, roleOf(k.pos))))))),
+            h('b', posLabel(k.pos)), h('span', hero(k.id).name.split('・').pop()!),
+            h('i', String(Math.round(k.pos === 'K' ? kickFit(kickerOf(home)!.stats) : fit(at(home, k.pos).stats, roleOf(k.pos))))))),
       }));
       keyTags.replaceChildren(...keys3.map((k) => k.el));
       return list.map((k) => k.id);
@@ -312,6 +333,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       el?.classList.add('selected');
       sfx.cardPick();
       if (pick.special) booth.say(`${hero(pick.special.owner).name}の「${pick.special.name}」！ ${KIND[pick.special.kind].text}`, 'sparkle');
+      else if (isKick(pick.type)) booth.say(`${KICK_INFO[pick.type].name}。${KICK_INFO[pick.type].text}`, 'idle');
       else {
         const info = onOffense ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
         booth.say(`${info.name}。${info.text}`, 'idle');
@@ -324,14 +346,22 @@ export function matchScreen(): [HTMLElement, () => void] {
         ? (onOffense ? OFF_TYPES : DEF_TYPES).map((type) => cards.find((c) => c.type === type && c.peeked) ?? { type, star: 2, peeked: true })
         : (onOffense ? st.hand.off : st.hand.def);
       const specials = peeked ? [] : home.specials.filter((sp) => KIND[sp.kind].side === side);
-      cards = [...basics, ...specials.map((sp) => cards.find((c) => c.special === sp) ?? specialPick(sp))];
+      // kicks: only with a kicker, only with the ball (after a touchdown: the kick for one point)
+      const kicks = kickPicks(st, 0).map((k) => cards.find((c) => c.type === k.type) ?? k);
+      cards = [...basics, ...kicks, ...specials.map((sp) => cards.find((c) => c.special === sp) ?? specialPick(sp))];
       const firstDeal = !dealt;
       dealt = true;
       const nowReady = new Set<string>();
       const els = cards.map((c, i) => {
-        const block = c.special ? specialBlock(st, 0, c.special) : null;
+        const far = isKick(c.type) ? kickBlock(st, 0, c.type) : null;
+        const block = c.special ? specialBlock(st, 0, c.special) : far ? 'position' : null;
+        const pct = (v: number): string => `成功 ${Math.round(v * 100)}%`;
+        const note = c.type === 'fg' ? [`${FG_POINTS}点`, far ? '遠すぎる' : pct(fgChance(st, 0))]
+          : c.type === 'pat' ? [`${PAT_POINTS}点`, pct(patChance(home))]
+            : c.type === 'punt' ? ['陣地を回復', '相手を遠ざける'] : undefined;
         const el = playCard(c, side, {
-          selected: selected === c, blocked: block ? BLOCK_TEXT[block] : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
+          note,
+          selected: selected === c, blocked: block ? (far ? '遠すぎる' : BLOCK_TEXT[block]) : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
           mom: st.mom[0], index: i, key: true, deal: firstDeal, ev: block ? null : outlook(st, 0, c),
           onpick: () => {
             // a mouse has already looked (hovering): it plays. A finger looks first, and plays on the second tap
@@ -350,6 +380,8 @@ export function matchScreen(): [HTMLElement, () => void] {
           });
           el.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && selected === c && consider(null));
           el.addEventListener('focus', () => el.matches(':focus-visible') && consider(c, el));
+        } else if (far) {
+          el.addEventListener('click', () => booth.say('ここからでは遠すぎて、フィールドゴールは届きません', 'sad'));
         } else if (c.special) {
           const why = BLOCK_TEXT[block];
           el.addEventListener('click', () => booth.say(`${hero(c.special!.owner).name}の「${c.special!.name}」は、いまは使えません（${why}）`, 'sad'));
@@ -368,8 +400,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       }
       hand.replaceChildren(
         h('div.hand-side', { class: side },
-          h('b', onOffense ? '攻撃' : '守備'),
-          h('span', onOffense ? '進めろ！' : '止めろ！'),
+          h(tfp ? 'b.try' : 'b', tfp ? 'TFP' : onOffense ? '攻撃' : '守備'),
+          h('span', tfp ? (onOffense ? '追加点！' : '止めろ！') : onOffense ? '進めろ！' : '止めろ！'),
           h('i', { 'aria-hidden': 'true' }, onOffense ? '▶▶▶' : '◆◆◆')),
         h('div.hand-cards', els),
         historyEl(),
@@ -394,7 +426,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       if (n >= 1 && n <= cards.length) {
         const c = cards[n - 1]!;
         // a number looks at the card; the same number again plays it
-        if (c.special && specialBlock(st, 0, c.special)) sfx.deny();
+        if ((c.special && specialBlock(st, 0, c.special)) || (isKick(c.type) && kickBlock(st, 0, c.type))) sfx.deny();
         else if (selected === c) playCardNow(c);
         else consider(c, hand.querySelectorAll<HTMLElement>('.hand-cards .card')[n - 1]);
       } else if (e.key === 'a' || e.key === 'A') hand.querySelector<HTMLElement>('.hand-go .btn')?.click();
@@ -478,56 +510,72 @@ export function matchScreen(): [HTMLElement, () => void] {
     insets(false);
     crowd.tension(false);
 
-    // ---- the two cards meet
-    const myCard = playCard(mine, mineOff ? 'off' : 'def', { small: true });
-    const theirBack = cardBack();
-    const theirCard = playCard(theirs, mineOff ? 'def' : 'off', { small: true });
-    const verdictGood = res.edge !== 'even' && (res.edge === 'off') === mineOff;
-    const verdict = h('div.verdict', { class: res.edge === 'even' ? 'even' : verdictGood ? 'good' : 'bad' },
-      kinetic(res.edge === 'even' ? '五分と五分' : verdictGood ? '読み勝ち！' : '読まれた…'));
-    const mineSide = h('div.face.mine', h('span.label', home.short), myCard);
-    const theirSide = h('div.face.theirs', h('span.label.hot', away.short), theirBack);
-    const face = h('div.faceoff', mineSide, theirSide);
-    stage.append(face);
-    root.classList.add('cine');
-    sfx.cardConfirm();
-    await pause(520);
-    if (!alive) return;
-    theirBack.replaceWith(theirCard);
-    theirCard.classList.add('flipped');
-    sfx.cardFlip();
-    await pause(260);
-    if (!alive) return;
-    face.classList.add('clash');
-    await pause(150);
-    if (!alive) return;
-    const c = center(face);
-    sfx.clash(res.edge === 'even' ? 'even' : verdictGood ? 'good' : 'bad');
-    sparks(c.x, c.y, res.edge === 'even' ? '#fffbe8' : verdictGood ? '#ffe14a' : '#ff5a7a', 26, 1.2);
-    burst(c.x, c.y, { count: 16, color: ['#fffbe8', '#ffe14a', '#ff5a2e'], shape: ['star', 'tri'], power: 1.3 });
-    shake(0.7, 240, stage);
-    vibrate(22);
-    face.classList.add(res.edge === 'even' ? 'draw' : verdictGood ? 'won' : 'lost');
-    face.append(verdict);
-    await pause(900);
-    if (!alive) return;
-    face.classList.add('out');
-    await pause(160);
-    face.remove();
+    // ---- the two cards meet (a kick is not a guessing game: it is simply announced)
+    const kick = res.kick;
+    if (kick) {
+      root.classList.add('cine');
+      sfx.cardConfirm();
+      const call = h('div.telop.plain.quarter', h('div.telop-band'), h('b', kinetic(KICK_INFO[kick.type].name)));
+      stage.append(call);
+      await pause(750);
+      call.remove();
+      if (!alive) return;
+    } else {
+      const myCard = playCard(mine, mineOff ? 'off' : 'def', { small: true });
+      const theirBack = cardBack();
+      const theirCard = playCard(theirs, mineOff ? 'def' : 'off', { small: true });
+      const verdictGood = res.edge !== 'even' && (res.edge === 'off') === mineOff;
+      const verdict = h('div.verdict', { class: res.edge === 'even' ? 'even' : verdictGood ? 'good' : 'bad' },
+        kinetic(res.edge === 'even' ? '五分と五分' : verdictGood ? '読み勝ち！' : '読まれた…'));
+      const mineSide = h('div.face.mine', h('span.label', home.short), myCard);
+      const theirSide = h('div.face.theirs', h('span.label.hot', away.short), theirBack);
+      const face = h('div.faceoff', mineSide, theirSide);
+      stage.append(face);
+      root.classList.add('cine');
+      sfx.cardConfirm();
+      await pause(520);
+      if (!alive) return;
+      theirBack.replaceWith(theirCard);
+      theirCard.classList.add('flipped');
+      sfx.cardFlip();
+      await pause(260);
+      if (!alive) return;
+      face.classList.add('clash');
+      await pause(150);
+      if (!alive) return;
+      const c = center(face);
+      sfx.clash(res.edge === 'even' ? 'even' : verdictGood ? 'good' : 'bad');
+      sparks(c.x, c.y, res.edge === 'even' ? '#fffbe8' : verdictGood ? '#ffe14a' : '#ff5a7a', 26, 1.2);
+      burst(c.x, c.y, { count: 16, color: ['#fffbe8', '#ffe14a', '#ff5a2e'], shape: ['star', 'tri'], power: 1.3 });
+      shake(0.7, 240, stage);
+      vibrate(22);
+      face.classList.add(res.edge === 'even' ? 'draw' : verdictGood ? 'won' : 'lost');
+      face.append(verdict);
+      await pause(900);
+      if (!alive) return;
+      face.classList.add('out');
+      await pause(160);
+      face.remove();
+    }
 
     // ---- special plays get their moment
     if (off.special) await cutIn(off.special, res.off, res.offPotency);
-    if (def.special) await cutIn(def.special, (1 - res.off) as 0 | 1, res.defPotency);
+    if (def.special && !kick) await cutIn(def.special, (1 - res.off) as 0 | 1, res.defPotency);
     if (!alive) return;
     root.classList.remove('cine');
 
     // ---- the play itself: sound, shake and the phone's buzz follow the picture
-    booth.say(off.special ? `${hero(off.special.owner).name}が行く！` : isRun(off.type as OffType) ? 'ボールを持って、走る！' : '下がって、投げる！', 'idle');
+    booth.say(kick ? `${hero(kick.kicker).name}が蹴る！` : off.special ? `${hero(off.special.owner).name}が行く！` : isRun(off.type as OffType) ? 'ボールを持って、走る！' : '下がって、投げる！', 'idle');
     sfx.whistle('short');
     await stadium.play(res, speed(), {
       onSnap: () => sfx.snap(),
       onHandoff: () => sfx.handoff(),
       onThrow: (long) => sfx.throwBall(long),
+      onKick: () => {
+        sfx.impact(0.55);
+        sfx.throwBall(true);
+        vibrate(18);
+      },
       onCatch: () => {
         sfx.catchBall();
         crowd.roar(0.4);
@@ -560,10 +608,18 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (!alive) return;
 
     // ---- telop: what happened
-    const good = res.td || res.firstDown || res.yards >= 5;
-    const forMe = res.turnover ? !mineOff : mineOff ? good : !good && res.yards <= 2;
+    const tried = !!res.tfp && !kick;
+    const good = kick ? kick.good && kick.type !== 'punt' : tried ? res.points > 0 : res.td || res.firstDown || res.yards >= 5;
+    const forMe = kick ? (kick.type === 'punt' ? mineOff : kick.good === mineOff)
+      : tried ? (res.points > 0) === mineOff
+        : res.turnover ? !mineOff : mineOff ? good : !good && res.yards <= 2;
     let head: string;
-    if (res.td) head = 'タッチダウン！';
+    if (kick) {
+      head = kick.type === 'punt' ? `パント ${kick.dist}ヤード`
+        : kick.type === 'fg' ? (kick.good ? 'フィールドゴール！' : 'フィールドゴール失敗')
+          : kick.good ? 'キック成功！' : 'キック失敗';
+    } else if (tried) head = res.points ? `${TWO_POINTS}点成功！` : `${TWO_POINTS}点ならず`;
+    else if (res.td) head = 'タッチダウン！';
     else if (res.turnover === 'int') head = 'インターセプト！';
     else if (res.turnover === 'fumble') head = 'ファンブル！';
     else if (res.turnover === 'downs') head = '攻守交代！';
@@ -572,11 +628,19 @@ export function matchScreen(): [HTMLElement, () => void] {
     else if (res.outcome === 'incomplete') head = 'パス失敗';
     else if (res.outcome === 'nogain' || res.outcome === 'loss') head = 'ストップ！';
     else head = `${res.yards}ヤード前進`;
-    const yardsText = res.outcome === 'incomplete' || res.turnover === 'int' ? '' : `${res.yards > 0 ? '+' : ''}${res.yards}`;
-    const big = res.td || !!res.turnover;
+    const extra = kick || tried;
+    const yardsText = extra ? '' : res.outcome === 'incomplete' || res.turnover === 'int' ? '' : `${res.yards > 0 ? '+' : ''}${res.yards}`;
+    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg');
     if (res.td) {
       stadium.celebrate('td', res.off);
       if (mineOff) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);
+    } else if (extra) {
+      if (res.points) {
+        sfx.firstDown();
+        (mineOff ? () => crowd.roar(0.7) : crowd.groan)();
+        stadium.celebrate('turnover', res.off);
+      } else if (kick?.type === 'punt') sfx.gain(6);
+      else sfx.stopped(forMe);
     } else if (res.turnover) {
       stadium.celebrate('turnover', (1 - res.off) as 0 | 1);
       sfx.turnover(forMe);
@@ -591,16 +655,19 @@ export function matchScreen(): [HTMLElement, () => void] {
       const r = canvas.getBoundingClientRect();
       pop(r.left + who.x, r.top + who.y - 40 * who.scale, yardsText, res.yards > 0 ? (mineOff ? '' : 'bad') : mineOff ? 'bad' : 'cool');
     }
-    const telop = h('div.telop', { class: `${forMe ? 'good' : mineOff || res.td || res.turnover ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
+    const telop = h('div.telop', { class: `${kick?.type === 'punt' ? 'plain' : forMe ? 'good' : mineOff || res.td || res.turnover || extra ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
       h('div.telop-band'),
-      big ? h('div.telop-hero', sprite(res.td ? res.carrier : res.defender)) : null,
+      big ? h('div.telop-hero', sprite(res.td || kick ? res.carrier : res.defender)) : null,
       h('b', kinetic(head)),
+      extra && res.points ? h('span.telop-yards', `+${res.points}`, h('i', '点')) : null,
       yardsText && !res.td && !res.turnover && (res.firstDown || res.yards < 0) ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
     stage.append(telop);
     booth.say(res.lines[res.lines.length - 1] ?? head, res.td ? (mineOff ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
 
-    history.unshift({ mine: mineOff, name: cardName(off, 'off'), result: res.td ? 'TD' : res.turnover ? '交代' : res.outcome === 'incomplete' ? '失敗' : yardsText, special: !!off.special, good: mineOff ? good : false });
-    history.unshift({ mine: !mineOff, name: cardName(def, 'def'), result: '', special: !!def.special, good: false });
+    const outcomeText = extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : '失敗')
+      : res.td ? 'TD' : res.turnover ? '交代' : res.outcome === 'incomplete' ? '失敗' : yardsText;
+    history.unshift({ mine: mineOff, name: tried ? `${TWO_POINTS}点ねらい` : cardName(off, 'off'), result: outcomeText, special: !!off.special, good: mineOff ? good : false });
+    if (!kick) history.unshift({ mine: !mineOff, name: cardName(def, 'def'), result: '', special: !!def.special, good: false });
 
     await pause(big ? 900 : 500);
     if (!alive) return;

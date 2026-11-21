@@ -3,6 +3,7 @@
 
 import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
+import { bestKicker } from './lineup';
 import type { TeamSheet } from './match';
 import { ROLE_WEIGHTS, STATS, roleOf, type DefPos, type Lineup, type OffPos, type Stats } from './model';
 
@@ -55,7 +56,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '玄武学院', short: '玄武学', color: '#b08cff', style: 'ロングパスで一気に攻めてくる',
-    base: 36, spread: 24, runBias: 0.36, smart: 0.6,
+    base: 35, spread: 24, runBias: 0.36, smart: 0.6,
     players: [
       { id: 3019, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4023, off: 'WR1', def: 'CB1', ace: 'flyLong' },
@@ -67,7 +68,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '青龍大付属', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
-    base: 38, spread: 25, runBias: 0.5, smart: 0.8,
+    base: 39, spread: 25, runBias: 0.5, smart: 0.8,
     players: [
       { id: 5001, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4012, off: 'RB', def: 'CB2', ace: 'powerRun' },
@@ -95,11 +96,14 @@ export function opponentSheet(index: number): TeamSheet {
     lineup.off[p.off] = p.id;
     lineup.def[p.def] = p.id;
   }
+  const players = team.players.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p) }));
+  // every school has somebody who can kick: its best foot
+  lineup.k = bestKicker(players, lineup);
   return {
     name: team.name,
     short: team.short,
     color: team.color,
-    players: team.players.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p) })),
+    players,
     lineup,
     specials: team.players.filter((p) => p.ace).map((p) => specialOf(p.id, p.ace!)),
     runBias: team.runBias,

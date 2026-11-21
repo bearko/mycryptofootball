@@ -97,11 +97,11 @@ describe('the huddle', () => {
         expect(a).toHaveLength(2);
         expect(a[0]!.id).not.toBe(a[1]!.id);
         expect(huddle(st, 0)).toEqual(a);
-        const unit = Object.values(poss === 0 ? st.teams[0].lineup.off : st.teams[0].lineup.def);
+        const unit = [...Object.values(poss === 0 ? st.teams[0].lineup.off : st.teams[0].lineup.def), st.teams[0].lineup.k];
         for (const v of a) {
           expect(unit).toContain(v.id);
           expect(v.text.length).toBeGreaterThan(3);
-          expect(at(st.teams[0], v.pos).id).toBe(v.id);
+          if (v.pos !== 'K') expect(at(st.teams[0], v.pos).id).toBe(v.id);
         }
       }
     }

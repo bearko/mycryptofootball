@@ -19,6 +19,7 @@
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。手元にサブモジュールがないときは `MCH_ASSETS_DIR=/path/to/mycryptoheroes` を付けて動かす。
 - 音は、タップやキーのたびに `unlockAudio()` を呼んで解除し直す（`main.ts`）。スマホは指を置いた瞬間（pointerdown）ではなく、離した時点（pointerup・touchend・click）でしか音を許可しないので、1 回きりの解除にしない。BGM が本当に鳴っているかは `audioDebug()` の `time`（再生位置）で確かめる。
 - 試合でカードをえらぶ前に見せるもの（カードの期待値の目安 `outlook`、主役のヒーロー `keyHeroes`、ハドルの意見 `huddle`）は `match.ts`。どれも試合の乱数を進めない（ハドルは自前の乱数で、同じ場面なら同じ意見）。`outlook` は `resolvePlay` の計算をサイコロなしでなぞった見積もりなので、`resolvePlay` の数字を変えたら `worth` も合わせる。
+- キック（フィールドゴール `fg`・パント `punt`・タッチダウンのあとのキック `pat`）は `cards.ts` の `KickType`。キッカーは `Lineup.k`（部員ならだれでも。うまさは `model.ts` の `kickFit`）。確率と飛距離は `match.ts` の `fgChance`・`patChance`・`resolveKick`、相手がいつ蹴るかは `autoKick`。タッチダウンのあとは `MatchState.tfp` が立ち、ゴール前 `TRY_YARDS` から時計を進めずにもう 1 プレー（キック 1 点・プレー 2 点。`TRY_WALL` のぶん決まりにくい）。相手が TFP でキックをえらんだときは、守備カードをえらばせずに進める。
 - 特別作戦の名前は、そのヒーローのパッシブスキル名（カタログの `passive`）をそのまま使う。効果は `cards.ts` の `KIND`。
 - 試合は乱数を `MatchState.rng` だけから取る。同じ種と同じ選択なら同じ試合になること（テストあり）。試合の途中経過はプレーごとにセーブする。
 - 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAR_MUL`・`STAT_COST`・`OFF_POLICY`）、体力（`PRACTICE` の `sta`・`REST_STA`・`STA_TIRED`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5 割・決勝 3〜4 割前後。

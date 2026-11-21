@@ -1,6 +1,6 @@
 // Who plays where. The same six heroes play both offense and defense.
 
-import { DEF_POS, OFF_POS, fit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
+import { DEF_POS, OFF_POS, fit, kickFit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
 
 function permutations<T>(items: T[]): T[][] {
   if (items.length <= 1) return [items];
@@ -45,8 +45,22 @@ export function bestLineup(players: Player[]): Lineup {
     for (let i = start; i < players.length; i += 1) choose(i + 1, [...picked, players[i]!]);
   };
   choose(0, []);
-  return best!.lineup;
+  const lineup: Lineup = best!.lineup;
+  return { ...lineup, k: bestKicker(players, lineup) };
 }
+
+/**
+ * The club's best kicker. Between equals the hero who does not start gets the job
+ * (somebody who would otherwise only watch).
+ */
+export function bestKicker(players: Player[], l: Lineup): number | null {
+  if (!players.length) return null;
+  const on = new Set(OFF_POS.map((p) => l.off[p]));
+  return [...players].sort((a, b) => kickFit(b.stats) - kickFit(a.stats) || Number(on.has(a.id)) - Number(on.has(b.id)))[0]!.id;
+}
+
+/** The kicker of a line-up, if that hero is (still) in the club. */
+export const kickerOf = (l: Lineup, roster: number[]): number | null => (l.k != null && roster.includes(l.k) ? l.k : null);
 
 export const starters = (l: Lineup): number[] => OFF_POS.map((p) => l.off[p]);
 export const isStarter = (l: Lineup, id: number): boolean => starters(l).includes(id);
@@ -71,7 +85,7 @@ export function place(l: Lineup, unit: 'off' | 'def', pos: OffPos | DefPos, id: 
       for (const k of Object.keys(m)) if (m[k] === out) m[k] = id;
     }
   }
-  return { off, def };
+  return { off, def, k: l.k ?? null };
 }
 
 /** True when the line-up is six different heroes of this roster, the same six on both units. */
