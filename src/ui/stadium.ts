@@ -20,15 +20,15 @@ import {
 } from './stadium/choreo';
 import { CHUNK, CONFETTI, Fx, GLINT, MOTE, PUFF, SPARK, burst } from './stadium/fx';
 import {
-  BOARD, CART, CENTER, DUMMIES, Ground, SLED, STATIONS, buildDrill, propsOf, spotOf,
-  type DrillHooks, type DrillKind, type DrillPlan, type GCue, type Painter, type Prop,
+  BOARD, CART, CENTER, DUMMIES, Ground, SLED, STATIONS, buildDrill, propsOf, spotOf, stationsFor,
+  type DrillHooks, type DrillKind, type DrillPlan, type GCue, type Painter, type Post, type Prop, type Station,
 } from './stadium/ground';
 import {
   Camera, Spring, TAU, clamp, css, damp, easeOut, hash, lerp, mix, noise, rgbOf, sat, scale, seeded, smooth,
   type RGB,
 } from './stadium/math';
 
-export type { DrillHooks, DrillKind } from './stadium/ground';
+export type { DrillHooks, DrillKind, Post } from './stadium/ground';
 
 export interface PlayHooks {
   /** fired in sync with the picture so the caller can play sounds / shake DOM / vibrate */
@@ -383,6 +383,11 @@ export class Stadium {
   private gCol: RGB = [255, 255, 255];
   private gPlan: DrillPlan | null = null;
   private drilling = false;
+  /** where each hero warms up (same order as the heroes given to ground()), and their positions */
+  private gStations: Station[] = [];
+  private gPosts: Record<number, Post> = {};
+  /** throws made in the warm-up: the quarterback's next target */
+  private gTossN = 0;
   /** picture time at which the drill began, and seconds of drill gone by */
   private gSim0 = 0;
   private gT = 0;
@@ -578,7 +583,7 @@ export class Stadium {
    * `day` 0..27 changes the light from day to day (Monday bright late afternoon … Saturday deep sunset, weeks differ a little).
    * The heroes warm up by themselves forever; the camera drifts and now and then cuts to another relaxed angle.
    */
-  ground(opts: { heroes: number[]; day?: number; color?: string }): void {
+  ground(opts: { heroes: number[]; day?: number; color?: string; posts?: Record<number, Post> }): void {
     this.endPlay(true);
     this.endDrill(true);
     const first = !this.groundOn;
@@ -601,8 +606,11 @@ export class Stadium {
     this.gHint = null;
     this.g.highlight([]);
     const keep: Actor[] = [];
-    opts.heroes.slice(0, STATIONS.length).forEach((id, i) => {
-      const st = STATIONS[i]!;
+    const ids = opts.heroes.slice(0, STATIONS.length);
+    this.gPosts = opts.posts ?? {};
+    this.gStations = stationsFor(ids, opts.posts);
+    ids.forEach((id, i) => {
+      const st = this.gStations[i]!;
       let ac = this.find(0, id);
       if (!ac) ac = this.newActor(0, id, st.x, st.z);
       else if (first) {
@@ -622,7 +630,8 @@ export class Stadium {
     this.ballTrail.length = 0;
     this.gBalls.length = 0;
     this.speedLines = 0;
-    if (keep[0]) keep[0].carry = true;
+    const thrower = keep.find((a) => this.gStations[a.station]?.job === 'tossA');
+    if (thrower) thrower.carry = true;
     this.gTossAt = this.sim + 1;
     if (first) {
       this.gShot = 0;
@@ -656,7 +665,7 @@ export class Stadium {
     const needsLead = kind === 'solo' || kind === 'special';
     const lead = opts.lead !== undefined && this.find(0, opts.lead) ? opts.lead : needsLead ? this.actors[0]!.id : undefined;
     const who = kind === 'solo' ? this.actors.filter((a) => a.id === lead) : this.actors;
-    const plan = buildDrill(kind, who.map((a) => ({ id: a.id, x: a.x, z: a.z })), lead, this.bestOf(lead));
+    const plan = buildDrill(kind, who.map((a) => ({ id: a.id, x: a.x, z: a.z, off: this.gPosts[a.id]?.off ?? null, def: this.gPosts[a.id]?.def ?? null })), lead, this.bestOf(lead));
     // the warm-up's ball is put away
     this.gBalls.length = 0;
     for (const ac of this.actors) {
@@ -1879,7 +1888,7 @@ export class Stadium {
       ac.wave = false;
       if (!this.drilling) {
         ac.aura = false;
-        ac.faceLock = STATIONS[ac.station]?.face ?? 1;
+        ac.faceLock = this.gStations[ac.station]?.face ?? 1;
       }
     }
   }
@@ -1920,7 +1929,7 @@ export class Stadium {
       ac.ring = null;
       ac.crouchTo = 0;
       ac.trail.length = 0;
-      ac.faceLock = STATIONS[ac.station]?.face ?? 1;
+      ac.faceLock = this.gStations[ac.station]?.face ?? 1;
       if (ac.tumT0 >= 0) ac.downUntil = Math.min(ac.downUntil, this.sim + 0.1);
     }
     if (g) {
@@ -1934,7 +1943,7 @@ export class Stadium {
     this.gLines = false;
     this.speedLines = 0;
     this.gTossAt = this.sim + 1.6;
-    const first = this.actors.find((a) => a.station === 0);
+    const first = this.actors.find((a) => this.gStations[a.station]?.job === 'tossA');
     if (first) first.carry = true;
     if (!this.gEndFired) {
       this.gEndFired = true;
@@ -1954,8 +1963,9 @@ export class Stadium {
 
   /** One hero's self-directed warm-up: where it wants to be right now and what it is doing there. */
   private routine(ac: Actor): void {
-    const st = STATIONS[ac.station] ?? STATIONS[0]!;
-    const t = this.sim + ac.phase * 7;
+    const st = this.gStations[ac.station] ?? STATIONS[0]!;
+    // the linemen on the sled drive it together, on the same count
+    const t = st.job === 'sled' ? this.sim : this.sim + ac.phase * 7;
     const beat = (period: number): boolean => Math.floor(t / period) !== Math.floor(ac.rt / period);
     let x = st.x;
     let z = st.z;
@@ -1977,6 +1987,19 @@ export class Stadium {
         crouch = c > 0.66 && c < 0.9 ? 0.7 : 0;
         break;
       }
+      case 'bag': {
+        // a lineman and a stand-up bag: set, punch, reset
+        const c = (t % 2.1) / 2.1;
+        const hit = c < 0.16 ? c / 0.16 : c < 0.3 ? 1 : c < 0.5 ? 1 - (c - 0.3) / 0.2 : 0;
+        x = st.x + hit * 0.8;
+        if (c >= 0.16 && (ac.rt % 2.1) / 2.1 < 0.16 && this.g && !this.drilling) {
+          const bag = this.g.find('dummy', st.i ?? 0);
+          if (bag.vTo < 1) bag.v = 0.36;
+          this.dust(st.x + 1.2, st.z, 2, 1, false);
+        }
+        crouch = c > 0.62 && c < 0.94 ? 0.8 : 0;
+        break;
+      }
       case 'jog':
         ac.jog = 0.85;
         x += Math.sin(t * 0.5) * 0.5;
@@ -1986,8 +2009,11 @@ export class Stadium {
         crouch = t % 1.25 > 0.98 ? 0.8 : 0;
         break;
       case 'shuttle': {
+        // through the cones and back, the ball tucked away
         const c = (t % 5.4) / 5.4;
-        x = st.x + (c < 0.5 ? smooth(c * 2) : 1 - smooth((c - 0.5) * 2)) * 7;
+        x = st.x + (c < 0.5 ? smooth(c * 2) : 1 - smooth((c - 0.5) * 2)) * 9;
+        z = st.z + Math.sin(c * TAU * 3) * 0.7;
+        if (this.gPosts[ac.id] && !this.drilling) ac.carry = true;
         break;
       }
       case 'sway':
@@ -2034,9 +2060,11 @@ export class Stadium {
     }
     // everybody who is not in a drill warms up
     for (const ac of this.actors) if (!ac.keys) this.routine(ac);
-    // the two at the first stations toss a ball back and forth
-    const a = this.actors.find((ac) => ac.station === 0);
-    const b = this.actors.find((ac) => ac.station === 1);
+    // the quarterback throws to the receivers in turn, and the ball comes back
+    const a = this.actors.find((ac) => this.gStations[ac.station]?.job === 'tossA');
+    const catchers = this.actors.filter((ac) => this.gStations[ac.station]?.job === 'tossB');
+    const holder = catchers.find((ac) => ac.carry);
+    const b = holder ?? catchers[this.gTossN % Math.max(1, catchers.length)];
     if (a && b && !a.keys && !b.keys && !a.wave && !b.wave && this.sim >= this.gTossAt && !this.gBalls.length) {
       const near = (ac: Actor): boolean => Math.hypot(ac.x - ac.goalX, ac.z - ac.goalZ) < 0.8;
       if (near(a) && near(b)) {
@@ -2044,6 +2072,7 @@ export class Stadium {
         const from = a.carry ? a : b;
         const to = a.carry ? b : a;
         from.carry = false;
+        if (from === b) this.gTossN += 1;
         this.hop(from, 0.26, 0.26);
         this.gBalls.push({
           s0: this.sim, s1: this.sim + 0.82, from: [from.x + from.face * 0.5, 1.8, from.z], to: [to.x, 1.7, to.z], h: 2.3,

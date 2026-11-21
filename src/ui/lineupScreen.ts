@@ -10,7 +10,7 @@ import { hero, recruit, talentOf } from '../game/heroes';
 import { bestLineup, isStarter, place } from '../game/lineup';
 import { unitSummary } from '../game/match';
 import {
-  DEF_POS, OFF_POS, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, STAT_LABEL, fit, grade, roleOf,
+  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, STAT_LABEL, fit, grade, roleOf,
   type DefPos, type Lineup, type OffPos, type Role, type Stat,
 } from '../game/model';
 import { asPlayer, clubSheet, learned, member } from '../game/season';
@@ -163,7 +163,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     const g = gradeAt(id, slot);
     const star = starAt(id, slot);
     const name = hero(id).name;
-    const unit = slot.unit === 'bench' ? '控え' : `${UNIT_LABEL[slot.unit]}の${ROLE_LABEL[slot.role!]}`;
+    const unit = slot.unit === 'bench' ? '控え' : `${UNIT_LABEL[slot.unit]}の${ROLE_LABEL[slot.role!]}（${ROLE_FULL[slot.role!]}）`;
     const starNote = star === null ? '' : star ? '、特別作戦を使える' : '、特別作戦は使えない';
     slot.el.setAttribute('aria-label', `${unit}：${name}${g ? `（適性${g}${starNote}）` : starNote}`);
     return h('span.lu-mag', { class: `t-${best}`, data: { id: String(id) } },
@@ -305,7 +305,7 @@ export function lineupScreen(back: () => void): HTMLElement {
       const g = gradeAt(who, slot)!;
       note.replaceChildren(
         h('span.label', { class: slot.unit === 'def' ? 'cyan' : '' }, UNIT_LABEL[slot.unit]),
-        h('b.lu-note-role', ROLE_LABEL[slot.role]),
+        h('b.lu-note-role', ROLE_LABEL[slot.role], h('small', ROLE_FULL[slot.role])),
         h('p', ROLE_HINT[slot.role]),
         h('div.lu-ws', weights(slot.role)),
         h('p.lu-note-fit', `${shortName(hero(who).name)}なら`, gradeChip(g)));

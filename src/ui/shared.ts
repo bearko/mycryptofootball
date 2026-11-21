@@ -15,7 +15,7 @@ import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
 import { TALENT_COLOR, button, cheerAt, closeModal, gauge, modal, portrait, radar, trustGauge } from './kit';
 
-/** Where a member plays: "司令塔 / セーフティ", or "控え". */
+/** Where a member plays: "QB / S", or "控え". */
 export function positions(s: Season, id: number): string {
   const l = s.lineup!;
   if (!isStarter(l, id)) return '控え';
@@ -25,7 +25,7 @@ export function positions(s: Season, id: number): string {
 }
 
 const ROLES: Role[] = ['QB', 'RB', 'WR', 'OL', 'DL', 'LB', 'CB', 'S'];
-/** "攻撃はランナー、守備はコーナー向き" */
+/** "攻撃はRB、守備はCB向き" */
 export function bestRoles(stats: Stats): string {
   const top = (roles: Role[]): string => ROLE_LABEL[[...roles].sort((a, b) => fit(stats, b) - fit(stats, a))[0]!];
   return `攻撃は${top(ROLES.slice(0, 4))}、守備は${top(ROLES.slice(4))}向き`;

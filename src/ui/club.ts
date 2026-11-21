@@ -20,7 +20,7 @@ import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
 import { calendar } from './ground/calendar';
 import type { PracticeCard } from '../game/season';
-import { makeGround } from './ground/ground';
+import { makeGround, postText, postsOf } from './ground/ground';
 import { cardEffect, drillKind, practiceCard } from './ground/pcard';
 import { cutIn, eventScene, type Prize } from './ground/scenes';
 import { button, gauge, modalOpen, speech, sprite, statIcon } from './kit';
@@ -140,11 +140,14 @@ export function clubScreen(): [HTMLElement, () => void] {
   // ---- a tag pinned to every hero on the ground
   interface Tag { el: HTMLButtonElement; tag: HTMLElement; aim: HTMLElement; state: HTMLElement; fill: HTMLElement; sta: HTMLElement; ghost: HTMLElement; badge: HTMLElement; say: HTMLElement; step: number; home: number; dx: number; bx: number }
   const tags = new Map<number, Tag>();
+  const posts = postsOf(s);
   const drawTag = (m: Member): void => {
     const t = tags.get(m.id)!;
-    t.aim.className = `pg-aim t-${m.focus}`;
-    t.aim.replaceChildren(statIcon(m.focus));
-    t.aim.title = `方針：${STAT_LABEL[m.focus]}`;
+    // the position on offense and on defense, the way a depth chart writes it
+    const post = posts[m.id];
+    t.aim.className = `pg-aim ${post && (post.off || post.def) ? '' : 'is-sub'}`;
+    t.aim.textContent = postText(post);
+    t.aim.title = `ポジション（攻撃/守備）。方針：${STAT_LABEL[m.focus]}`;
     t.state.className = `pg-state ${learned(m) ? 'is-on' : ''}`;
     t.state.replaceChildren(boosted(m) ? '★★' : learned(m) ? '★' : icon(ICON.lock));
     t.state.title = learned(m) ? '特別作戦を習得ずみ' : `信頼${TRUST_LEARN}で特別作戦を覚える（いま${m.trust}）`;
@@ -152,7 +155,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     t.sta.style.width = `${(m.sta / STA_MAX) * 100}%`;
     t.tag.classList.toggle('is-tired', tired(m));
     t.tag.classList.toggle('is-spent', m.sta < STA_TIRED / 2);
-    t.el.setAttribute('aria-label', `${hero(m.id).name}（方針：${STAT_LABEL[m.focus]}、信頼${m.trust}、体力${m.sta}）`);
+    t.el.setAttribute('aria-label', `${hero(m.id).name}（${postText(post)}、方針：${STAT_LABEL[m.focus]}、信頼${m.trust}、体力${m.sta}）`);
   };
   const heroes = h('div.pg-heroes', s.members.map((m) => {
     const g = gauge(m.trust / TRUST_MAX, { cls: 'trust', marks: [TRUST_LEARN / TRUST_MAX] });
