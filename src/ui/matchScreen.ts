@@ -14,6 +14,7 @@ import { commit, loadMatch, prefs, save, storeMatch } from '../core/save';
 import {
   DEF_INFO, DEF_TYPES, KICK_INFO, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isKick, isRun, type DefType, type OffType, type SpecialCard,
 } from '../game/cards';
+import { callFor, type Beat, type Call, type CallNames } from '../game/calls';
 import { hero } from '../game/heroes';
 import {
   FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
@@ -29,6 +30,7 @@ import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './
 import { route } from './nav';
 import { changeList, settingsModal } from './shared';
 import { Stadium } from './stadium';
+import { ROUTE_LABEL } from './stadium/choreo';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足' } as const;
 
@@ -71,6 +73,16 @@ export function matchScreen(): [HTMLElement, () => void] {
   const bug = h('header.bug');
   const map = h('div.minimap');
   const huddleEl = h('aside.huddle', { 'aria-live': 'polite' });
+  // the play-by-play: shouted lines stack up on the right while a play runs
+  const casterEl = h('aside.caster', { 'aria-live': 'off' });
+  const names: CallNames = { teams: [home.short, away.short], hero: (id) => hero(id).name };
+  const shout = (c: Call | null, off: 0 | 1): void => {
+    if (!c) return;
+    for (const old of casterEl.children) old.classList.add('old');
+    while (casterEl.children.length > 2) casterEl.firstElementChild!.remove();
+    const mine = c.side === 'none' ? '' : (c.side === 'off') === (off === 0) ? 'mine' : 'theirs';
+    casterEl.append(h('div.call', { class: `${c.hot ? 'hot' : ''} ${mine}` }, h('b', c.head), c.tail ? h('span', c.tail) : null));
+  };
   const keyTags = h('div.keytags', { 'aria-hidden': 'true' });
   /** the heroes the considered card is about, and their tags on the field */
   let keys3: { id: number; el: HTMLElement }[] = [];
@@ -82,7 +94,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   const stage = h('div.stage');
   const hand = h('footer.hand');
   const clutch = h('div.clutch-frame', { 'aria-hidden': 'true' }, h('span', '勝負どころ'), h('span', '勝負どころ'));
-  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, stage, hand, booth.el);
+  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, casterEl, stage, hand, booth.el);
   const stadium = new Stadium(canvas, [home, away]);
   stadium.setMotion(save().prefs.motion);
 
@@ -147,7 +159,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         h('div.bug-clock', v.sudden ? h('b.hot', '延長') : h('b', `第${v.quarter}Q`), v.sudden ? h('span', '次の1点で決着') : h('span.plays', plays)),
         v.tfp
           // the try after a touchdown: no downs, one chance
-          ? h('div.bug-down.late', h('span.downs', h('i.now.tfp', 'TFP')), h('b', 'もう1プレー'), h('span', `キック${PAT_POINTS}点・プレー${TWO_POINTS}点`))
+          ? h('div.bug-down.late', h('span.downs', h('i.now.tfp', 'TFP')), h('b', `キック${PAT_POINTS}点・プレー${TWO_POINTS}点`))
           : h('div.bug-down', { class: v.down >= 3 ? 'late' : '' },
             h('span.downs', [1, 2, 3, 4].map((n) => h('i', { class: n < v.down ? 'used' : n === v.down ? 'now' : '' }, String(n)))),
             h('b', v.toGo >= toGoal ? `ゴールまで${toGoal}` : `あと${v.toGo}`), h('span', 'ヤード')),
@@ -505,6 +517,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     keys = () => undefined;
     stadium.preview(null, 'off', 0);
     huddleEl.replaceChildren();
+    casterEl.replaceChildren();
     keys3 = [];
     keyTags.replaceChildren();
     stage.replaceChildren();
@@ -569,22 +582,38 @@ export function matchScreen(): [HTMLElement, () => void] {
     // ---- the play itself: sound, shake and the phone's buzz follow the picture
     booth.say(kick ? `${hero(kick.kicker).name}が蹴る！` : off.special ? `${hero(off.special.owner).name}が行く！` : isRun(off.type as OffType) ? 'ボールを持って、走る！' : '下がって、投げる！', 'idle');
     sfx.whistle('short');
+    const call = (beat: Beat, route?: string): void => shout(callFor(beat, res, names, route), res.off);
     await stadium.play(res, speed(), {
-      onSnap: () => sfx.snap(),
-      onHandoff: () => sfx.handoff(),
-      onThrow: (long) => sfx.throwBall(long),
+      onSnap: () => {
+        sfx.snap();
+        call('snap');
+      },
+      onHandoff: () => {
+        sfx.handoff();
+        call('handoff');
+      },
+      onThrow: (long, route) => {
+        sfx.throwBall(long);
+        call('throw', route ? ROUTE_LABEL[route] : undefined);
+        // a deep ball hangs in the air and the whole stadium holds its breath
+        if (long) crowd.ooh();
+      },
       onKick: () => {
         sfx.impact(0.55);
         sfx.throwBall(true);
         vibrate(18);
+        call('kick');
+        if (kick && kick.type !== 'punt') crowd.ooh();
       },
       onCatch: () => {
         sfx.catchBall();
         crowd.roar(0.4);
+        call('catch');
       },
       onDrop: () => {
         sfx.dropBall();
         (mineOff ? crowd.groan : crowd.ooh)();
+        call('drop');
       },
       onImpact: (power) => {
         sfx.impact(power);
@@ -594,20 +623,38 @@ export function matchScreen(): [HTMLElement, () => void] {
       onSteal: () => {
         sfx.steal();
         flash('#ffffff', 200, 0.5);
-        (mineOff ? crowd.groan : () => crowd.roar(0.9))();
+        // our stand erupts; when it is our ball that is gone, their corner of the stadium does
+        if (mineOff) {
+          crowd.groan();
+          crowd.roar(0.45);
+        } else crowd.roar(1);
+        call('steal');
       },
       onBreak: () => {
         sfx.breakaway();
-        crowd.roar(mineOff ? 0.7 : 0.3);
+        crowd.roar(mineOff ? 0.75 : 0.35);
+        call('break');
       },
       onTouchdown: () => {
         sfx.touchdown(mineOff);
-        crowd.roar(mineOff ? 1 : 0.35);
+        crowd.roar(mineOff ? 1 : 0.5);
         flash(st.teams[res.off].color, 380, 0.6);
         vibrate([30, 40, 30, 40, 80]);
+        call('touchdown');
       },
     });
     if (!alive) return;
+    call('end');
+    // the stand answers the big stops as loudly as the scores
+    if (res.outcome === 'sack') {
+      if (mineOff) {
+        crowd.groan();
+        crowd.roar(0.4);
+      } else crowd.roar(0.95);
+      shake(0.5, 260);
+    } else if (res.turnover === 'downs' && !res.tfp) (mineOff ? crowd.groan : () => crowd.roar(0.9))();
+    else if (kick && kick.type === 'fg') (kick.good === mineOff ? () => crowd.roar(0.85) : crowd.groan)();
+    else if (!kick && !res.td && res.outcome === 'gain' && res.yards >= 15) crowd.roar(mineOff ? 0.85 : 0.4);
 
     // ---- telop: what happened
     const tried = !!res.tfp && !kick;
@@ -626,13 +673,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     else if (res.turnover === 'fumble') head = 'ファンブル！';
     else if (res.turnover === 'downs') head = '攻守交代！';
     else if (res.firstDown) head = 'ファーストダウン！';
-    else if (res.outcome === 'sack') head = 'つかまえた！';
+    else if (res.outcome === 'sack') head = 'サック！';
     else if (res.outcome === 'incomplete') head = 'パス失敗';
     else if (res.outcome === 'nogain' || res.outcome === 'loss') head = 'ストップ！';
     else head = `${res.yards}ヤード前進`;
     const extra = kick || tried;
     const yardsText = extra ? '' : res.outcome === 'incomplete' || res.turnover === 'int' ? '' : `${res.yards > 0 ? '+' : ''}${res.yards}`;
-    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg');
+    const sack = !kick && !tried && res.outcome === 'sack';
+    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg') || sack;
     if (res.td) {
       stadium.celebrate('td', res.off);
       if (mineOff) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);
@@ -661,9 +709,12 @@ export function matchScreen(): [HTMLElement, () => void] {
       h('div.telop-band'),
       big ? h('div.telop-hero', sprite(res.td || kick ? res.carrier : res.defender)) : null,
       h('b', kinetic(head)),
+      sack || res.turnover === 'int' || res.turnover === 'fumble' ? h('span.telop-who', hero(res.defender).name) : res.td ? h('span.telop-who', hero(res.carrier).name) : null,
       extra && res.points ? h('span.telop-yards', `+${res.points}`, h('i', '点')) : null,
       yardsText && !res.td && !res.turnover && (res.firstDown || res.yards < 0) ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
     stage.append(telop);
+    // the play-by-play steps down out of the telop's way
+    root.classList.toggle('telop-up', true);
     booth.say(res.lines[res.lines.length - 1] ?? head, res.td ? (mineOff ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
 
     const outcomeText = extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : '失敗')
@@ -680,6 +731,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     telop.classList.add('out');
     await pause(200);
     telop.remove();
+    root.classList.remove('telop-up');
 
     // ---- once more, from another angle: a touchdown, a big gain, a ball taken away. A tap skips it
     const worthAnotherLook = !kick && !tried && (res.td || res.turnover === 'int' || res.turnover === 'fumble' || (res.outcome === 'gain' && res.yards >= BIG_PLAY));

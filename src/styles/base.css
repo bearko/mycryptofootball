@@ -280,6 +280,8 @@ img { -webkit-user-drag: none; }
 .modal-title { display: flex; margin: -1.4rem 0 1rem -1.8rem; }
 .modal-title h2 { font-size: var(--fs-l); color: var(--ink); background: var(--yellow); padding: 0.3rem 2.4rem 0.3rem 1.8rem; clip-path: polygon(0 0, 100% 0, calc(100% - 1.2rem) 100%, 0 100%); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.2rem; flex-wrap: wrap; }
+/* a tall panel scrolls, but what moves the game on is always in reach: the buttons ride along the bottom edge */
+.modal-panel .modal-actions { position: sticky; bottom: -1.4rem; z-index: 3; margin: 0.4rem -1.8rem -1.4rem; padding: 0.8rem 1.8rem 1.2rem; background: linear-gradient(rgba(18, 21, 63, 0), #12153f 38%); }
 @keyframes fade { from { opacity: 0; } }
 @keyframes modal-in { from { transform: translateY(2rem) scale(0.86) rotate(-2.5deg); opacity: 0; } }
 @keyframes modal-out { to { transform: translateY(1.4rem) scale(0.9) rotate(1.5deg); opacity: 0; } }

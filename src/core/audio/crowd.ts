@@ -158,6 +158,17 @@ export function crowdRoar(e: Engine, t: number, power = 0.7): void {
     a: 0.2, hold: 0.2 + 0.4 * p, dur: 1.2 + 1.4 * p, peak: 0.16 + 0.4 * p,
   });
   noise(e, { t, to, f: 3400, type: 'highpass', q: 0.5, a: 0.25, hold: 0.1 + 0.3 * p, dur: 1 + 1.2 * p, peak: 0.03 + 0.09 * p });
+  // the voices: an open "aaah" that rises as everybody gets to their feet
+  noise(e, { t, to, src: 'pink', f: 760, sweep: [[0.25, 920], [1, 780]], q: 3.2, a: 0.22, hold: 0.3 + 0.7 * p, dur: 1.6 + 2 * p, peak: 0.22 + 0.6 * p, verb: 0.15 });
+  noise(e, { t, to, f: 1180, sweep: [[0.25, 1330], [1, 1150]], q: 4, a: 0.25, hold: 0.3 + 0.6 * p, dur: 1.5 + 1.8 * p, peak: 0.08 + 0.3 * p });
+  if (p > 0.8) {
+    // a big one does not die down: it comes again, and the applause runs on under it
+    noise(e, { t: t + 0.9, to, src: 'pink', rate: rnd(0.95, 1.15), f: 700, sweep: [[0.3, 980], [1, 720]], q: 1.4, a: 0.5, hold: 0.6, dur: 2.6, peak: 0.55, verb: 0.12 });
+    noise(e, { t: t + 0.9, to, f: 1250, sweep: [[0.3, 1500], [1, 1200]], q: 3, a: 0.5, hold: 0.5, dur: 2.2, peak: 0.26 });
+    for (let i = 0; i < 28; i += 1) {
+      noise(e, { t: t + rnd(0.5, 3.4), to, f: rnd(1200, 2400), q: 1.2, dur: rnd(0.04, 0.08), peak: rnd(0.07, 0.18), a: 0.001 });
+    }
+  }
   if (p > 0.55) {
     // a few fans whistling through their fingers
     const n = p > 0.85 ? 3 : 2;
