@@ -14,9 +14,11 @@ import './styles/end.css';
 
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';
+import { Rng } from './core/rng';
 import { save } from './core/save';
 import { RECRUITS } from './game/heroes';
 import { TOP_TIER } from './game/prestige';
+import { drawSchools } from './game/teams';
 import { ROSTER_SIZE, SCHEDULE, joinCount, newSeason, nextYear, signRecruits, startDay } from './game/season';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
@@ -73,6 +75,7 @@ function jump(to: string): void {
       return;
     }
     s.league = s.tier;
+    s.draw = drawSchools(s.league, new Rng(debug.seed ?? 7));
     const have = new Set(s.members.map((m) => m.id));
     s.candidates = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
     if (joinCount(s) > 0) signRecruits(s, s.candidates.slice(0, joinCount(s)));

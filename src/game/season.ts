@@ -17,6 +17,7 @@ import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { applyResult, tierOf, type FameChange } from './prestige';
+import { FIRST_DRAW, SCHOOLS, drawSchools, type School } from './teams';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
@@ -300,6 +301,8 @@ export interface Season {
   uid: number;
   /** a milestone: the training policy may be changed until the next practice card is played */
   meeting: boolean;
+  /** the schools met this year: the practice match, then the three rounds (indices into SCHOOLS) */
+  draw: number[];
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
   event: WeekEvent | null;
@@ -339,7 +342,7 @@ export function newSeason(seed: number): Season {
   return {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
-    year: 1, tier: 0, fame: 0, league: 0,
+    year: 1, tier: 0, fame: 0, league: 0, draw: [...FIRST_DRAW],
   };
 }
 
@@ -430,6 +433,7 @@ export function nextYear(s: Season, seed: number): void {
     s.candidates = pool.slice(0, Math.min(pool.length, room + Math.min(3, Math.max(1, Math.round(room / 2)))));
     s.candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
     s.phase = 'recruit';
+    s.draw = drawSchools(s.league, rng);
     keep(s, rng);
     return;
   }
@@ -438,9 +442,14 @@ export function nextYear(s: Season, seed: number): void {
   s.meeting = true;
   fitLineup(s);
   markMonth(s);
+  s.draw = drawSchools(s.league, rng);
   keep(s, rng);
   startDay(s);
 }
+
+/** The school the club meets in a round this year (0: the practice match, 1–3: the rounds of the tournament). */
+export const schoolId = (s: Season, round: number): number => s.draw?.[round] ?? FIRST_DRAW[round]!;
+export const schoolAt = (s: Season, round: number): School => SCHOOLS[schoolId(s, round)]!;
 
 /** The name of a day's match in this club's tournament ("県大会 準決勝"), and the same without the tournament. */
 export const cupOf = (s: Season): string => tierOf(s.league).cup;
@@ -863,6 +872,8 @@ export function mend(s: Season): Season {
   if (typeof s.tier !== 'number') s.tier = 0;
   if (typeof s.fame !== 'number') s.fame = 0;
   if (typeof s.league !== 'number') s.league = s.tier;
+  // the yearly draw came later: a district club keeps the four schools it knew, the others get a draw of their tournament
+  if (!Array.isArray(s.draw) || s.draw.length !== 4) s.draw = tierOf(s.league).cup === tierOf(0).cup ? [...FIRST_DRAW] : drawSchools(s.league, new Rng(s.seed));
   // eleven a side came later: a club that plays in the prefecture or above gets a line-up of eleven
   if (s.phase !== 'recruit') fitLineup(s);
   // kickers came later still: the club's best foot gets the job

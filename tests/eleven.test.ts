@@ -5,7 +5,7 @@ import { FIELD, autoPeek, autoPick, createMatch, group, resolvePlay, simulate, u
 import { DEF_POS_OF, OFF_POS_OF, defPos, offPos, roleOf, sizeOf } from '../src/game/model';
 import { TIERS } from '../src/game/prestige';
 import { asPlayer, clubSheet, clubSize, mend, nextYear, signRecruits, type Season } from '../src/game/season';
-import { OPPONENTS, opponentSheet } from '../src/game/teams';
+import { SCHOOLS, opponentSheet } from '../src/game/teams';
 import { WIDTH } from '../src/ui/stadium/assets';
 import { buildScript, evalKeys, formation, lineUp, specOf } from '../src/ui/stadium/choreo';
 import { buildDrill, stationsFor, type DrillActor, type DrillKind, type Post } from '../src/ui/stadium/ground';
@@ -83,14 +83,14 @@ describe('eleven a side', () => {
   });
 
   it('every school has eleven for the bigger game, each at one position on either unit', () => {
-    OPPONENTS.forEach((_, i) => {
-      const t = opponentSheet(i, 2);
+    SCHOOLS.forEach((team, i) => {
+      if (!team.more.length) return; // a school that only plays in the district
+      const t = opponentSheet(i % 4, 2, 11, i);
       expect(t.players.length).toBe(11);
       expect(validLineup(t.lineup, t.players.map((p) => p.id), 11)).toBe(true);
       expect(new Set(t.players.map((p) => p.id)).size).toBe(11);
       // six a side they are who they always were
-      expect(opponentSheet(i, 0).players.map((p) => p.id)).toEqual(t.players.slice(0, 6).map((p) => p.id));
-      expect(opponentSheet(i, 2, 6).players.length).toBe(6);
+      expect(opponentSheet(i % 4, 0, 6, i).players.map((p) => p.id)).toEqual(t.players.slice(0, 6).map((p) => p.id));
     });
   });
 

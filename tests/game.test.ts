@@ -7,7 +7,7 @@ import {
   usePeek, usableSpecials, type MatchState, type Pick,
 } from '../src/game/match';
 import { DEF_POS_OF, OFF_POS_OF, STATS, fit, roleOf } from '../src/game/model';
-import { OPPONENTS, opponentSheet } from '../src/game/teams';
+import { SCHOOLS, opponentSheet } from '../src/game/teams';
 import {
   CANDIDATES, EVENTS, HAND_SIZE, PRACTICE, PRACTICE_KEYS, REST_STA, ROSTER_SIZE, SCHEDULE, STA_MAX, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
   cardInfo, clubSheet, costOf, dateText, finishMatch, learned, newSeason, plan, policyOpen, presetFocus, previewTrain, setFocus,
@@ -51,8 +51,8 @@ describe('heroes', () => {
   });
 
   it('opponents field six heroes who are not recruits, with a full line-up', () => {
-    OPPONENTS.forEach((t, i) => {
-      const sheet = opponentSheet(i);
+    SCHOOLS.forEach((t, i) => {
+      const sheet = opponentSheet(i % 4, 0, 6, i);
       expect(sheet.players).toHaveLength(6);
       expect(validLineup(sheet.lineup, sheet.players.map((p) => p.id))).toBe(true);
       for (const p of t.players) {

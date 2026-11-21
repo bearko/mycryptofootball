@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { runSeason, type Style } from './bot';
-import { OPPONENTS } from '../src/game/teams';
+import { SCHOOLS } from '../src/game/teams';
 import { learned } from '../src/game/season';
 
 function report(style: Style, n: number) {
-  const rounds = OPPONENTS.map(() => ({ played: 0, won: 0, us: 0, them: 0, plays: 0 }));
+  const rounds = [0, 1, 2, 3].map(() => ({ played: 0, won: 0, us: 0, them: 0, plays: 0 }));
   let champions = 0;
   let learnedAtEnd = 0;
   for (let seed = 1; seed <= n; seed += 1) {
@@ -21,7 +21,7 @@ function report(style: Style, n: number) {
     });
   }
   const table = rounds.map((r, i) => ({
-    team: OPPONENTS[i]!.name,
+    team: SCHOOLS[i]!.name,
     played: r.played,
     win: +(r.won / Math.max(1, r.played)).toFixed(2),
     us: +(r.us / Math.max(1, r.played)).toFixed(1),

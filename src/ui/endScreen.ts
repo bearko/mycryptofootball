@@ -6,9 +6,9 @@ import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero, talentOf } from '../game/heroes';
 import { sizeOf } from '../game/model';
-import { OPPONENTS, opponentSheet } from '../game/teams';
+import { opponentSheet } from '../game/teams';
 import { tierOf } from '../game/prestige';
-import { SCHEDULE, TEAM_COLOR, TEAM_NAME, clubSheet, cupOf, learned, nextYear, roundOf, type Season } from '../game/season';
+import { SCHEDULE, TEAM_COLOR, TEAM_NAME, clubSheet, cupOf, learned, nextYear, roundOf, schoolAt, schoolId, type Season } from '../game/season';
 import { fameBar, tierPlate } from './standing';
 import { confetti, kinetic } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, portrait, speech, ticker } from './kit';
@@ -47,7 +47,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const sheet = champion ? sheetOf(s) : null;
   if (sheet) {
-    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league, sizeOf(sheet.lineup))]);
+    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league, sizeOf(sheet.lineup), schoolId(s, 3))]);
     stadium.setMotion(save().prefs.motion);
     stadium.attract();
     stadium.setExcitement(1);
@@ -83,7 +83,7 @@ export function endScreen(): [HTMLElement, () => void] {
         return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i) } },
           h('span', roundOf(w)),
           h('b.led', `${r.us}-${r.them}`),
-          h('span', `${r.win ? '○' : '●'} ${OPPONENTS[r.opp]!.name}`));
+          h('span', `${r.win ? '○' : '●'} ${schoolAt(s, r.opp).name}`));
       })),
       team,
       h('div.end-actions',
