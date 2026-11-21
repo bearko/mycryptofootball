@@ -81,6 +81,26 @@ describe('the play-by-play', () => {
     expect(scores).toBeGreaterThan(10);
   });
 
+  it('a punt is caught by the one who waits for it on the other side, never by the one who kicked it', () => {
+    let caught = 0;
+    for (const { res, teams } of plays()) {
+      if (res.kick?.type !== 'punt') continue;
+      const call = callFor('catch', res, NAMES);
+      if (res.kick.returner == null) continue;
+      caught += 1;
+      const back = hero(res.kick.returner).name;
+      // the safety of the receiving team, who is the one the field shows catching it
+      expect(res.kick.returner).toBe(teams[1 - res.off]!.lineup.def.S);
+      expect(call!.tail).toContain(back);
+      expect(call!.tail).not.toContain(hero(res.kick.kicker).name);
+      // and what happens on the field: the ball ends with him
+      const sc = buildScript(teams, specOf(res), () => null, true);
+      const last = sc.ball[sc.ball.length - 1]!;
+      expect(last.kind === 'held' && last.team === 1 - res.off && last.id === res.kick.returner).toBe(true);
+    }
+    expect(caught).toBeGreaterThan(5);
+  });
+
   it('names the route when the ball is thrown', () => {
     const pass = all.find(({ res }) => !isKick(res.offPick.type) && !isRun(res.offPick.type as OffType))!;
     const c = callFor('throw', pass.res, NAMES, 'ロングポスト')!;

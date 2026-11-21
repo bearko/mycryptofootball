@@ -1053,7 +1053,9 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
     n: st.n, off: o, offPick, defPick, before, outcome: 'kick', yards: type === 'punt' ? dist : 0, td: false, firstDown: false, turnover, edge: 'even',
     passer: O.lineup.off.QB, carrier: k.id, defender: D.lineup.def.DL1, offPotency: 0, defPotency: 0,
     momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines,
-    kick: { type, good, dist, kicker: k.id }, tfp: type === 'pat' || undefined, points,
+    // a punt that comes down on the field is caught by the other team's safety (he waits deep for it)
+    kick: { type, good, dist, kicker: k.id, ...(type === 'punt' && before.pos + dist < FIELD ? { returner: D.lineup.def.S } : {}) },
+    tfp: type === 'pat' || undefined, points,
   };
 }
 

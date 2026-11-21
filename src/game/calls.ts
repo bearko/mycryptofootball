@@ -83,6 +83,12 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       return pick([say(to, `${passer}がすばやく投げた！`), say('投げた！', route ? `${route}の${carrier}へ！` : `${carrier}へ！`), say(to, `${carrier}をねらう！`)], n, 3);
     }
     case 'catch':
+      // a punt is caught by the other team (the one who waits deep for it), not by the one who kicked it
+      if (kick?.type === 'punt') {
+        const back = kick.returner != null ? names.hero(kick.returner) : defName;
+        return pick([say('とった！', `${back}がしっかり捕った`, 'def'), say('キャッチ！', `${back}の手におさまった`, 'def')], n, 4);
+      }
+      if (kick) return null;
       return pick([say('とった！', `${carrier}、ナイスキャッチ！`), say('通ったぁ！', `${carrier}の手におさまった！`), say('キャッチ！', `${carrier}がつかんだ！`)], n, 4);
     case 'drop':
       return pick([say('落ちた！', 'パス失敗！'), say('通らない！', `${defender}がじゃました！`), say('ああっと！', 'ボールは芝の上！')], n, 5);
