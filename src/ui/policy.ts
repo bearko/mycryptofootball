@@ -4,13 +4,14 @@
 
 import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
-import { commit } from '../core/save';
+import { commit, save } from '../core/save';
 import { hero, recruit, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat } from '../game/model';
 import { PRESET_LABEL, applyPreset, policyOpen, presetFocus, setFocus, type Member, type Preset, type Season } from '../game/season';
 import { burst, center, kick, ring } from './fx';
 import { ICON, icon, shortName } from './ground/bits';
 import { TALENT_COLOR, button, closeModal, modal, portrait, rankChip, statIcon } from './kit';
+import { guideEvent } from './platform';
 import { positions } from './shared';
 
 const PRESETS: Preset[] = ['talent', 'offense', 'defense'];
@@ -101,6 +102,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
       open ? h('div.pol-presets', h('span', 'まとめて', h('br'), '決める'), [...presets.values()]) : null,
       open
         ? button('この方針でいく', () => {
+          guideEvent(save(), 'policy_done');
           commit();
           vibrate(16);
           done();

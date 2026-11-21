@@ -3,24 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <title>My Crypto Football｜ヒーロー7人のアメフト部 育成カードゲーム</title>
-    <meta name="description" content="My Crypto Heroes のヒーロー7人でアメフト部をつくり、弱小校から地区大会の優勝を目指す育成カードゲーム。部員は全員「一芸もち」。毎日の練習カードで鍛え、試合は作戦カードの読み合いで進みます。ブラウザで無料、スマホ横持ちとPCに対応（非公式ファンゲーム）。" />
+    <title>My Crypto Football｜ヒーローたちのアメフト部 育成カードゲーム</title>
+    <meta name="description" content="My Crypto Heroes のヒーロー7人でアメフト部をつくり、素人の集まりから名門校を目指す育成カードゲーム。部員は全員「一芸もち」。毎日の練習カードで鍛え、試合は作戦カードの読み合いで進みます。ブラウザで無料、スマホ横持ちとPCに対応（非公式ファンゲーム）。" />
     <link rel="canonical" href="https://football.bearko.games/" />
     <!-- link previews (the image is public/og.jpg, 1200 x 630; previews need absolute URLs) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="bearko.games" />
     <meta property="og:locale" content="ja_JP" />
     <meta property="og:url" content="https://football.bearko.games/" />
-    <meta property="og:title" content="My Crypto Football｜一芸もちのヒーロー7人でアメフト部をつくる育成カードゲーム" />
-    <meta property="og:description" content="部員7人、ぜんいん一芸もち。練習カードで鍛えて、作戦カードの読み合いで地区大会の頂点へ。ブラウザで無料、スマホでもPCでも（非公式ファンゲーム）" />
+    <meta property="og:title" content="My Crypto Football｜一芸もちのヒーローでアメフト部をつくる育成カードゲーム" />
+    <meta property="og:description" content="部員7人から、ぜんいん一芸もち。練習カードで鍛えて、作戦カードの読み合いで名門校へ。ブラウザで無料、スマホでもPCでも（非公式ファンゲーム）" />
     <meta property="og:image" content="https://football.bearko.games/og.jpg" />
     <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="My Crypto Football のタイトル。夜のスタジアムに、ドット絵のヒーローたちが並んでいる" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="My Crypto Football｜一芸もちのヒーロー7人でアメフト部をつくる育成カードゲーム" />
-    <meta name="twitter:description" content="部員7人、ぜんいん一芸もち。練習カードで鍛えて、作戦カードの読み合いで地区大会の頂点へ。ブラウザで無料（非公式ファンゲーム）" />
+    <meta name="twitter:title" content="My Crypto Football｜一芸もちのヒーローでアメフト部をつくる育成カードゲーム" />
+    <meta name="twitter:description" content="部員7人から、ぜんいん一芸もち。練習カードで鍛えて、作戦カードの読み合いで名門校へ。ブラウザで無料（非公式ファンゲーム）" />
     <meta name="twitter:image" content="https://football.bearko.games/og.jpg" />
     <meta name="twitter:image:alt" content="My Crypto Football のタイトル。夜のスタジアムに、ドット絵のヒーローたちが並んでいる" />
     <script type="application/ld+json">
@@ -30,7 +30,7 @@
         "name": "My Crypto Football",
         "url": "https://football.bearko.games/",
         "image": "https://football.bearko.games/og.jpg",
-        "description": "My Crypto Heroes のヒーロー7人でアメフト部をつくり、弱小校から地区大会の優勝を目指す育成カードゲーム（非公式ファンゲーム）。",
+        "description": "My Crypto Heroes のヒーロー7人でアメフト部をつくり、素人の集まりから名門校を目指す育成カードゲーム（非公式ファンゲーム）。",
         "genre": ["育成", "カードゲーム", "スポーツ"],
         "gamePlatform": "Web browser",
         "applicationCategory": "Game",
@@ -48,6 +48,9 @@
     <meta name="theme-color" content="#090d24" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- the shared platform of bearko.games (login, achievements, chat). In the head, ahead of the game's own module;
+         the game plays on without it (src/ui/platform.ts) -->
+    <script defer src="https://bearko.games/sdk/v1.js"></script>
   </head>
   <body>
     <div id="app"></div>

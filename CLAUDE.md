@@ -26,6 +26,7 @@
 - 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAR_MUL`・`STAT_COST`・`OFF_POLICY`）、体力（`PRACTICE` の `sta`・`REST_STA`・`STA_TIRED`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5 割・決勝 3〜4 割前後。
 - 格（素人→同好会→弱小→注目株→中堅→強豪→名門）は `prestige.ts`。いまの格 `Season.tier` が部員の上限と練習カードの枚数を、その年のはじめの格 `Season.league` が大会の名前と相手の強さを決める。部は年をまたいで続く（`Season.year`）。数字を変えたら `tests/bot.ts` の `runCareer` で何年目にどの格へ届くかを確かめる（目安：ていねいに遊んで 3 年目ごろ弱小、5 年目ごろ中堅）。部員は 24 人まで増えるので、部員を並べる画面（編成の控え・説明会・年のおわり）は 7 人と 24 人の両方で確かめる。
 - デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?day=6`（その日へ。0 が 4/5。6・13・20・27 が試合の日）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）、`?go=recruit|club|lineup|match|end|champion`（その画面から始める）、`?tier=4`（`?go=` と合わせて。その格で部員がそろった部。`?go=recruit&tier=2` は 2 年目からの説明会）。
+- bearko.games の共通基盤（ログイン・アチーブメント・チャット・分析）との窓口は `src/ui/platform.ts` だけ。ほかのファイルは `window.BearkoGames` を触らない。SDK が読めなくても・通信に失敗しても最後まで遊べること。1 年目の歩み（チュートリアルの段）の番号と id は公開後に変えない。決まりと段の一覧は `docs/PLATFORM.md`。外部の解析タグは入れない。
 - チェック：`npm test`・`npm run typecheck`・`npm run build`。
 - 能力の数字にはランク（G〜SS。`model.ts` の `RANKS`・`rank`、画面では `kit.ts` の `rankChip` と `base.css` の `.rank.r-*`）を添える。月ごとの成長は `season.ts` の `growth`・`markMonth`（基準は `Season.base`）と `ui/review.ts`。
 - ポップアップ（`modal`）の中身が画面より長いときも、進むためのボタン（`.modal-actions`）は下にはりついて、いつも見えている。試合の終了画面は 1 画面におさめる。

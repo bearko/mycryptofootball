@@ -14,6 +14,7 @@ import {
 import { playCard, specialText } from './cardView';
 import { glitter, center } from './fx';
 import { TALENT_COLOR, button, cheerAt, closeModal, gauge, modal, portrait, radar, trustGauge } from './kit';
+import { openChat, platformOn } from './platform';
 
 /** Where a member plays: "QB / S", or "控え". */
 export function positions(s: Season, id: number): string {
@@ -157,6 +158,7 @@ export function settingsModal(): void {
       row('色の補助', '色に形と記号を足す', seg(p.colorSafe, [[false, 'OFF'], [true, 'ON']], (v) => { p.colorSafe = v; })),
       row('振動', '対応するスマホのみ', seg(p.haptics, [[true, 'ON'], [false, 'OFF']], (v) => { p.haptics = v; })),
       installWay() === 'none' ? null : row('全画面', 'アプリとして入れる', h('div.seg', h('button', { type: 'button', onclick: installModal }, '入れ方を見る'))),
+      platformOn() ? row('チャット', 'bearko.games のみんなと', h('div.seg', h('button', { type: 'button', onclick: () => { closeModal(); openChat(); } }, '開く'))) : null,
     ];
     body.replaceChildren(...rows.filter((r): r is HTMLElement => !!r));
   };

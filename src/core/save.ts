@@ -67,11 +67,24 @@ export function save(): SaveData {
   return data;
 }
 
+const watchers: ((d: SaveData) => void)[] = [];
+/** Calls `fn` every time the game is saved (it must not throw, and must not save). */
+export function onCommit(fn: (d: SaveData) => void): void {
+  watchers.push(fn);
+}
+
 export function commit(): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(save()));
   } catch {
     /* ignore */
+  }
+  for (const fn of watchers) {
+    try {
+      fn(save());
+    } catch {
+      /* a watcher never stops the game */
+    }
   }
 }
 

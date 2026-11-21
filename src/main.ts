@@ -24,6 +24,7 @@ import { wireHover } from './ui/kit';
 import { matchScreen } from './ui/matchScreen';
 import { setRouter, show } from './ui/nav';
 import { lineupScreen } from './ui/lineupScreen';
+import { startPlatform } from './ui/platform';
 import { recruitScreen } from './ui/recruit';
 import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
@@ -35,6 +36,7 @@ for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as
 }
 applyPrefs();
 wireHover();
+startPlatform();
 
 /** A screen is either an element, or an element with something to do when it is left. */
 const open = (screen: HTMLElement | [HTMLElement, () => void]): void => (Array.isArray(screen) ? show(...screen) : show(screen));
