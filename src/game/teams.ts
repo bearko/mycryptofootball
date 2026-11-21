@@ -43,7 +43,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '白虎工業', short: '白虎工', color: '#e6edf7', style: 'とにかく走ってくる。壁も厚い',
-    base: 33, spread: 22, runBias: 0.68, smart: 0.4,
+    base: 31, spread: 22, runBias: 0.68, smart: 0.4,
     players: [
       { id: 1003, off: 'RB', def: 'LB', ace: 'powerRun' },
       { id: 2013, off: 'OL1', def: 'DL1', ace: 'wall' },
@@ -55,7 +55,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '玄武学院', short: '玄武学', color: '#b08cff', style: 'ロングパスで一気に攻めてくる',
-    base: 39, spread: 24, runBias: 0.36, smart: 0.6,
+    base: 36, spread: 24, runBias: 0.36, smart: 0.6,
     players: [
       { id: 3019, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4023, off: 'WR1', def: 'CB1', ace: 'flyLong' },
@@ -67,7 +67,7 @@ export const OPPONENTS: readonly OppTeam[] = [
   },
   {
     name: '青龍大付属', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
-    base: 43, spread: 25, runBias: 0.5, smart: 0.8,
+    base: 41, spread: 25, runBias: 0.5, smart: 0.8,
     players: [
       { id: 5001, off: 'QB', def: 'S', ace: 'sureLong' },
       { id: 4012, off: 'RB', def: 'CB2', ace: 'powerRun' },

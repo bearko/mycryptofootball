@@ -52,6 +52,11 @@ export function save(): SaveData {
     if (raw) {
       const parsed = JSON.parse(raw) as SaveData;
       if (parsed && parsed.v === 1) data = { ...blank(), ...parsed, prefs: { ...defaultPrefs(), ...(parsed.prefs ?? {}) } };
+      // a season saved under older rules cannot be continued: it starts over (settings and records stay)
+      if (data.season && (data.season as { v?: number }).v !== 2) {
+        data.season = null;
+        data.match = null;
+      }
     }
   } catch {
     /* a browser without storage still runs the game, it just forgets */

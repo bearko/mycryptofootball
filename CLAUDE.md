@@ -5,13 +5,18 @@
 - このリポジトリは「My Crypto Football」。My Crypto Heroes のヒーローが部員のアメフト部を育てて、作戦カードで試合をする。全体像と数値は `docs/GAME_DESIGN.md`。ルールを変えたらこの文書も直す。
 - サイトを開くと `index.html` → `src/main.ts`。公開は Cloudflare Workers の静的配信（`wrangler.jsonc`）。本番のブランチは `main`。
 - 構成：
-  - `src/core/` 乱数（`rng.ts`）、セーブ（`save.ts`）、音（`audio.ts`）、DOM の小道具（`dom.ts`）、デバッグ用 URL（`debug.ts`）
-  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 12 人）、`teams.ts`（対戦校）、`lineup.ts`（編成）、`match.ts`（試合エンジン・相手の AI）、`season.ts`（募集・練習・イベント・大会）
-  - `src/ui/` 画面
+  - `src/core/` 乱数（`rng.ts`）、セーブ（`save.ts`）、音（`audio.ts` と `audio/`）、DOM の小道具（`dom.ts`）、デバッグ用 URL（`debug.ts`）、アプリとして入れる案内（`install.ts`）
+  - `src/game/` ルール。画面を知らない：`model.ts`（能力・ポジション・適性）、`cards.ts`（作戦カード・相性表・特別作戦の種類）、`heroes.ts`（入部候補 12 人）、`teams.ts`（対戦校）、`lineup.ts`（編成）、`match.ts`（試合エンジン・相手の AI・ハーフタイム）、`season.ts`（募集・日程・育成方針・練習カード・イベント・大会）
+  - `src/ui/` 画面：`title.ts`、`recruit.ts`（入部説明会）、`club.ts` と `ground/`（練習グラウンド。ふだんいる画面）、`policy.ts`（育成方針）、`lineupScreen.ts`（編成）、`matchScreen.ts`（試合）、`endScreen.ts`。共通の部品は `kit.ts`・`shared.ts`・`cardView.ts`、演出は `fx.ts`、画面の切り替えは `nav.ts`
+  - `src/ui/stadium.ts` と `stadium/`：試合のスタジアムと練習グラウンドを描く Canvas の描画（疑似 3D）。画面からは `Stadium` クラスだけを使う
+  - `src/styles/` 画面ごとの CSS。共通は `base.css` と `cards.css`
+  - `lab/`：描画と音を単体で試すページ（`/lab/stadium.html`・`/lab/audio.html`。開発サーバーでだけ開ける）
+- 見た目と部品の決まりは `docs/UI_STYLE.md`。画面を作る・直すときは先に読む。
+- **余計なタップをさせない**。練習カードも作戦カードも 1 回押すだけで進む。確認のボタンや、閉じるだけのポップアップを足さない（決まりは `docs/GAME_DESIGN.md` の「操作の決まり」）。
 - 素材は `vendor/mycryptoheroes`（サブモジュール）から `scripts/sync-assets.mjs` が使うものだけを `public/mch/` に写し、`src/generated/catalog.json` を作る（どちらも Git には入れない）。手元にサブモジュールがないときは `MCH_ASSETS_DIR=/path/to/mycryptoheroes` を付けて動かす。
 - 特別作戦の名前は、そのヒーローのパッシブスキル名（カタログの `passive`）をそのまま使う。効果は `cards.ts` の `KIND`。
 - 試合は乱数を `MatchState.rng` だけから取る。同じ種と同じ選択なら同じ試合になること（テストあり）。試合の途中経過はプレーごとにセーブする。
-- 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 8 割・準決勝 6 割・決勝 3 割前後。
-- デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?week=5`（その週へ）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）。
+- 難度は `teams.ts` の `base`・`spread`、`match.ts` の `ADV_SCALE`、`season.ts` の信頼の増え方と経験値（`PRACTICE`・`STAT_COST`・`OFF_POLICY`）。変えたら `npm run balance` で勝率を確かめる。目安：ていねいに遊ぶ自動操縦で 練習試合 9 割・1 回戦 7 割・準決勝 5〜6 割・決勝 3 割前後。
+- デバッグ用の URL（どこからもリンクしない）：`?trust=80`（全員の信頼）、`?day=6`（その日へ。0 が 4/5。6・13・20・27 が試合の日）、`?bot=1`（自動で試合を進める・早送り）、`?seed=123`（乱数の種を固定）、`?go=recruit|club|lineup|match|end|champion`（その画面から始める）。
 - チェック：`npm test`・`npm run typecheck`・`npm run build`。
-- PC とスマホ横持ちの両方で遊べること。1rem が画面に合わせて伸び縮みする（`main.css` の `html`）。横幅は 16:9 の PC がいちばん狭い（約 71rem）。画面を直したら 1280×720 と 844×390 で重なりを確かめる。ボタンは 44px 以上、ドット絵は `image-rendering: pixelated`。
+- PC とスマホ横持ちの両方で遊べること。1rem が画面に合わせて伸び縮みする（`base.css` の `html`）。横幅は 16:9 の PC がいちばん狭い（約 71rem）。画面を直したら 1280×720 と 844×390 で重なりを確かめる。ボタンは 44px 以上、ドット絵は `image-rendering: pixelated`。

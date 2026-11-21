@@ -1,62 +1,35 @@
+// The title: the lit stadium with two teams already at it, the logo slammed on top.
+
+import { playBgm, sfx } from '../core/audio';
 import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
-import { canFullscreen, goFullscreen, installWay, onInstallChange, promptInstall } from '../core/install';
 import { commit, save, storeMatch } from '../core/save';
-import { RECRUITS } from '../game/heroes';
-import { newSeason } from '../game/season';
+import { RECRUITS, hero } from '../game/heroes';
+import { bestLineup } from '../game/lineup';
+import type { TeamSheet } from '../game/match';
+import { opponentSheet } from '../game/teams';
+import { TEAM_COLOR, TEAM_NAME, TEAM_SHORT, newSeason } from '../game/season';
+import { kinetic, typewriter } from './fx';
+import { button, closeModal, modal, ticker } from './kit';
 import { route } from './nav';
-import { button, closeModal, helpModal, modal, muteButton, sprite } from './parts';
+import { installWay, onInstallChange } from '../core/install';
+import { helpModal, installModal, offerInstallOnce, settingsModal } from './shared';
+import { Stadium } from './stadium';
 
-/** "Play it as an app": how to put the game on the home screen so it opens full-screen. */
-export function installModal(): void {
-  const body = h('div.install');
-  let off: () => void = () => undefined;
-  const close = (): void => {
-    off();
-    closeModal();
-  };
-  const draw = (): void => {
-    const way = installWay();
-    const steps = (items: string[]): HTMLElement => h('ol.install-steps', items.map((t, i) => h('li', h('b', String(i + 1)), h('span', t))));
-    let guide: HTMLElement;
-    const actions: HTMLElement[] = [];
-    if (way === 'prompt') {
-      guide = h('p', 'ホーム画面に置くと、ブラウザの枠がない全画面で遊べます。データはこの端末に残ります。');
-      actions.push(button('アプリとして入れる', () => {
-        void promptInstall().then((ok) => {
-          if (ok) body.replaceChildren(h('h2', '追加しました！'), h('p', 'ホーム画面の「MC Football」から開くと全画面になります。'), button('OK', close, 'primary'));
-          else draw();
-        });
-      }, 'primary big'));
-    } else if (way === 'ios') {
-      guide = steps(['画面の下（または上）にある共有ボタン（□から↑が出ている形）を押す', '「ホーム画面に追加」をえらぶ', 'ホーム画面にできた MC Football から開くと、全画面で遊べます']);
-    } else if (way === 'menu') {
-      guide = steps(['ブラウザの右上の「︙」（メニュー）を押す', '「ホーム画面に追加」か「アプリをインストール」をえらぶ', 'ホーム画面にできた MC Football から開くと、全画面で遊べます']);
-    } else {
-      guide = h('p', 'アプリとして開いています。このまま全画面で遊べます。');
-    }
-    if (way !== 'none' && canFullscreen()) actions.push(button('いまだけ全画面にする', () => void goFullscreen().then(close)));
-    actions.push(button(way === 'none' ? 'とじる' : 'あとで', close, 'ghost'));
-    body.replaceChildren(h('h2', '全画面で遊ぼう'),
-      h('div.install-top', h('img.install-icon', { src: 'icon-192.png', alt: '' }), guide),
-      h('div.row', actions));
-  };
-  draw();
-  off = onInstallChange(draw);
-  modal(body);
+/** A club made of the first six recruits, for scenes that need a team before a season exists. */
+export function demoSheet(): TeamSheet {
+  const players = RECRUITS.filter((_, i) => i % 2 === 0).map((r) => ({ id: r.id, name: hero(r.id).name, stats: r.stats }));
+  return { name: TEAM_NAME, short: TEAM_SHORT, color: TEAM_COLOR, players, lineup: bestLineup(players), specials: [], runBias: 0.5, smart: 0.5 };
 }
 
-let installOffered = false;
-/** Once per visit, on phones and tablets that are still inside the browser: offer the app right at the start. */
-function offerInstallOnce(): void {
-  if (installOffered) return;
-  installOffered = true;
-  if (installWay() === 'none' || !window.matchMedia('(pointer: coarse)').matches) return;
-  installModal();
-}
-
-export function titleScreen(): HTMLElement {
+export function titleScreen(): [HTMLElement, () => void] {
   const s = save();
+  playBgm('club');
+  const canvas = h('canvas.stadium');
+  const stadium = new Stadium(canvas, [demoSheet(), opponentSheet(3)]);
+  stadium.setMotion(s.prefs.motion);
+  stadium.attract();
+
   const start = (): void => {
     s.season = newSeason(newSeed());
     storeMatch(null);
@@ -68,23 +41,52 @@ export function titleScreen(): HTMLElement {
       start();
       return;
     }
-    modal(h('div.confirm',
-      h('h2', '最初からはじめますか？'),
+    modal(h('div',
       h('p', 'いまのシーズンの記録は消えます。'),
-      h('div.row', button('やめる', closeModal, 'ghost'), button('最初からはじめる', start, 'primary'))));
+      h('div.modal-actions', button('やめる', closeModal, { cls: 'alt', sound: 'back' }), button('最初からはじめる', () => {
+        closeModal();
+        start();
+      }))), { title: '最初からはじめますか？' });
   };
-  setTimeout(offerInstallOnce, 600);
-  const going = s.season && s.season.phase !== 'done';
-  return h('div.screen.title',
-    h('div.title-top', installWay() === 'none' ? null : button('アプリとして入れる', installModal, 'mini primary'), muteButton(), button('あそびかた', helpModal, 'ghost mini')),
+  const going = !!s.season && s.season.phase !== 'done';
+  const lead = h('p.title-sub');
+  const menu = [
+    going ? button('つづきから', route, { cls: 'big go' }) : null,
+    button(going ? '最初から' : 'はじめる', fresh, { cls: going ? 'big alt' : 'big go' }),
+    button('あそびかた', helpModal, { cls: 'alt' }),
+    button('設定', settingsModal, { cls: 'alt' }),
+  ].filter((b): b is HTMLButtonElement => !!b);
+  // the way to full-screen play: shown while the game still runs inside the browser
+  const app = button('アプリとして入れる', installModal, { cls: 'cyan' });
+  const syncApp = (): void => {
+    app.hidden = installWay() === 'none';
+  };
+  syncApp();
+  const offInstall = onInstallChange(syncApp);
+  menu.push(app);
+  menu.forEach((b, i) => b.style.setProperty('--i', String(i)));
+
+  const root = h('div.screen.title',
+    canvas,
+    h('div.title-shade', { 'aria-hidden': 'true' }),
     h('div.title-main',
-      h('p.title-lead', '部員7人。ぜんいん一芸もち。'),
-      h('h1', 'My Crypto', h('br'), 'Football'),
-      h('p.title-sub', '弱小アメフト部の監督になって、作戦カードで地区大会の頂点へ'),
-      h('div.title-actions',
-        going ? button('つづきから', route, 'primary big') : null,
-        button(going ? '最初から' : 'はじめる', fresh, going ? 'big' : 'primary big')),
-      s.seasons ? h('p.title-record', `これまで ${s.seasons} シーズン、優勝 ${s.titles} 回`) : null),
-    h('div.title-turf', RECRUITS.map((r, i) => sprite(r.id, `hop hop${i % 4}`))),
-    h('p.title-note', 'My Crypto Heroes の非公式ファンゲームです。'));
+      h('span.label.dark.title-tag', '部員7人。ぜんいん一芸もち。'),
+      h('h1', h('span.t1', kinetic('My Crypto')), h('span.t2', kinetic('FOOTBALL'))),
+      lead,
+      h('nav.title-menu', menu)),
+    ticker([
+      'My Crypto Heroes の非公式ファンゲームです',
+      s.seasons ? `これまで ${s.seasons} シーズン、優勝 ${s.titles} 回` : '弱小アメフト部の監督になって、地区大会の頂点へ',
+      '作戦カードをえらぶだけ。アメフトを知らなくても遊べます', 'スマホは横向きで',
+    ], 'KICK OFF'));
+  root.addEventListener('shown', () => {
+    sfx.whistle('long');
+    typewriter(lead, '弱小アメフト部の監督になって、作戦カードで地区大会の頂点へ。', { cps: 30, onTick: () => sfx.typeTick() });
+    // phones still inside the browser are shown how to get the full screen, first thing
+    setTimeout(offerInstallOnce, 1700);
+  }, { once: true });
+  return [root, () => {
+    offInstall();
+    stadium.destroy();
+  }];
 }

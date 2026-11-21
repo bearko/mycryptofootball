@@ -1,30 +1,16 @@
 // A stand-in for a sensible player, used to check the balance of a season.
 
 import { Rng } from '../src/core/rng';
+import { recruit, talentOf } from '../src/game/heroes';
+import { isStarter } from '../src/game/lineup';
 import { simulate, type MatchState } from '../src/game/match';
-import { DEF_POS, OFF_POS, ROLE_WEIGHTS, roleOf, type Stat } from '../src/game/model';
+import { STATS, type Stat } from '../src/game/model';
 import { opponentSheet } from '../src/game/teams';
 import {
-  GROUPS, PRACTICE, ROSTER_SIZE, SOLO_KEYS, SOLO_PER_WEEK, answerEvent, clubSheet, finishMatch, gainOf, groupMembers, learned,
-  newSeason, plan, signRecruits, train, type Member, type PracticeCard, type PracticeKey, type Season, type TrainingChoice,
+  ROSTER_SIZE, STAT_COST, TRUST_LEARN, answerEvent, cardInfo, clubSheet, costOf, finishMatch, needOf, newSeason, plan, policyOpen,
+  setFocus, signRecruits, train,
+  type PracticeCard, type Season, type Xp,
 } from '../src/game/season';
-import { talentOf, recruit } from '../src/game/heroes';
-
-/** How much one more point of each ability is worth to this member, given where they play. */
-function need(s: Season, m: Member): Partial<Record<Stat, number>> {
-  const out: Partial<Record<Stat, number>> = {};
-  const l = s.lineup!;
-  for (const p of OFF_POS) if (l.off[p] === m.id) for (const [k, w] of Object.entries(ROLE_WEIGHTS[roleOf(p)])) out[k as Stat] = (out[k as Stat] ?? 0) + w;
-  for (const p of DEF_POS) if (l.def[p] === m.id) for (const [k, w] of Object.entries(ROLE_WEIGHTS[roleOf(p)])) out[k as Stat] = (out[k as Stat] ?? 0) + w;
-  return out;
-}
-
-function value(s: Season, m: Member, card: PracticeCard): number {
-  const p = PRACTICE[card.key];
-  const n = need(s, m);
-  if (!p.main) return 0.6 + 0.2 * p.trust;
-  return gainOf(m, card) * (n[p.main] ?? 0) + (p.sub ? n[p.sub] ?? 0 : 0) + 0.2 * p.trust;
-}
 
 export type Style = 'sensible' | 'careless';
 
@@ -44,32 +30,38 @@ function pickRecruits(s: Season, rng: Rng, style: Style): number[] {
   return picked.slice(0, ROSTER_SIZE);
 }
 
-function chooseTraining(s: Season, rng: Rng, style: Style): TrainingChoice {
-  const groups = {} as TrainingChoice['groups'];
-  for (const g of GROUPS) {
-    const cards = s.deal![g];
-    if (style === 'careless') groups[g] = rng.int(0, cards.length - 1);
-    else {
-      let best = 0;
-      let bestV = -1;
-      cards.forEach((c, i) => {
-        const v = groupMembers(s, g).reduce((sum, m) => sum + value(s, m, c), 0);
-        if (v > bestV) {
-          bestV = v;
-          best = i;
-        }
-      });
-      groups[g] = best;
+/** How much a practice card is worth to the club today. */
+function value(s: Season, card: PracticeCard): number {
+  const info = cardInfo(s, card);
+  let v = 0;
+  for (const m of s.members) {
+    const weight = isStarter(s.lineup!, m.id) ? 1 : 0.4;
+    const mine = info.hero === m.id;
+    if (card.kind !== 'solo' || mine) {
+      for (const [c, amount] of Object.entries(info.xp)) v += weight * (amount as number) * (c in STAT_COST[m.focus] ? 1 : 0.45);
     }
+    const trust = info.trust + (mine ? info.heroTrust : 0);
+    v += weight * trust * (m.trust < TRUST_LEARN ? 1.5 : 0.3);
   }
-  const solo: Record<number, PracticeKey> = {};
-  if (style === 'sensible') {
-    const want = s.members.filter((m) => !learned(m)).sort((a, b) => b.trust - a.trust).slice(0, SOLO_PER_WEEK);
-    for (const m of want) {
-      solo[m.id] = [...SOLO_KEYS].sort((a, b) => value(s, m, { key: b, star: 2 }) - value(s, m, { key: a, star: 2 }))[0]!;
+  return v;
+}
+
+/** Chooses each hero's policy: the ability that pays best for where they play, per point of experience. */
+function setPolicy(s: Season): void {
+  for (const m of s.members) {
+    const need = needOf(s.lineup, m);
+    let best: Stat = m.focus;
+    let bestV = -1;
+    for (const k of STATS) {
+      const cost = Object.values(costOf(m, k)).reduce((a, b) => a + (b as number), 0);
+      const v = (need[k] ?? 0) / cost;
+      if (v > bestV) {
+        bestV = v;
+        best = k;
+      }
     }
+    setFocus(s, m.id, best);
   }
-  return { groups, solo };
 }
 
 export interface SeasonRun {
@@ -84,12 +76,24 @@ export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
   signRecruits(s, pickRecruits(s, rng, style));
   const matches: MatchState[] = [];
   let guard = 0;
-  while (s.phase === 'club' && guard < 40) {
+  while (s.phase === 'club' && guard < 80) {
     guard += 1;
     const p = plan(s);
     if (p.t === 'train') {
+      if (style === 'sensible' && policyOpen(s)) setPolicy(s);
       if (s.event) answerEvent(s, style === 'careless' ? rng.int(0, 1) : 0);
-      train(s, chooseTraining(s, rng, style));
+      let pick = rng.int(0, s.hand.length - 1);
+      if (style === 'sensible') {
+        let best = -1;
+        s.hand.forEach((c, i) => {
+          const v = value(s, c);
+          if (v > best) {
+            best = v;
+            pick = i;
+          }
+        });
+      }
+      train(s, pick);
     } else {
       const st = simulate(clubSheet(s), opponentSheet(p.opp), rng.int(1, 2 ** 31 - 1));
       matches.push(st);
@@ -98,3 +102,5 @@ export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
   }
   return { season: s, matches };
 }
+
+export type { Xp };

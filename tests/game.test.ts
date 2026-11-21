@@ -3,14 +3,15 @@ import { KIND, MATCH, OFF_TYPES, DEF_TYPES, READ_POTENCY } from '../src/game/car
 import { RECRUITS, hero, specialOf, talentOf } from '../src/game/heroes';
 import { bestLineup, isStarter, place, starters, validLineup } from '../src/game/lineup';
 import {
-  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, potency, resolvePlay, simulate, specialBlock, specialPick,
+  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, START, createMatch, halftimeTalk, potency, resolvePlay, simulate, specialBlock, specialPick,
   usePeek, usableSpecials, type MatchState, type Pick,
 } from '../src/game/match';
 import { DEF_POS, OFF_POS, STATS, fit, roleOf } from '../src/game/model';
 import { OPPONENTS, opponentSheet } from '../src/game/teams';
 import {
-  CANDIDATES, EVENTS, ROSTER_SIZE, SCHEDULE, TRUST_LEARN, answerEvent, clubSheet, finishMatch, learned, newSeason, plan,
-  signRecruits, train, type Season,
+  CANDIDATES, EVENTS, HAND_SIZE, PRACTICE_KEYS, ROSTER_SIZE, SCHEDULE, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
+  cardInfo, clubSheet, costOf, dateText, finishMatch, learned, newSeason, plan, policyOpen, presetFocus, previewTrain, setFocus,
+  signRecruits, train, type PracticeCard, type Season,
 } from '../src/game/season';
 import { runSeason } from './bot';
 
@@ -19,7 +20,13 @@ const club = (seed = 11): Season => {
   signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
   return s;
 };
-const groups0 = { backs: 0, recv: 0, line: 0 };
+/** Puts one known card in the hand and plays it. */
+const play = (s: Season, card: PracticeCard): ReturnType<typeof train> => {
+  s.event = null;
+  s.hand[0] = card;
+  return train(s, 0);
+};
+const basic = (key: (typeof PRACTICE_KEYS)[number], star = 2): PracticeCard => ({ uid: 999, kind: 'basic', key, star });
 
 describe('heroes', () => {
   it('each recruit is outstanding at exactly one thing', () => {
@@ -88,7 +95,7 @@ describe('line-up', () => {
 });
 
 describe('match', () => {
-  const sheets = () => [clubSheet(Object.assign(club(), { week: 2 })), opponentSheet(0)] as const;
+  const sheets = () => [clubSheet(Object.assign(club(), { day: 6 })), opponentSheet(0)] as const;
 
   it('is the same game for the same seed', () => {
     const [a, b] = sheets();
@@ -139,7 +146,7 @@ describe('match', () => {
     const s = club();
     const r = RECRUITS.find((x) => x.kind === kind)!;
     // make sure the owner is on the team and has learned the play
-    if (!s.members.some((m) => m.id === r.id)) s.members[6] = { id: r.id, stats: { ...r.stats }, trust: 0, captain: false };
+    if (!s.members.some((m) => m.id === r.id)) s.members[6] = { ...s.members[6]!, id: r.id, stats: { ...r.stats }, trust: 0, captain: false };
     s.members.find((m) => m.id === r.id)!.trust = TRUST_LEARN;
     s.lineup = bestLineup(s.members.map((m) => ({ id: m.id, name: '', stats: m.stats })));
     // and lines up where the play needs them
@@ -147,7 +154,7 @@ describe('match', () => {
     const positions = info.side === 'off' ? OFF_POS : DEF_POS;
     const spot = positions.find((p) => !info.roles || info.roles.includes(roleOf(p)))!;
     s.lineup = place(s.lineup, info.side, spot, r.id);
-    s.week = 2;
+    s.day = 6;
     const st = createMatch(clubSheet(s), opponentSheet(0), seed);
     const sp = st.teams[0].specials.find((x) => x.kind === kind)!;
     return { st, pick: specialPick(sp) };
@@ -197,6 +204,19 @@ describe('match', () => {
     expect(total).toBeLessThan(40);
   });
 
+  it('the half-time talk changes the second half', () => {
+    const [a, b] = sheets();
+    const st = createMatch(a, b, 4);
+    st.mom[0] = 4;
+    halftimeTalk(st, 0, 'fire');
+    expect(st.mom[0]).toBe(MOM_MAX);
+    st.read[0] = { x: 2, y: 0 };
+    halftimeTalk(st, 0, 'rethink');
+    expect(st.read[0]).toEqual({ x: 1, y: 0 });
+    halftimeTalk(st, 0, 'study');
+    expect(st.insight).toEqual([0.25, 0]);
+  });
+
   it('looking first spends momentum and works less and less', () => {
     let ok = 0;
     for (let seed = 1; seed <= 200; seed += 1) {
@@ -222,41 +242,115 @@ describe('season', () => {
     }
   });
 
+  it('the calendar runs four weeks: practice Monday to Saturday, a match every Sunday', () => {
+    expect(SCHEDULE).toHaveLength(28);
+    expect(dateText(SCHEDULE[0]!)).toBe('4月5日（月）');
+    expect(dateText(SCHEDULE[27]!)).toBe('5月2日（日）');
+    expect(SCHEDULE.filter((d) => d.t === 'match').map((d) => d.n)).toEqual([6, 13, 20, 27]);
+    expect(SCHEDULE.filter((d) => d.t === 'match').map((d) => d.cup)).toEqual([false, true, true, true]);
+  });
+
   it('the first hero signed is captain and already knows the special play', () => {
     const s = club();
     expect(s.members[0]!.captain).toBe(true);
     expect(s.members.filter(learned)).toHaveLength(1);
     expect(clubSheet(s).specials).toHaveLength(1);
+    expect(s.hand).toHaveLength(HAND_SIZE);
   });
 
-  it('practice raises abilities, the talent fastest, and one-on-one builds trust', () => {
+  it('everyone starts out working on their talent, and the policy is open at the start only', () => {
     const s = club();
-    const before = JSON.parse(JSON.stringify(s.members)) as Season['members'];
-    const soloId = s.members[1]!.id;
-    const changes = train(s, { groups: groups0, solo: { [soloId]: 'dash' } });
-    expect(s.week).toBe(1);
-    for (const m of s.members) {
-      const was = before.find((x) => x.id === m.id)!;
-      expect(STATS.reduce((sum, k) => sum + m.stats[k] - was.stats[k], 0)).toBeGreaterThan(0);
-      expect(m.trust).toBeGreaterThanOrEqual(was.trust);
+    for (const m of s.members) expect(m.focus).toBe(talentOf(m.stats).best);
+    expect(policyOpen(s)).toBe(true);
+    const id = s.members[1]!.id;
+    setFocus(s, id, 'iq');
+    expect(s.members[1]!.focus).toBe('iq');
+    applyPreset(s, 'defense');
+    for (const m of s.members) expect(m.focus).toBe(presetFocus(s, m, 'defense'));
+    play(s, basic('dash'));
+    expect(policyOpen(s)).toBe(false);
+    expect(() => setFocus(s, id, 'spd')).toThrow();
+    expect(() => applyPreset(s, 'talent')).toThrow();
+  });
+
+  it('a practice card gives experience, and each hero turns it into the policy ability first', () => {
+    const s = club();
+    const runner = s.members.find((m) => m.focus === 'spd')!;
+    const before = runner.stats.spd;
+    for (let i = 0; i < 4; i += 1) play(s, basic('dash', 3));
+    expect(s.day).toBe(4);
+    expect(runner.stats.spd).toBeGreaterThan(before + 3);
+    // a hero whose policy has no use for speed still gets something out of the running
+    const wall = s.members.find((m) => m.focus === 'blk');
+    if (wall) expect(wall.stats.spd).toBeGreaterThan(RECRUITS.find((r) => r.id === wall.id)!.stats.spd);
+  });
+
+  it('the talent is cheap to raise, the weak spot dear, and the heights steep', () => {
+    const s = club();
+    const m = s.members[0]!;
+    const { best, worst } = talentOf(m.stats);
+    const sum = (k: Parameters<typeof costOf>[1]): number => Object.values(costOf(m, k)).reduce((a, b) => a + (b as number), 0);
+    const base = (k: Parameters<typeof costOf>[1]): number => Object.values(STAT_COST[k]).reduce((a, b) => a + (b as number), 0);
+    expect(m.focus).toBe(best);
+    expect(sum(best)).toBeLessThan(base(best));
+    expect(sum(worst)).toBeGreaterThan(base(worst) * 1.4);
+    const low = sum(best);
+    m.stats[best] = 85;
+    expect(sum(best)).toBeGreaterThan(low);
+  });
+
+  it('working with one hero alone raises that hero and their trust, nobody else', () => {
+    const s = club();
+    const m = s.members[2]!;
+    const others = s.members.filter((x) => x !== m).map((x) => ({ ...x.stats }));
+    const trust = m.trust;
+    const focus = m.stats[m.focus];
+    const report = play(s, { uid: 999, kind: 'solo', hero: m.id });
+    expect(m.trust).toBeGreaterThanOrEqual(trust + 9);
+    expect(m.stats[m.focus]).toBeGreaterThan(focus);
+    expect(report.info.hero).toBe(m.id);
+    s.members.filter((x) => x !== m).forEach((x, i) => expect(x.stats).toEqual(others[i]));
+  });
+
+  it('a trusted hero\'s special drill is the richest card for that ability', () => {
+    const s = club();
+    const m = s.members[0]!;
+    const talent = talentOf(m.stats).best;
+    const drill = cardInfo(s, { uid: 1, kind: 'special', hero: m.id });
+    const total = (xp: Partial<Record<string, number>>): number => Object.values(xp).reduce((a, b) => (a ?? 0) + (b ?? 0), 0) ?? 0;
+    for (const key of PRACTICE_KEYS) expect(total(drill.xp)).toBeGreaterThan(total(cardInfo(s, basic(key, 3)).xp));
+    expect(Object.keys(drill.xp).sort()).toEqual(Object.keys(STAT_COST[talent]).sort());
+  });
+
+  it('special drills only turn up for heroes the coach has earned the trust of', () => {
+    let seen = 0;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const s = club(seed);
+      // on the first day only the captain trusts the coach enough
+      for (const c of s.hand) {
+        if (c.kind !== 'special') continue;
+        seen += 1;
+        expect(c.hero).toBe(s.members[0]!.id);
+        expect(s.members[0]!.trust).toBeGreaterThanOrEqual(TRUST_DRILL);
+      }
     }
-    const solo = changes.find((c) => c.id === soloId)!;
-    const other = changes.find((c) => c.id === s.members[2]!.id)!;
-    expect(solo.trust).toBeGreaterThan(other.trust + 5);
-    expect(solo.stats.spd).toBeGreaterThan(0);
+    expect(seen).toBeGreaterThan(3);
   });
 
-  it('refuses more one-on-one sessions than the week allows', () => {
+  it('previewing a card changes nothing', () => {
     const s = club();
-    const solo = Object.fromEntries(s.members.slice(0, 3).map((m) => [m.id, 'dash' as const]));
-    expect(() => train(s, { groups: groups0, solo })).toThrow();
+    const copy = JSON.stringify(s);
+    const preview = previewTrain(s, 1);
+    expect(JSON.stringify(s)).toBe(copy);
+    expect(train(s, 1).changes).toEqual(preview);
   });
 
-  it('every event can be answered either way', () => {
+  it('every event can be answered either way, and has to be answered before practice', () => {
     for (const e of EVENTS) {
       for (const choice of [0, 1]) {
         const s = club();
         s.event = { key: e.key, a: s.members[0]!.id, b: s.members[1]!.id };
+        expect(() => train(s, 0)).toThrow();
         const changes = answerEvent(s, choice);
         expect(changes.length).toBeGreaterThan(0);
         expect(s.event).toBeNull();
@@ -265,22 +359,29 @@ describe('season', () => {
     }
   });
 
-  it('a lost practice match does not end the season; a lost cup match does', () => {
+  it('a lost practice match does not end the season and reopens the policy; a lost cup match ends it', () => {
     const lose = (s: Season) => {
       const p = plan(s);
-      if (p.t !== 'match') throw new Error('not a match week');
+      if (p.t !== 'match') throw new Error('not a match day');
       const st = createMatch(clubSheet(s), opponentSheet(p.opp), 1);
       st.score = [0, 7];
       st.over = true;
       return finishMatch(s, st);
     };
+    const toMatch = (s: Season): void => {
+      while (plan(s).t === 'train') {
+        if (s.event) answerEvent(s, 0);
+        train(s, 0);
+      }
+    };
     const s = club();
-    train(s, { groups: groups0, solo: {} });
-    train(s, { groups: groups0, solo: {} });
+    toMatch(s);
+    expect(s.day).toBe(6);
     expect(lose(s).ended).toBe(false);
     expect(s.phase).toBe('club');
-    train(s, { groups: groups0, solo: {} });
-    train(s, { groups: groups0, solo: {} });
+    expect(policyOpen(s)).toBe(true);
+    toMatch(s);
+    expect(policyOpen(s)).toBe(false);
     expect(lose(s).ended).toBe(true);
     expect(s.phase).toBe('done');
     expect(s.champion).toBe(false);
@@ -288,9 +389,9 @@ describe('season', () => {
 
   it('a season survives being saved as JSON', () => {
     const s = club(77);
-    train(s, { groups: groups0, solo: {} });
+    train(s, 0);
     const copy = JSON.parse(JSON.stringify(s)) as Season;
-    expect(train(copy, { groups: groups0, solo: {} })).toEqual(train(s, { groups: groups0, solo: {} }));
+    expect(train(copy, 2)).toEqual(train(s, 2));
     expect(copy).toEqual(s);
   });
 
@@ -306,10 +407,10 @@ describe('season', () => {
 
   it('the strong schools have studied the plays the club leans on', () => {
     const s = club();
-    s.week = SCHEDULE.length - 1;
+    s.day = SCHEDULE.length - 1;
     s.usage = { a: 5, b: 4, c: 1 };
     expect(Object.keys(clubSheet(s).scouted ?? {})).toEqual(['a', 'b']);
-    s.week = 5;
+    s.day = 13;
     expect(Object.keys(clubSheet(s).scouted ?? {})).toEqual([]);
   });
 });
