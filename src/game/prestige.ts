@@ -15,16 +15,18 @@ export interface Tier {
   level: number;
   /** what a hero who joins a club of this standing has on top of a beginner's abilities */
   join: number;
+  /** how many a side its tournament is played: six in the district, eleven from the prefecture up */
+  size: 6 | 11;
 }
 
 export const TIERS: readonly Tier[] = [
-  { name: '素人', roster: 7, hand: 5, cup: '地区大会', level: 0, join: 0 },
-  { name: '同好会', roster: 9, hand: 5, cup: '地区大会', level: 7, join: 4 },
-  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 14, join: 8 },
-  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 21, join: 12 },
-  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 28, join: 17 },
-  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 35, join: 21 },
-  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 42, join: 25 },
+  { name: '素人', roster: 7, hand: 5, cup: '地区大会', level: 0, join: 0, size: 6 },
+  { name: '同好会', roster: 9, hand: 5, cup: '地区大会', level: 7, join: 4, size: 6 },
+  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 11, join: 8, size: 11 },
+  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 17, join: 12, size: 11 },
+  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 23, join: 17, size: 11 },
+  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 30, join: 21, size: 11 },
+  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 36, join: 25, size: 11 },
 ];
 export const TOP_TIER = TIERS.length - 1;
 export const FAME_MAX = 100;

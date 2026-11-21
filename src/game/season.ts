@@ -17,7 +17,7 @@ import { RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { applyResult, tierOf, type FameChange } from './prestige';
-import { DEF_POS, OFF_POS, ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, rankIndex, roleOf, type Lineup, type Player, type Stat, type Stats } from './model';
+import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
 export const CANDIDATES = 9;
@@ -148,8 +148,8 @@ export function needOf(l: Lineup | null, m: Member): Partial<Stats> {
     for (const [k, w] of Object.entries(ROLE_WEIGHTS[role])) out[k as Stat] = (out[k as Stat] ?? 0) + (w as number);
   };
   if (l) {
-    for (const p of OFF_POS) if (l.off[p] === m.id) add(roleOf(p));
-    for (const p of DEF_POS) if (l.def[p] === m.id) add(roleOf(p));
+    for (const p of offPos(l)) if (l.off[p] === m.id) add(roleOf(p));
+    for (const p of defPos(l)) if (l.def[p] === m.id) add(roleOf(p));
   }
   if (!Object.keys(out).length) out[talentOf(m.stats).best] = 1;
   return out;
@@ -353,6 +353,19 @@ export function joinCount(s: Season): number {
 }
 
 /**
+ * How many a side the club plays this year: the tournament of the standing it began the year with decides
+ * (six in the district, eleven from the prefecture up). A club too small for eleven plays six.
+ */
+export const clubSize = (s: Season): Size => (tierOf(s.league).size === 11 && s.members.length >= 11 ? 11 : 6);
+
+/** Makes sure the club has a line-up it can play with this year (the best one, when the old one no longer fits). */
+export function fitLineup(s: Season): void {
+  const size = clubSize(s);
+  if (s.members.length < size) return;
+  if (!s.lineup || !validLineup(s.lineup, s.members.map((m) => m.id), size)) s.lineup = bestLineup(s.members.map(asPlayer), size);
+}
+
+/**
  * Signs the chosen heroes. When the club is founded the first one picked becomes captain and already trusts the coach.
  * In later years the newcomers join the heroes who are there (and start on the bench).
  */
@@ -378,7 +391,8 @@ export function signRecruits(s: Season, ids: number[]): void {
   });
   s.members = [...s.members, ...joined];
   s.candidates = [];
-  if (founding || !s.lineup || !validLineup(s.lineup, s.members.map((m) => m.id))) s.lineup = bestLineup(s.members.map(asPlayer));
+  if (founding) s.lineup = null;
+  fitLineup(s);
   s.phase = 'club';
   s.day = 0;
   s.meeting = true;
@@ -420,6 +434,7 @@ export function nextYear(s: Season, seed: number): void {
   s.candidates = [];
   s.phase = 'club';
   s.meeting = true;
+  fitLineup(s);
   markMonth(s);
   keep(s, rng);
   startDay(s);
@@ -510,11 +525,11 @@ export const PRESET_LABEL: Record<Preset, { name: string; text: string }> = {
 export function presetFocus(s: Season, m: Member, preset: Preset): Stat {
   const talent = talentOf(recruit(m.id).stats).best;
   if (preset === 'talent' || !s.lineup) return talent;
-  const positions = preset === 'offense' ? OFF_POS : DEF_POS;
+  const positions: readonly string[] = preset === 'offense' ? offPos(s.lineup) : defPos(s.lineup);
   const map: Record<string, number> = preset === 'offense' ? s.lineup.off : s.lineup.def;
   const pos = positions.find((p) => map[p] === m.id);
   if (!pos) return talent;
-  const w = ROLE_WEIGHTS[roleOf(pos)];
+  const w = ROLE_WEIGHTS[roleOf(pos as Parameters<typeof roleOf>[0])];
   return (Object.keys(w) as Stat[]).sort((a, b) => (w[b] ?? 0) - (w[a] ?? 0))[0]!;
 }
 
@@ -773,7 +788,7 @@ export function answerEvent(s: Season, choice: number): Change[] {
 /** The club as the match engine sees it. */
 export function clubSheet(s: Season): TeamSheet {
   const l = s.lineup!;
-  if (!validLineup(l, s.members.map((m) => m.id))) throw new Error('invalid line-up');
+  if (!validLineup(l, s.members.map((m) => m.id), clubSize(s))) throw new Error('invalid line-up');
   const p = plan(s);
   const scouted: Record<string, number> = {};
   if (p.t === 'match' && p.opp >= 2) {
@@ -846,6 +861,8 @@ export function mend(s: Season): Season {
   if (typeof s.tier !== 'number') s.tier = 0;
   if (typeof s.fame !== 'number') s.fame = 0;
   if (typeof s.league !== 'number') s.league = s.tier;
+  // eleven a side came later: a club that plays in the prefecture or above gets a line-up of eleven
+  if (s.phase !== 'recruit') fitLineup(s);
   // kickers came later still: the club's best foot gets the job
   if (s.lineup && s.lineup.k === undefined) s.lineup.k = bestKicker(s.members.map(asPlayer), s.lineup);
   // a season begun before the month's review existed: it counts from today

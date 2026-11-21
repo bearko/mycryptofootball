@@ -126,7 +126,7 @@ export const BENCH = { x: 15.5, z: 26.8 };
 export const CENTER = { x: 20, z: 12 };
 
 /** A hero's positions in the line-up (null: not on that unit). */
-export type Unit = 'QB' | 'RB' | 'WR' | 'OL' | 'DL' | 'LB' | 'CB' | 'S';
+export type Unit = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DL' | 'LB' | 'CB' | 'S';
 export interface Post { off: Unit | null; def: Unit | null }
 /** Linemen practise with linemen: the offense's position decides, the defense's only for a hero who plays no offense. */
 export const isLine = (p: Post | null | undefined): boolean => !!p && (p.off ? p.off === 'OL' : p.def === 'DL');
@@ -168,16 +168,22 @@ export function stationsFor(ids: number[], posts?: Record<number, Post>): Statio
   line.forEach((id, k) => {
     if (k < 2) out.set(id, { x: SLED.x - 2.2, z: SLED.z + (line.length > 1 ? (k ? 0.75 : -0.75) : 0), job: 'sled', face: 1 });
     else {
+      // more linemen than dummies (eleven a side): the rest wait their turn a step behind
       const i = (k - 2) % DUMMIES.length;
-      out.set(id, { x: DUMMIES[i]![0] - 1.7, z: DUMMIES[i]![1], job: 'bag', face: 1, i });
+      const row = Math.floor((k - 2) / DUMMIES.length);
+      out.set(id, { x: DUMMIES[i]![0] - 1.7 - row * 1.6, z: DUMMIES[i]![1] + row * 1.3, job: 'bag', face: 1, i });
     }
   });
   const rest = ids.filter((id) => !out.has(id));
   const qb = rest.find((id) => posts[id]?.off === 'QB');
   if (qb !== undefined) out.set(qb, { x: 11.5, z: 9, job: 'tossA', face: 1 });
-  const catchers = rest.filter((id) => posts[id]?.off === 'WR');
-  const SPOTS: [number, number][] = [[19.5, 7], [21, 11], [18.2, 4.6]];
-  catchers.forEach((id, k) => out.set(id, { x: SPOTS[k % SPOTS.length]![0], z: SPOTS[k % SPOTS.length]![1], job: qb === undefined && k === 0 ? 'tossA' : 'tossB', face: -1 }));
+  // the tight end catches with the receivers
+  const catchers = rest.filter((id) => posts[id]?.off === 'WR' || posts[id]?.off === 'TE');
+  const SPOTS: [number, number][] = [[19.5, 7], [21, 11], [18.2, 4.6], [23, 7.6], [24.4, 11.4], [21.8, 3.6]];
+  catchers.forEach((id, k) => {
+    const lap = Math.floor(k / SPOTS.length) * 1.4;
+    out.set(id, { x: SPOTS[k % SPOTS.length]![0] + lap, z: SPOTS[k % SPOTS.length]![1] + lap * 0.5, job: qb === undefined && k === 0 ? 'tossA' : 'tossB', face: -1 });
+  });
   const rb = rest.find((id) => posts[id]?.off === 'RB');
   if (rb !== undefined) out.set(rb, { x: 15.5, z: 20.8, job: 'shuttle', face: 1 });
   // the substitute and anybody who only plays defense: footwork on their own
@@ -185,7 +191,9 @@ export function stationsFor(ids: number[], posts?: Record<number, Post>): Statio
   let n = 0;
   for (const id of ids) {
     if (out.has(id)) continue;
-    out.set(id, SPARE[n % SPARE.length]!);
+    const sp = SPARE[n % SPARE.length]!;
+    const lap = Math.floor(n / SPARE.length);
+    out.set(id, lap ? { ...sp, x: sp.x + lap * 1.7, z: sp.z + lap * 1.5 } : sp);
     n += 1;
   }
   return ids.map((id) => out.get(id)!);
@@ -1383,6 +1391,8 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
     let ref = pool.length > 6 ? pool.shift() : undefined;
     pool.sort((p, r) => p.x - r.x);
     let [rb, qb, ol, dl, lb, cb]: (DrillActor | undefined)[] = pool;
+    /** everybody there is no part for in a game of three against three: they watch from the side */
+    let watch: DrillActor[] = pool.slice(6);
     if (grouped) {
       // everybody lines up where they really play: the offense against a scout defense made of team-mates
       const left = [...pool, ...(ref ? [ref] : [])];
@@ -1403,6 +1413,7 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
       lb ??= left.shift();
       cb ??= left.shift();
       ref = left.shift();
+      watch = left;
     }
     const spot = (a: DrillActor | undefined, x: number, z: number, f: 1 | -1): void => {
       if (!a) return;
@@ -1422,6 +1433,11 @@ export function buildDrill(kind: DrillKind, actors: DrillActor[], lead: number |
       face.set(ref.id, 1);
       cues.push({ t: 0.4, c: 'jump', who: ref.id, h: 0.4, dur: 0.26 }, { t: 1.46, c: 'payoff', who: ref.id });
     }
+    watch.forEach((w, i) => {
+      go(w.id, 0.34 + i * 0.015, L - 4.4 - i * 1.5, 21.4 + (i % 2) * 1.2);
+      face.set(w.id, 1);
+      cues.push({ t: 1.38 + (i % 3) * 0.05, c: 'jump', who: w.id, h: 0.35, dur: 0.24 }, { t: 1.5 + i * 0.02, c: 'payoff', who: w.id });
+    });
     cues.push({ t: 0.4, c: 'whistle', who: ref?.id });
     if (qb) cues.push({ t: 0.08, c: 'carry', who: qb.id, on: true });
     if (ol && dl) {

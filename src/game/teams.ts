@@ -1,11 +1,12 @@
-// The schools the club meets. Their line-ups never change; their ability rises with each round,
+// The schools the club meets. Their line-ups never change (six a side in the district, eleven from the prefecture up);
+// their ability rises with each round,
 // and from the first tournament game on, each has its own heroes with special plays.
 
 import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
 import { bestKicker } from './lineup';
 import type { TeamSheet } from './match';
-import { ROLE_WEIGHTS, STATS, STAT_MAX, roleOf, type DefPos, type Lineup, type OffPos, type Stats } from './model';
+import { ROLE_WEIGHTS, STATS, STAT_MAX, roleOf, type DefPos, type Lineup, type OffPos, type Size, type Stats } from './model';
 import { tierOf } from './prestige';
 
 interface OppPlayer {
@@ -28,6 +29,8 @@ export interface OppTeam {
   runBias: number;
   smart: number;
   players: OppPlayer[];
+  /** the five who join them when the game is eleven a side */
+  more: OppPlayer[];
 }
 
 export const OPPONENTS: readonly OppTeam[] = [
@@ -42,6 +45,13 @@ export const OPPONENTS: readonly OppTeam[] = [
       { id: 2021, off: 'OL1', def: 'DL1' },
       { id: 2042, off: 'OL2', def: 'DL2' },
     ],
+    more: [
+      { id: 2009, off: 'OL3', def: 'DL3' },
+      { id: 2012, off: 'OL4', def: 'DL4' },
+      { id: 2020, off: 'OL5', def: 'LB2' },
+      { id: 2037, off: 'TE', def: 'LB3' },
+      { id: 2038, off: 'WR3', def: 'S2' },
+    ],
   },
   {
     name: '白虎工業', short: '白虎工', color: '#e6edf7', style: 'とにかく走ってくる。壁も厚い',
@@ -53,6 +63,13 @@ export const OPPONENTS: readonly OppTeam[] = [
       { id: 3009, off: 'QB', def: 'S' },
       { id: 2043, off: 'WR1', def: 'CB1' },
       { id: 2045, off: 'WR2', def: 'CB2' },
+    ],
+    more: [
+      { id: 3023, off: 'OL3', def: 'DL3' },
+      { id: 3025, off: 'OL4', def: 'DL4' },
+      { id: 3044, off: 'OL5', def: 'LB2' },
+      { id: 3045, off: 'TE', def: 'LB3' },
+      { id: 3049, off: 'WR3', def: 'S2' },
     ],
   },
   {
@@ -66,6 +83,13 @@ export const OPPONENTS: readonly OppTeam[] = [
       { id: 3011, off: 'OL2', def: 'DL2' },
       { id: 5009, off: 'WR2', def: 'CB2' },
     ],
+    more: [
+      { id: 4010, off: 'OL3', def: 'DL3' },
+      { id: 4018, off: 'OL4', def: 'DL4' },
+      { id: 4024, off: 'OL5', def: 'LB2' },
+      { id: 4040, off: 'TE', def: 'LB3' },
+      { id: 4048, off: 'WR3', def: 'S2' },
+    ],
   },
   {
     name: '青龍大付属', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
@@ -77,6 +101,13 @@ export const OPPONENTS: readonly OppTeam[] = [
       { id: 4025, off: 'OL1', def: 'LB', ace: 'roar' },
       { id: 4027, off: 'WR2', def: 'DL1', ace: 'rush' },
       { id: 4035, off: 'OL2', def: 'DL2' },
+    ],
+    more: [
+      { id: 5003, off: 'OL3', def: 'DL3' },
+      { id: 5006, off: 'OL4', def: 'DL4' },
+      { id: 5017, off: 'OL5', def: 'LB2' },
+      { id: 5025, off: 'TE', def: 'LB3' },
+      { id: 5026, off: 'WR3', def: 'S2' },
     ],
   },
 ];
@@ -92,16 +123,17 @@ function oppStats(team: OppTeam, p: OppPlayer, level: number): Stats {
 
 /**
  * A school as the match engine sees it. `league`: the standing of the tournament it is met in (an index into TIERS):
- * the higher, the stronger every one of its players.
+ * the higher, the stronger every one of its players. `size`: how many a side (by default what that tournament plays).
  */
-export function opponentSheet(index: number, league = 0): TeamSheet {
+export function opponentSheet(index: number, league = 0, size: Size = tierOf(league).size): TeamSheet {
   const team = OPPONENTS[index]!;
+  const squad = size === 11 ? [...team.players, ...team.more] : team.players;
   const lineup: Lineup = { off: {} as Lineup['off'], def: {} as Lineup['def'] };
-  for (const p of team.players) {
+  for (const p of squad) {
     lineup.off[p.off] = p.id;
     lineup.def[p.def] = p.id;
   }
-  const players = team.players.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p, tierOf(league).level) }));
+  const players = squad.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(team, p, tierOf(league).level) }));
   // every school has somebody who can kick: its best foot
   lineup.k = bestKicker(players, lineup);
   return {

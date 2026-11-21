@@ -5,6 +5,7 @@ import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero, talentOf } from '../game/heroes';
+import { sizeOf } from '../game/model';
 import { OPPONENTS, opponentSheet } from '../game/teams';
 import { tierOf } from '../game/prestige';
 import { SCHEDULE, TEAM_COLOR, TEAM_NAME, clubSheet, cupOf, learned, nextYear, roundOf, type Season } from '../game/season';
@@ -46,7 +47,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const sheet = champion ? sheetOf(s) : null;
   if (sheet) {
-    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league)]);
+    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league, sizeOf(sheet.lineup))]);
     stadium.setMotion(save().prefs.motion);
     stadium.attract();
     stadium.setExcitement(1);
@@ -73,7 +74,10 @@ export function endScreen(): [HTMLElement, () => void] {
       h('p.end-sub', champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
       h('div.end-standing', h('span', `${s.year}年目をおえて`), tierPlate(s.tier), fameBar(s.fame),
         h('i', s.tier !== s.league ? (s.tier > s.league ? `${tierOf(s.league).name}から昇格！` : `${tierOf(s.league).name}から降格…`) : ''),
-        h('em', room > 0 ? `来年の春、新しい部員を${room}人までむかえられる` : s.tier !== s.league ? `来年は${tier.cup}に出場` : '')),
+        h('em', [
+          room > 0 ? `来年の春、新しい部員を${room}人までむかえられる` : s.tier !== s.league ? `来年は${tier.cup}に出場` : '',
+          tier.size !== tierOf(s.league).size ? `来年の試合は${tier.size}人制` : '',
+        ].filter(Boolean).join('。'))),
       h('ol.end-results', s.results.map((r, i) => {
         const w = SCHEDULE[r.day]!;
         return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i) } },

@@ -1,50 +1,85 @@
-// Who plays where: an offense of six and a defense of six, chosen separately.
+// Who plays where: an offense and a defense (six a side, or eleven), chosen separately.
 // In a small club the same heroes play both ways; a bigger one can field two different units.
 
-import { DEF_POS, OFF_POS, fit, kickFit, roleOf, type DefPos, type Lineup, type OffPos, type Player } from './model';
+import { DEF_POS_OF, OFF_POS_OF, defPos, fit, kickFit, offPos, roleOf, sizeOf, type DefPos, type Lineup, type OffPos, type Player, type Size } from './model';
 
 /**
  * The best way to fill the given positions from these players: every position a different hero, the highest total fit.
- * (Branch and bound: the positions are filled in order, best candidate first, and a branch is dropped as soon as even
- * the best imaginable rest could not beat what has been found.)
+ * (The assignment problem, solved exactly with the Hungarian method: eleven positions from two dozen heroes is far
+ * too many line-ups to try one by one.) Among positions of the same kind, the lower number gets the better hero.
  */
 function bestUnit<P extends OffPos | DefPos>(players: Player[], positions: readonly P[]): { score: number; map: Record<P, number> } {
-  const fits = positions.map((pos) => players.map((p, i) => ({ i, v: fit(p.stats, roleOf(pos)) })).sort((a, b) => b.v - a.v || a.i - b.i));
-  const rest = positions.map((_, k) => fits.slice(k).reduce((v, f) => v + f[0]!.v, 0));
-  let bestScore = -1;
-  let bestPick: number[] = [];
-  const used = new Set<number>();
-  const pick: number[] = [];
-  const go = (k: number, score: number): void => {
-    if (k === positions.length) {
-      if (score > bestScore + 1e-9) {
-        bestScore = score;
-        bestPick = [...pick];
+  const n = positions.length;
+  const m = players.length;
+  const val = positions.map((pos) => players.map((p) => fit(p.stats, roleOf(pos))));
+  // rows are positions (1..n), columns are players (1..m); cost = -fit
+  const u = new Array<number>(n + 1).fill(0);
+  const v = new Array<number>(m + 1).fill(0);
+  const match = new Array<number>(m + 1).fill(0);
+  const way = new Array<number>(m + 1).fill(0);
+  for (let i = 1; i <= n; i += 1) {
+    match[0] = i;
+    let j0 = 0;
+    const minv = new Array<number>(m + 1).fill(Infinity);
+    const used = new Array<boolean>(m + 1).fill(false);
+    do {
+      used[j0] = true;
+      const i0 = match[j0]!;
+      let delta = Infinity;
+      let j1 = 0;
+      for (let j = 1; j <= m; j += 1) {
+        if (used[j]) continue;
+        const cur = -val[i0 - 1]![j - 1]! - u[i0]! - v[j]!;
+        if (cur < minv[j]!) {
+          minv[j] = cur;
+          way[j] = j0;
+        }
+        if (minv[j]! < delta) {
+          delta = minv[j]!;
+          j1 = j;
+        }
       }
-      return;
-    }
-    if (score + rest[k]! <= bestScore + 1e-9) return;
-    for (const f of fits[k]!) {
-      if (used.has(f.i)) continue;
-      used.add(f.i);
-      pick.push(f.i);
-      go(k + 1, score + f.v);
-      pick.pop();
-      used.delete(f.i);
-    }
-  };
-  go(0, 0);
-  const map = {} as Record<P, number>;
+      for (let j = 0; j <= m; j += 1) {
+        if (used[j]) {
+          u[match[j]!]! += delta;
+          v[j]! -= delta;
+        } else minv[j]! -= delta;
+      }
+      j0 = j1;
+    } while (match[j0] !== 0);
+    do {
+      const j1 = way[j0]!;
+      match[j0] = match[j1]!;
+      j0 = j1;
+    } while (j0);
+  }
+  const pick = new Array<number>(n).fill(-1);
+  for (let j = 1; j <= m; j += 1) if (match[j]) pick[match[j]! - 1] = j - 1;
+  // positions of one kind are the same job: hand them out in order of ability, so the answer does not depend on chance
+  const kinds = new Map<string, number[]>();
   positions.forEach((pos, k) => {
-    map[pos] = players[bestPick[k]!]!.id;
+    const r = roleOf(pos);
+    kinds.set(r, [...(kinds.get(r) ?? []), k]);
   });
-  return { score: bestScore, map };
+  for (const ks of kinds.values()) {
+    const who = ks.map((k) => pick[k]!).sort((a, b) => val[ks[0]!]![b]! - val[ks[0]!]![a]! || a - b);
+    ks.forEach((k, i) => {
+      pick[k] = who[i]!;
+    });
+  }
+  const map = {} as Record<P, number>;
+  let score = 0;
+  positions.forEach((pos, k) => {
+    map[pos] = players[pick[k]!]!.id;
+    score += val[k]![pick[k]!]!;
+  });
+  return { score, map };
 }
 
 /** The strongest offense and the strongest defense this club can field (a hero may play in both). */
-export function bestLineup(players: Player[]): Lineup {
-  if (players.length < 6) throw new Error('a team needs six players');
-  const lineup: Lineup = { off: bestUnit(players, OFF_POS).map, def: bestUnit(players, DEF_POS).map };
+export function bestLineup(players: Player[], size: Size = 6): Lineup {
+  if (players.length < size) throw new Error(`a team needs ${size} players`);
+  const lineup: Lineup = { off: bestUnit(players, OFF_POS_OF[size]).map, def: bestUnit(players, DEF_POS_OF[size]).map };
   return { ...lineup, k: bestKicker(players, lineup) };
 }
 
@@ -62,14 +97,14 @@ export function bestKicker(players: Player[], l: Lineup): number | null {
 export const kickerOf = (l: Lineup, roster: number[]): number | null => (l.k != null && roster.includes(l.k) ? l.k : null);
 
 /** Everybody who takes the field: the offense and the defense (a hero who plays both ways is listed once). */
-export const fielded = (l: Lineup): number[] => [...new Set([...OFF_POS.map((p) => l.off?.[p]), ...DEF_POS.map((p) => l.def?.[p])])].filter((id): id is number => id != null);
+export const fielded = (l: Lineup): number[] => [...new Set([...offPos(l).map((p) => l.off?.[p]), ...defPos(l).map((p) => l.def?.[p])])].filter((id): id is number => id != null);
 /** @deprecated the old name of fielded() */
 export const starters = fielded;
 export const isStarter = (l: Lineup, id: number): boolean => fielded(l).includes(id);
 /** The units a hero plays in. */
 export const unitsOf = (l: Lineup, id: number): ('off' | 'def')[] => [
-  ...(OFF_POS.some((p) => l.off[p] === id) ? ['off' as const] : []),
-  ...(DEF_POS.some((p) => l.def[p] === id) ? ['def' as const] : []),
+  ...(offPos(l).some((p) => l.off[p] === id) ? ['off' as const] : []),
+  ...(defPos(l).some((p) => l.def[p] === id) ? ['def' as const] : []),
 ];
 
 /**
@@ -89,10 +124,12 @@ export function place(l: Lineup, unit: 'off' | 'def', pos: OffPos | DefPos, id: 
   return { off, def, k: l.k ?? null };
 }
 
-/** True when each unit is six different heroes of this roster. */
-export function validLineup(l: Lineup, roster: number[]): boolean {
-  const o = OFF_POS.map((p) => l.off[p]);
-  const d = DEF_POS.map((p) => l.def[p]);
-  if (new Set(o).size !== 6 || new Set(d).size !== 6) return false;
-  return [...o, ...d].every((id) => roster.includes(id));
+/** True when each unit is complete (six or eleven different heroes of this roster, the same number on both). */
+export function validLineup(l: Lineup, roster: number[], size: Size = sizeOf(l)): boolean {
+  if (sizeOf(l) !== size) return false;
+  const o = OFF_POS_OF[size].map((p) => l.off[p]);
+  const d = DEF_POS_OF[size].map((p) => l.def[p]);
+  if (new Set(o).size !== size || new Set(d).size !== size) return false;
+  if (Object.keys(l.off).length !== size || Object.keys(l.def).length !== size) return false;
+  return [...o, ...d].every((id) => id != null && roster.includes(id));
 }

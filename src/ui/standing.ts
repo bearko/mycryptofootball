@@ -31,6 +31,7 @@ function perks(tier: number): string[] {
   if (now.roster > was.roster) out.push(`部員 ${now.roster}人まで`);
   if (now.hand > was.hand) out.push(`練習カード ${now.hand}枚`);
   if (now.cup !== was.cup) out.push(`${now.cup}に出場`);
+  if (now.size !== was.size) out.push(`来年から${now.size}人制`);
   return out;
 }
 
@@ -49,7 +50,7 @@ export function standingChip(s: Season): HTMLButtonElement {
 export function standingModal(s: Season): void {
   const rows = TIERS.map((t, i) => h('li', { class: i === s.tier ? 'is-now' : i < s.tier ? 'is-done' : '' },
     tierPlate(i),
-    h('span.st-what', h('span', `部員 ${t.roster}人`), h('span', `練習カード ${t.hand}枚`), h('span', t.cup)),
+    h('span.st-what', h('span', `部員 ${t.roster}人`), h('span', `練習カード ${t.hand}枚`), h('span', `${t.cup}（${t.size}人制）`)),
     i === s.tier ? h('span.st-here', bar(s.fame), h('i', `${s.fame}/${FAME_MAX}`)) : null)).reverse();
   modal(h('div.standing',
     h('p.st-lead', '試合に勝つとゲージがたまり、いっぱいになると格が上がります。負けると減り、なくなると格が下がります。'),

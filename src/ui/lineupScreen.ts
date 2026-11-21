@@ -11,8 +11,8 @@ import { hero, recruit, talentOf } from '../game/heroes';
 import { bestLineup, fielded, isStarter, place } from '../game/lineup';
 import { unitSummary } from '../game/match';
 import {
-  DEF_POS, OFF_POS, ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, RANKS, STAT_LABEL, fit, kickFit, rank, rankIndex, roleOf,
-  type DefPos, type Lineup, type OffPos, type Rank, type Role, type Stat,
+  ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, RANKS, STAT_LABEL, defPos, fit, kickFit, offPos, rank, rankIndex, roleOf, sizeOf,
+  type DefPos, type Lineup, type OffPos, type Rank, type Role, type Size, type Stat,
 } from '../game/model';
 import { asPlayer, clubSheet, learned, member } from '../game/season';
 import { burst, center, countUp, kick, motion, pop, ring, sparks } from './fx';
@@ -30,8 +30,21 @@ const WEAK = rankIndex(39);
 const UNIT_LABEL: Record<Unit, string> = { off: '攻撃', def: '守備' };
 
 /** Where each position stands on its board, in % of the field (the offense looks up, the defense looks down). */
-const OFF_AT: Record<OffPos, [number, number]> = { WR1: [11, 22], OL1: [37, 21], OL2: [63, 21], WR2: [89, 22], QB: [50, 52.5], RB: [70, 83.5] };
-const DEF_AT: Record<DefPos, [number, number]> = { S: [50, 15], LB: [50, 46], CB1: [11, 55], CB2: [89, 55], DL1: [36, 77], DL2: [64, 77] };
+const OFF_AT_OF: Record<Size, Partial<Record<OffPos, [number, number]>>> = {
+  6: { WR1: [11, 22], OL1: [37, 21], OL2: [63, 21], WR2: [89, 22], QB: [50, 52.5], RB: [70, 83.5] },
+  // eleven: the line of five in front, the receivers and the tight end a step back (so no row is more than five wide)
+  11: {
+    OL1: [17, 17], OL3: [33.5, 17], OL5: [50, 17], OL4: [66.5, 17], OL2: [83, 17],
+    WR1: [8.5, 47], WR3: [29, 50], QB: [50, 52], TE: [71, 47], WR2: [91.5, 47], RB: [50, 85],
+  },
+};
+const DEF_AT_OF: Record<Size, Partial<Record<DefPos, [number, number]>>> = {
+  6: { S: [50, 15], LB: [50, 46], CB1: [11, 55], CB2: [89, 55], DL1: [36, 77], DL2: [64, 77] },
+  11: {
+    S: [31, 14], S2: [69, 14], CB1: [8.5, 47], LB2: [29, 45], LB: [50, 45], LB3: [71, 45], CB2: [91.5, 47],
+    DL1: [20, 79], DL3: [40, 79], DL4: [60, 79], DL2: [80, 79],
+  },
+};
 
 const METERS: { key: keyof Sum; label: string; unit: Unit }[] = [
   { key: 'runOff', label: 'ラン', unit: 'off' },
@@ -69,6 +82,12 @@ function arrow(cls: string, d: string, px: number, py: number, x: number, y: num
 export function lineupScreen(back: () => void): HTMLElement {
   const s = save().season!;
   const players = s.members.map(asPlayer);
+  /** six a side or eleven: the boards are drawn for the line-up the club plays this year */
+  const size = sizeOf(s.lineup!);
+  const OFF_POS = offPos(s.lineup!);
+  const DEF_POS = defPos(s.lineup!);
+  const OFF_AT = OFF_AT_OF[size] as Record<OffPos, [number, number]>;
+  const DEF_AT = DEF_AT_OF[size] as Record<DefPos, [number, number]>;
   let held: number | null = null;
   /** the spot under the pointer or the keyboard focus (what the note explains) */
   let hover: Slot | null = null;
@@ -88,7 +107,7 @@ export function lineupScreen(back: () => void): HTMLElement {
   let heldFrom: Slot | null = null;
   const gradeAt = (id: number, slot: Slot): Grade | null => (slot.role ? rank(fit(statsOf(id), slot.role)) : null);
   const total = (l: Lineup): number =>
-    OFF_POS.reduce((v, p) => v + fit(statsOf(l.off[p]), roleOf(p)), 0) + DEF_POS.reduce((v, p) => v + fit(statsOf(l.def[p]), roleOf(p)), 0);
+    OFF_POS.reduce((v: number, p) => v + fit(statsOf(l.off[p]), roleOf(p)), 0) + DEF_POS.reduce((v: number, p) => v + fit(statsOf(l.def[p]), roleOf(p)), 0);
 
   /** Can this hero call their special play from this spot? null: nothing to show (not learned, or the play belongs to the other unit). */
   const starAt = (id: number, slot: Slot): null | boolean => {
@@ -195,7 +214,7 @@ export function lineupScreen(back: () => void): HTMLElement {
       key([['rush', '止めにいく'], ['zone', '見はる']]), DEF_POS.map((p) => makeSlot('def', p, DEF_AT[p]).el)),
   };
   // as many seats as the bench can ever need (when the same six play both ways); the empty ones are not shown
-  const benches = Array.from({ length: Math.max(1, s.members.length - 6) }, (_, i) => makeSlot('bench', null, undefined, i));
+  const benches = Array.from({ length: Math.max(1, s.members.length - size) }, (_, i) => makeSlot('bench', null, undefined, i));
 
   /** Draws the play lines of one board in chalk, sized to the board as it is right now. */
   const drawChalk = (unit: Unit, animate: boolean): void => {
@@ -215,13 +234,18 @@ export function lineupScreen(back: () => void): HTMLElement {
       const [qx, qy] = P(OFF_AT.QB);
       const [rx, ry] = P(OFF_AT.RB);
       // the runner's lane: off the quarterback's hip and up through the gap outside the line
-      const gx = 76 * u;
+      const gx = (size === 11 ? 75 : 76) * u;
       parts.push(arrow('run', `M${rx},${ry} C${rx},${ry - 22 * v} ${gx},${qy} ${gx},${30 * v} L${gx},${top}`, gx, 30 * v, gx, top, head));
       // the receivers run upfield; the quarterback's throws reach them
+      // (eleven: the slot receiver and the tight end go out too)
+      for (const p of OFF_POS.filter((q) => q === 'WR3' || q === 'TE')) {
+        const [wx, wy] = P(OFF_AT[p]);
+        parts.push(arrow('route', `M${wx},${wy} L${wx},${top}`, wx, wy, wx, top, head * 0.7));
+      }
       for (const [wr, dir] of [['WR1', 1], ['WR2', -1]] as const) {
         const [wx, wy] = P(OFF_AT[wr]);
         parts.push(arrow('route', `M${wx},${wy} L${wx},${top}`, wx, wy, wx, top, head * 0.8));
-        const tx = wx + dir * 11.5 * u;
+        const tx = wx + dir * (size === 11 ? 8 : 11.5) * u;
         const ty = wy + 4 * v;
         const cx = (qx + tx) / 2;
         const cy = ty - 1 * v;
@@ -230,16 +254,22 @@ export function lineupScreen(back: () => void): HTMLElement {
     } else {
       const bottom = 99.6 * v;
       los = `<path class="los" d="M${2 * u},${96.5 * v} H${98 * u}"/>`;
-      const [sx, sy] = P(DEF_AT.S);
-      const [lx, ly] = P(DEF_AT.LB);
       for (const dir of [-1, 1]) {
         // the safety watches both deep halves, the linebacker chases to either side
-        const ex = sx + dir * 30 * u;
-        parts.push(arrow('zone', `M${sx},${sy} Q${sx + dir * 20 * u},${sy - 4 * v} ${ex},${sy + 14 * v}`, sx + dir * 20 * u, sy - 4 * v, ex, sy + 14 * v, head * 0.8));
-        const kx = lx + dir * 21 * u;
-        parts.push(arrow('rush', `M${lx},${ly} Q${lx + dir * 16 * u},${ly + 1 * v} ${kx},${ly + 12 * v}`, lx + dir * 16 * u, ly + 1 * v, kx, ly + 12 * v, head * 0.8));
+        // (eleven: there is one of each for either side, and the middle linebacker comes straight up)
+        const [sx, sy] = P(size === 11 && dir > 0 ? DEF_AT.S2 : DEF_AT.S);
+        const [lx, ly] = P(size === 11 ? (dir > 0 ? DEF_AT.LB3 : DEF_AT.LB2) : DEF_AT.LB);
+        const k = size === 11 ? 0.55 : 1;
+        const ex = sx + dir * 30 * k * u;
+        parts.push(arrow('zone', `M${sx},${sy} Q${sx + dir * 20 * k * u},${sy - 4 * v} ${ex},${sy + 14 * v}`, sx + dir * 20 * k * u, sy - 4 * v, ex, sy + 14 * v, head * 0.8));
+        const kx = lx + dir * 21 * k * u;
+        parts.push(arrow('rush', `M${lx},${ly} Q${lx + dir * 16 * k * u},${ly + 1 * v} ${kx},${ly + 12 * v}`, lx + dir * 16 * k * u, ly + 1 * v, kx, ly + 12 * v, head * 0.8));
       }
-      for (const dl of ['DL1', 'DL2'] as const) {
+      if (size === 11) {
+        const [x, y] = P(DEF_AT.LB);
+        parts.push(arrow('rush', `M${x},${y} L${x},${y + 20 * v}`, x, y, x, y + 20 * v, head * 0.8));
+      }
+      for (const dl of DEF_POS.filter((q) => roleOf(q) === 'DL')) {
         const [x, y] = P(DEF_AT[dl]);
         parts.push(arrow('rush', `M${x},${y} L${x},${bottom}`, x, y, x, bottom, head));
       }
@@ -358,19 +388,22 @@ export function lineupScreen(back: () => void): HTMLElement {
     for (const m of order) {
       if (!learned(m) || !isStarter(l, m.id)) continue;
       const info = KIND[recruit(m.id).kind];
-      const slot = slots.find((x) => x.unit === info.side && heroAt(x) === m.id)!;
-      if (starAt(m.id, slot) === false) {
-        const where = info.roles!.map((r) => ROLE_LABEL[r]).join('か');
-        tell(`${hero(m.id).name}の特別作戦は、${UNIT_LABEL[info.side]}で${where}に置くと使えます（いまは★×）。`, 'point');
+      // (a hero who only plays on the other unit cannot call it either)
+      const slot = slots.find((x) => x.unit === info.side && heroAt(x) === m.id);
+      if (!slot || starAt(m.id, slot) === false) {
+        const where = info.roles ? `${UNIT_LABEL[info.side]}で${info.roles.map((r) => ROLE_LABEL[r]).join('か')}に置くと` : `${UNIT_LABEL[info.side]}に出すと`;
+        tell(`${hero(m.id).name}の特別作戦は、${where}使えます${slot ? '（いまは★×）' : ''}。`, 'point');
         return;
       }
     }
     const weak = slots.filter((x) => x.role && RANK[gradeAt(heroAt(x), x)!] <= WEAK)[0];
     const b = benchList().map((id) => member(s, id)).find(learned);
-    const twoWay = fielded(l).length < 12;
-    if (weak) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}が苦手そうです。「おまかせ」で並べ直せますよ。`, 'think');
+    const twoWay = fielded(l).length < size * 2;
+    const isBest = total(l) >= total(bestLineup(players, size)) - 0.01;
+    if (weak && isBest) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}は苦手そうですが、いまの部員ではこれがいちばんの並びです。春の新入部員で補いましょう。`, 'think');
+    else if (weak) tell(`${UNIT_LABEL[weak.unit as Unit]}の${ROLE_LABEL[weak.role!]}が苦手そうです。「おまかせ」で並べ直せますよ。`, 'think');
     else if (b) tell(`控えの${hero(b.id).name}は特別作戦を覚えています。出番を作るのも手ですよ。`, 'think');
-    else if (total(l) >= total(bestLineup(players)) - 0.01) tell('いまの並びが、いちばん力を出せます！ これでいきましょう。', 'sparkle');
+    else if (isBest) tell('いまの並びが、いちばん力を出せます！ これでいきましょう。', 'sparkle');
     else if (twoWay && benchList().length) tell('攻撃と守備は、べつべつに組めます。控えのヒーローを片方だけに出すのも手ですよ。', 'idle');
     else tell('攻撃と守備は、べつべつに組めます。両方のボードの文字を見くらべてみましょう。', 'idle');
   };
@@ -675,7 +708,7 @@ export function lineupScreen(back: () => void): HTMLElement {
   // ---------------------------------------------------------------- buttons
 
   const auto = button('おまかせ', () => {
-    const best = bestLineup(players);
+    const best = bestLineup(players, size);
     if (total(best) <= total(s.lineup!) + 0.01) {
       held = null;
       mark();
@@ -695,7 +728,7 @@ export function lineupScreen(back: () => void): HTMLElement {
 
   // ---------------------------------------------------------------- the screen
 
-  const board = h('section.lu-board',
+  const board = h('section.lu-board', { class: size === 11 ? 'is-eleven' : '' },
     h('div.lu-half.off', h('span.label', '攻撃'), fieldOf.off, metersOf('off')),
     h('div.lu-half.def', h('span.label.cyan', '守備'), fieldOf.def, metersOf('def')));
   // ---------------------------------------------------------------- the kicker
