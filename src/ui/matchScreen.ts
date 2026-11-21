@@ -1,8 +1,11 @@
 // The match, staged like a night-game broadcast: the stadium fills the screen, the scorebug floats on top,
 // the hand of play cards slides in while you choose and gets out of the way while the play runs.
 //
-// One play = deal → choose (chalk preview on the turf) → both cards clash → special cut-ins → the play itself
-// (camera, hit-stop, sound in sync) → telop → scoreboard catches up.
+// One play = deal → huddle (the heroes say how their match-ups look) → choose → both cards clash →
+// special cut-ins → the play itself (camera, hit-stop, sound in sync) → telop → scoreboard catches up.
+//
+// Choosing is two steps: looking at a card (the mouse over it, or a first tap) runs the play through on the turf
+// in chalk and names the heroes it is about; a click, or a second tap on the same card, plays it.
 
 import { crowd, duck, playBgm, sfx, vibrate } from '../core/audio';
 import { debug, newSeed } from '../core/debug';
@@ -13,9 +16,10 @@ import {
 } from '../game/cards';
 import { hero } from '../game/heroes';
 import {
-  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, at, autoPick, autoTalk, bestAgainst, createMatch, halftimeTalk, resolvePlay,
-  senseHint, specialBlock, specialPick, usePeek, type Hint, type MatchState, type Pick, type PlayResult,
+  FIELD, MOM_MAX, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, at, autoPick, autoTalk, bestAgainst, createMatch, halftimeTalk, huddle, keyHeroes,
+  outlook, resolvePlay, senseHint, specialBlock, specialPick, usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
+import { ROLE_LABEL, fit, roleOf } from '../game/model';
 import { opponentSheet } from '../game/teams';
 import { SCHEDULE, clubSheet, finishMatch, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
@@ -60,13 +64,17 @@ export function matchScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const bug = h('header.bug');
   const map = h('div.minimap');
-  const sense = h('div.sense');
+  const huddleEl = h('aside.huddle', { 'aria-live': 'polite' });
+  const keyTags = h('div.keytags', { 'aria-hidden': 'true' });
+  /** the heroes the considered card is about, and their tags on the field */
+  let keys3: { id: number; el: HTMLElement }[] = [];
+  const touchy = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
   const booth = speech('announcer');
   booth.el.classList.add('booth');
   const stage = h('div.stage');
   const hand = h('footer.hand');
   const clutch = h('div.clutch-frame', { 'aria-hidden': 'true' }, h('span', '勝負どころ'), h('span', '勝負どころ'));
-  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, sense, stage, hand, booth.el);
+  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, stage, hand, booth.el);
   const stadium = new Stadium(canvas, [home, away]);
   stadium.setMotion(save().prefs.motion);
 
@@ -88,8 +96,14 @@ export function matchScreen(): [HTMLElement, () => void] {
       resolve();
     };
   });
+  /** set by the turn in progress: puts a considered card back */
+  let unconsider: () => void = () => undefined;
   stage.addEventListener('click', () => skip?.());
   canvas.addEventListener('click', () => skip?.());
+  // a finger anywhere but on a card or a button puts a considered card back
+  root.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' && !skip && !(e.target as HTMLElement).closest?.('.card, .btn, button')) unconsider();
+  });
 
   // ------------------------------------------------------------------ scorebug
   const snap = (): Snap => ({
@@ -182,7 +196,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     // the opponent chooses first, hidden; a sharp hero may sense what is coming
     const theirs = autoPick(st, 1);
     const hint = senseHint(st, 0, theirs);
-    const reader = at(home, onOffense ? 'QB' : 'S').id;
+    const readerPos = onOffense ? 'QB' : 'S';
+    const reader = at(home, readerPos).id;
+    const voices = huddle(st, 0);
     let selected: Pick | null = null;
     let peeked: null | { ok: boolean } = null;
     let cards: Pick[] = [];
@@ -196,20 +212,59 @@ export function matchScreen(): [HTMLElement, () => void] {
       else if (hot) booth.say(onOffense ? `ここが勝負どころ！ ${st.down}回目、あと${st.toGo}ヤード！` : `止めれば流れが来ます！ ${st.down}回目、あと${st.toGo}ヤード`, 'guts');
       else booth.say(onOffense ? `${st.down}回目の攻撃、あと${st.toGo}ヤード。さあ、どう攻める？` : `${away.short}の攻撃、${st.down}回目。さあ、どう守る？`, 'idle');
     };
-    // what the reading hero senses floats over that hero on the field
-    const showSense = (): void => {
-      if (!hint || peeked) {
-        sense.replaceChildren();
+    // the huddle: what the heroes on the field think of their match-ups (and what a sharp one senses is coming)
+    const voiceRow = (v: Voice | null, k: number): HTMLElement => {
+      const read = v === null;
+      const id = read ? reader : v.id;
+      const pos = read ? readerPos : v.pos;
+      const iq = read ? at(home, readerPos).stats.iq : v.iq;
+      const trust = iq >= 75 ? 3 : iq >= 50 ? 2 : 1;
+      return h('div.voice', {
+        class: read ? 'is-read' : `is-${v.tone}`, style: { '--i': String(k) },
+        data: read ? {} : { topic: v.topic === 'gap' ? v.points ?? '' : v.topic },
+        title: `判断 ${iq}。判断が高いヒーローほど、言うことが当たる`,
+      },
+      sprite(id),
+      h('span.voice-who', h('b', ROLE_LABEL[roleOf(pos)]), hero(id).name.split('・').pop()!,
+        h('i.voice-iq', { class: `iq${trust}` }, '判断', h('u', '●'.repeat(trust) + '○'.repeat(3 - trust)))),
+      h('span.voice-text', read ? hintText(hint, onOffense) : v.text));
+    };
+    const showHuddle = (): void => {
+      if (peeked) {
+        huddleEl.replaceChildren();
         return;
       }
-      sense.replaceChildren(h('div.sense-bubble', h('b', hero(reader).name), hintText(hint, onOffense)));
-      sfx.chalk();
+      const rows = [...(hint ? [voiceRow(null, 0)] : []), ...voices.map((v, k) => voiceRow(v, k + (hint ? 1 : 0)))];
+      huddleEl.replaceChildren(h('b.huddle-head', 'ハドル'), ...rows);
+      rows.forEach((_, k) => setTimeout(() => alive && !busy && sfx.chalk(), 120 + k * 260));
+    };
+    /** Lights the remarks that are about the play being looked at. */
+    const markVoices = (pick: Pick | null): void => {
+      const type = pick ? (pick.special ? KIND[pick.special.kind].base : pick.type) : '';
+      // a defensive call is about the plays it is meant to stop
+      const about: string[] = !pick ? [] : onOffense ? [type]
+        : ({ stuff: ['inside'], contain: ['outside'], zone: ['short'], deep: ['long'], blitz: ['long', 'inside'] } as Record<string, string[]>)[type] ?? [];
+      for (const el of huddleEl.querySelectorAll<HTMLElement>('.voice')) el.classList.toggle('is-rel', about.includes(el.dataset.topic ?? '-'));
+    };
+    /** Names the heroes a card is about, on the field. */
+    const showKeys = (pick: Pick | null): number[] => {
+      const list = pick ? keyHeroes(st, 0, pick) : [];
+      keys3 = list.map((k, n) => ({
+        id: k.id,
+        el: h('div.keytag', { class: n === 0 ? 'is-lead' : '', style: { '--i': String(n) } },
+          h('div.keytag-in', n === 0 ? h('em', '主役') : null,
+            h('b', ROLE_LABEL[roleOf(k.pos)]), h('span', hero(k.id).name.split('・').pop()!), h('i', String(Math.round(fit(at(home, k.pos).stats, roleOf(k.pos))))))),
+      }));
+      keyTags.replaceChildren(...keys3.map((k) => k.el));
+      return list.map((k) => k.id);
     };
 
-    /** Plays a card: one tap. (A "look first" special shows the opponent's card and asks once more.) */
+    /** Plays a card. (A "look first" special shows the opponent's card and asks once more.) */
     const playCardNow = (mine: Pick): void => {
       if (busy) return;
       busy = true;
+      unconsider = () => undefined;
+      showKeys(null);
       if (mine.special && (mine.special.kind === 'peekOff' || mine.special.kind === 'peekDef')) {
         void runPeek(mine.special);
         return;
@@ -230,7 +285,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       selected = null;
       stadium.preview(null, side, 0);
       dealt = false;
-      sense.replaceChildren();
+      showHuddle();
       if (ok) {
         const card = playCard(theirs, onOffense ? 'def' : 'off', { small: true });
         stage.replaceChildren(h('div.revealed', h('span.label.hot', `${away.short}の作戦`), card));
@@ -241,12 +296,18 @@ export function matchScreen(): [HTMLElement, () => void] {
       prompt();
     };
 
-    /** Considering a card (hovering with the mouse, or holding a finger on it): it is drawn on the turf and explained. */
+    /**
+     * Looking at a card (the mouse over it, or a first tap): the play runs itself on the turf in chalk,
+     * the heroes it is about are named, and the remarks from the huddle that concern it light up.
+     */
     const consider = (pick: Pick | null, el?: HTMLElement): void => {
       if (busy || selected === pick) return;
       selected = pick;
       for (const c of hand.querySelectorAll('.card.selected')) c.classList.remove('selected');
-      stadium.preview(pick, side, 0);
+      const stars = showKeys(pick);
+      stadium.preview(pick, side, 0, stars);
+      markVoices(pick);
+      hand.classList.toggle('is-looking', !!pick);
       if (!pick) return;
       el?.classList.add('selected');
       sfx.cardPick();
@@ -256,6 +317,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         booth.say(`${info.name}。${info.text}`, 'idle');
       }
     };
+    unconsider = () => consider(null);
 
     const drawHand = (): void => {
       const basics: Pick[] = peeked
@@ -270,18 +332,24 @@ export function matchScreen(): [HTMLElement, () => void] {
         const block = c.special ? specialBlock(st, 0, c.special) : null;
         const el = playCard(c, side, {
           selected: selected === c, blocked: block ? BLOCK_TEXT[block] : null, read: c.special ? st.read[0][c.special.key] ?? 0 : 0,
-          mom: st.mom[0], index: i, key: true, deal: firstDeal,
+          mom: st.mom[0], index: i, key: true, deal: firstDeal, ev: block ? null : outlook(st, 0, c),
           onpick: () => {
+            // a mouse has already looked (hovering): it plays. A finger looks first, and plays on the second tap
+            const mouse = by === 'mouse';
+            by = '';
             vibrate(12);
-            playCardNow(c);
+            if (mouse || selected === c) playCardNow(c);
+            else consider(c, el);
           },
         });
+        let by = '';
         if (!block) {
-          // mouse: hover considers. touch: pressing considers, lifting the finger on the card plays, sliding off cancels
           el.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && consider(c, el));
-          el.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && consider(c, el));
-          el.addEventListener('pointerleave', () => selected === c && consider(null));
-          el.addEventListener('focus', () => consider(c, el));
+          el.addEventListener('pointerdown', (e) => {
+            by = e.pointerType;
+          });
+          el.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && selected === c && consider(null));
+          el.addEventListener('focus', () => el.matches(':focus-visible') && consider(c, el));
         } else if (c.special) {
           const why = BLOCK_TEXT[block];
           el.addEventListener('click', () => booth.say(`${hero(c.special!.owner).name}の「${c.special!.name}」は、いまは使えません（${why}）`, 'sad'));
@@ -306,7 +374,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         h('div.hand-cards', els),
         historyEl(),
         h('div.hand-go',
-          h('p.hand-tip', peeked ? 'えらんだカードで勝負' : 'カードを押すと、その作戦で勝負'),
+          h('p.hand-tip', touchy ? 'タップで下見、もう一度タップで勝負' : 'かざすと下見、クリックで勝負'),
           button('おまかせ', () => {
             if (busy) return;
             const mine = !peeked ? autoPick(st, 0, theirs)
@@ -325,8 +393,10 @@ export function matchScreen(): [HTMLElement, () => void] {
       const n = Number(e.key);
       if (n >= 1 && n <= cards.length) {
         const c = cards[n - 1]!;
-        if (!c.special || !specialBlock(st, 0, c.special)) playCardNow(c);
-        else sfx.deny();
+        // a number looks at the card; the same number again plays it
+        if (c.special && specialBlock(st, 0, c.special)) sfx.deny();
+        else if (selected === c) playCardNow(c);
+        else consider(c, hand.querySelectorAll<HTMLElement>('.hand-cards .card')[n - 1]);
       } else if (e.key === 'a' || e.key === 'A') hand.querySelector<HTMLElement>('.hand-go .btn')?.click();
     };
 
@@ -334,7 +404,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     hand.classList.add('in');
     requestAnimationFrame(() => insets(true));
     prompt();
-    setTimeout(() => alive && !busy && showSense(), 650);
+    setTimeout(() => alive && !busy && showHuddle(), 500);
     busy = false;
     if (debug.bot) {
       setTimeout(() => {
@@ -355,15 +425,15 @@ export function matchScreen(): [HTMLElement, () => void] {
   };
   window.addEventListener('keydown', onKey);
 
-  // keep the "sense" bubble glued to the hero who is reading the play
+  // keep the name tags over the heroes the considered card is about
   let raf = 0;
   const follow = (): void => {
     raf = requestAnimationFrame(follow);
-    if (!sense.firstChild) return;
-    const id = at(home, st.poss === 0 ? 'QB' : 'S').id;
-    const pos = stadium.screenPos(0, id);
-    if (!pos) return;
-    sense.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    for (const k of keys3) {
+      const pos = stadium.screenPos(0, k.id);
+      k.el.style.visibility = pos ? 'visible' : 'hidden';
+      if (pos) k.el.style.transform = `translate(${pos.x}px, ${pos.y - pos.h - 4}px)`;
+    }
   };
   raf = requestAnimationFrame(follow);
 
@@ -400,9 +470,11 @@ export function matchScreen(): [HTMLElement, () => void] {
     const theirs = mineOff ? def : off;
     keys = () => undefined;
     stadium.preview(null, 'off', 0);
-    sense.replaceChildren();
+    huddleEl.replaceChildren();
+    keys3 = [];
+    keyTags.replaceChildren();
     stage.replaceChildren();
-    hand.classList.remove('in');
+    hand.classList.remove('in', 'is-looking');
     insets(false);
     crowd.tension(false);
 
@@ -637,7 +709,7 @@ export function matchScreen(): [HTMLElement, () => void] {
 
   root.append(ticker([
     `${p.label}　${home.name} 対 ${away.name}`, '4回の攻撃で10ヤード進めば攻撃続行', '同じ特別作戦は使うたびに読まれる',
-    'カードの◎は得意な相手、×は苦手な相手', `${away.name}：${isFinal ? '王者の風格' : '油断は禁物'}`,
+    'カードの◎は得意な相手、×は苦手な相手', 'カードの右上は期待値の目安（10段階）', 'ハドルの意見は、判断が高いヒーローほど当たる', `${away.name}：${isFinal ? '王者の風格' : '油断は禁物'}`,
   ], '中継'));
   root.addEventListener('shown', () => {
     insets(false);

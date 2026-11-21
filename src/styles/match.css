@@ -206,3 +206,43 @@
 .talk:active { transform: scale(0.95); }
 
 .hand-tip { font-size: var(--fs-xs); line-height: 1.35; color: var(--dim); text-align: center; }
+
+/* ---- the huddle: what the heroes on the field think, before the card is chosen */
+.huddle { position: absolute; right: max(0.8rem, env(safe-area-inset-right)); top: 6.9rem; z-index: 5; width: min(28rem, 40%); display: grid; gap: 0.3rem; pointer-events: none; }
+.huddle:empty { display: none; }
+.match.cine .huddle { opacity: 0; }
+.huddle-head { justify-self: end; font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.4; padding: 0 0.9rem; color: var(--ink); background: var(--yellow); clip-path: polygon(0.4rem 0, 100% 0, calc(100% - 0.4rem) 100%, 0 100%); animation: slide-r 0.25s backwards; }
+.voice { --tone: #8a90b8; position: relative; display: grid; grid-template-columns: 2.9rem minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 0.5rem; align-items: center; padding: 0.2rem 0.9rem 0.25rem 0.5rem; color: var(--chalk); background: rgba(6, 8, 26, 0.86); border-left: 0.4rem solid var(--tone); clip-path: polygon(0 0, 100% 0, calc(100% - 0.6rem) 100%, 0 100%); pointer-events: auto; animation: voice-in 0.3s var(--spring) backwards; animation-delay: calc(var(--i) * 260ms + 100ms); transition: transform 0.15s, background 0.15s; }
+@keyframes voice-in { from { transform: translateX(3rem); opacity: 0; } }
+.voice.is-good { --tone: var(--lime); }
+.voice.is-bad { --tone: var(--pink); }
+.voice.is-vague { --tone: #5a5f8a; }
+.voice.is-vague .voice-text { color: var(--dim); }
+.voice.is-read { --tone: var(--yellow); background: rgba(58, 48, 6, 0.92); }
+.voice.is-read .voice-text { color: var(--yellow); }
+.voice .sprite, .voice > img, .voice > span:first-child { grid-row: 1 / 3; width: 2.9rem; height: 2.9rem; }
+.voice-who { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; line-height: 1.25; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.voice-who b { font-family: var(--display); font-weight: 400; padding: 0 0.35rem; color: var(--ink); background: var(--tone); }
+.voice-iq { margin-left: auto; font-style: normal; display: inline-flex; gap: 0.25rem; }
+.voice-iq u { text-decoration: none; letter-spacing: 0.05em; color: var(--cyan); }
+.voice-iq.iq1 u { color: #8a90b8; }
+.voice-iq.iq3 u { color: var(--yellow); }
+.voice-text { font-size: var(--fs-s); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the remarks about the play being looked at step forward */
+.voice.is-rel { transform: translateX(-0.7rem); background: rgba(20, 26, 78, 0.96); box-shadow: 0 0 0 0.16rem var(--tone) inset; }
+.voice.is-rel .voice-text { white-space: normal; }
+
+/* ---- the heroes a considered card is about: name tags over their heads */
+.keytags { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; }
+.keytag { position: absolute; left: 0; top: 0; will-change: transform; }
+.keytag-in { position: absolute; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; font-size: 0.86rem; line-height: 1.35; padding: 0 0.5rem 0 0; color: var(--chalk); background: rgba(6, 8, 26, 0.9); border: 0.14rem solid var(--ink); box-shadow: 0.14rem 0.14rem 0 var(--ink); animation: keytag-in 0.22s var(--spring) backwards; animation-delay: calc(var(--i) * 70ms); }
+@keyframes keytag-in { from { transform: translate(-50%, -40%) scale(0.6); opacity: 0; } }
+.keytag-in b { font-family: var(--display); font-weight: 400; padding: 0 0.35rem; color: var(--ink); background: var(--cyan); }
+.keytag-in i { font-style: normal; font-family: var(--display); color: var(--cyan); }
+.keytag-in em { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); font-style: normal; font-family: var(--display); font-size: 0.78rem; line-height: 1.3; padding: 0 0.5rem; color: var(--ink); background: var(--yellow); }
+.keytag.is-lead .keytag-in { font-size: var(--fs-xs); border-color: var(--yellow); }
+.keytag.is-lead .keytag-in b { background: var(--yellow); }
+.keytag.is-lead .keytag-in i { color: var(--yellow); }
+
+/* a card being looked at rises a little; the hint says what the next tap does */
+.hand.is-looking .hand-tip { color: var(--yellow); }

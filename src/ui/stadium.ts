@@ -218,6 +218,8 @@ interface ChalkLine {
   delay: number;
   width: number;
   alpha: number;
+  /** what travels the line when the play is run through: a player (ring), the ball, or nothing */
+  mark: 'run' | 'ball' | null;
 }
 interface ChalkZone { x0: number; x1: number; z0: number; z1: number; delay: number }
 
@@ -494,8 +496,10 @@ export class Stadium {
   /**
    * While the player is choosing: draws the selected card on the turf in chalk (routes and arrows from the
    * real players for an offensive play; hatched zones or rush arrows for a defensive call). null clears it.
+   * Once drawn, the play runs itself over and over: a marker travels every route, the ball flies its line.
+   * `stars`: heroes of the player's team who matter most in this play (they glow).
    */
-  preview(pick: Pick | null, side: 'off' | 'def', playerTeam: 0 | 1): void {
+  preview(pick: Pick | null, side: 'off' | 'def', playerTeam: 0 | 1, stars: number[] = []): void {
     if (!pick || !this.hasScene || this.playing) {
       this.chalk = null;
       this.chalkKey = '';
@@ -506,7 +510,7 @@ export class Stadium {
     const key = `${side}:${pick.type}:${pick.special ? pick.special.key : ''}:${playerTeam}:${this.sceneN}:${this.offense}:${this.los}`;
     if (this.chalk && key === this.chalkKey) return;
     this.chalkKey = key;
-    this.buildChalk(pick, side, playerTeam);
+    this.buildChalk(pick, side, playerTeam, stars);
   }
 
   /** Plays the play back with camera work. speed 1 = normal, 2 = fast, 12 = debug bot. Resolves when the picture has settled. */
@@ -3542,7 +3546,7 @@ export class Stadium {
 
   // ------------------------------------------------------------------ chalk preview
 
-  private buildChalk(pick: Pick, side: 'off' | 'def', playerTeam: 0 | 1): void {
+  private buildChalk(pick: Pick, side: 'off' | 'def', playerTeam: 0 | 1, stars: number[]): void {
     const o = this.offense;
     const d = (1 - o) as 0 | 1;
     const X = (u: number): number => worldX(o, u);
@@ -3563,6 +3567,7 @@ export class Stadium {
       lines.push({
         pts: resample(way, opt.arc ?? 0),
         dashed: opt.dashed ?? false, arrow: opt.arrow ?? true, delay: opt.delay ?? 0, width: (opt.width ?? 0.3) * 1.3, alpha: opt.alpha ?? 0.95,
+        mark: opt.mark === undefined ? (opt.dashed ? 'ball' : 'run') : opt.mark,
       });
     };
     if (side === 'off') {
@@ -3606,13 +3611,34 @@ export class Stadium {
         if (Math.abs(a - b) < 1) return;
         zones.push({ x0: Math.min(a, b), x1: Math.max(a, b), z0, z1, delay });
       };
-      if (call === 'stuff') zone(0.3, 7, 7, 17);
-      else if (call === 'contain') {
+      // who goes where: a thin line from each defender who matters to the spot the call sends them to
+      const send = (p: 'DL1' | 'DL2' | 'LB' | 'CB1' | 'CB2' | 'S', u: number, z: number, i: number): void => {
+        const a = at(d, D.lineup.def[p], f.def[p]);
+        path([a, [X(Math.min(los + u, FIELD + END - 1)), z]], { delay: 0.15 + i * 0.07, width: 0.24, alpha: 0.85 });
+      };
+      const near = (p: 'CB1' | 'CB2'): boolean => f.def[p][1] < 12;
+      if (call === 'stuff') {
+        zone(0.3, 7, 7, 17);
+        send('DL1', 1.2, 10.6, 0);
+        send('DL2', 1.2, 13.4, 1);
+        send('LB', 2.6, 12, 2);
+      } else if (call === 'contain') {
         zone(-1, 9, 0.3, 5.6);
         zone(-1, 9, 18.4, 23.7, 0.12);
-      } else if (call === 'zone') zone(2.4, 9.2, 1, 23);
-      else if (call === 'deep') zone(12, 24, 1, 23);
-      else {
+        send('CB1', 2.4, near('CB1') ? 3 : 21, 0);
+        send('CB2', 2.4, near('CB2') ? 3 : 21, 1);
+        send('LB', 3.4, (n % 2 ? 6.5 : 17.5), 2);
+      } else if (call === 'zone') {
+        zone(2.4, 9.2, 1, 23);
+        send('CB1', 5.6, near('CB1') ? 5 : 19, 0);
+        send('CB2', 5.6, near('CB2') ? 5 : 19, 1);
+        send('LB', 5.6, 12, 2);
+      } else if (call === 'deep') {
+        zone(12, 24, 1, 23);
+        send('S', 19, 12, 0);
+        send('CB1', 15, near('CB1') ? 4.6 : 19.4, 1);
+        send('CB2', 15, near('CB2') ? 4.6 : 19.4, 2);
+      } else {
         const qb = at(o, O.lineup.off.QB, f.off.QB);
         (['DL1', 'DL2', 'LB', 'CB1', 'CB2'] as const).forEach((p, i) => {
           const a = at(d, D.lineup.def[p], f.def[p]);
@@ -3622,7 +3648,7 @@ export class Stadium {
       }
     }
     const owner = sp ? { team: KIND[sp.kind].side === 'off' ? o : d, id: sp.owner } : null;
-    for (const ac of this.actors) ac.aura = !!owner && ac.team === owner.team && ac.id === owner.id;
+    for (const ac of this.actors) ac.aura = (!!owner && ac.team === owner.team && ac.id === owner.id) || (ac.team === playerTeam && stars.includes(ac.id));
     this.chalk = { lines, zones, t0: this.clock, tint: mix([250, 252, 246], this.col[playerTeam], 0.14), owner };
   }
 
@@ -3733,6 +3759,47 @@ export class Stadium {
         p.size = 0.25;
         p.grow = 1;
         p.alpha = 0.5;
+      }
+      // the play runs itself, over and over: a ring travels each route, the ball flies its line
+      if (!over && ln.mark && n >= 3) {
+        const LOOP = 2.3;
+        const tt = t - 0.75;
+        const ph = tt < 0 ? -1 : ((tt % LOOP) - ln.delay * 2.4) / (ln.mark === 'ball' ? 0.55 : 1.15);
+        if (ph >= 0 && ph <= 1.25) {
+          const u = Math.min(1, ph);
+          const fi = u * (n - 1);
+          const i0 = Math.min(n - 2, Math.floor(fi));
+          const fr = fi - i0;
+          const mx = lerp(ln.pts[i0 * 3]!, ln.pts[(i0 + 1) * 3]!, fr);
+          const my = lerp(ln.pts[i0 * 3 + 1]!, ln.pts[(i0 + 1) * 3 + 1]!, fr);
+          const mz = lerp(ln.pts[i0 * 3 + 2]!, ln.pts[(i0 + 1) * 3 + 2]!, fr);
+          const fade = ph > 1 ? 1 - (ph - 1) / 0.25 : Math.min(1, ph / 0.08);
+          if (cam.project(mx, my + (ln.mark === 'ball' ? 0.25 : 0.05), mz)) {
+            const rad = Math.max(3 * px, cam.ss * (ln.mark === 'ball' ? 0.3 : 0.55));
+            ctx.globalAlpha = fade;
+            if (ln.mark === 'ball') {
+              ctx.fillStyle = '#8a4a1c';
+              ctx.strokeStyle = '#fffbe8';
+              ctx.lineWidth = Math.max(1.2 * px, rad * 0.25);
+              ctx.beginPath();
+              ctx.ellipse(cam.sx, cam.sy, rad * 1.5, rad, -0.4, 0, TAU);
+              ctx.fill();
+              ctx.stroke();
+            } else {
+              ctx.strokeStyle = 'rgba(4,22,16,0.55)';
+              ctx.lineWidth = Math.max(3 * px, rad * 0.5);
+              ctx.beginPath();
+              ctx.ellipse(cam.sx, cam.sy, rad * 1.5, rad * 0.62, 0, 0, TAU);
+              ctx.stroke();
+              ctx.strokeStyle = css(col, 1);
+              ctx.fillStyle = css(col, 0.35);
+              ctx.lineWidth = Math.max(1.6 * px, rad * 0.26);
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+          }
+        }
       }
       if (ln.arrow && r > 0.9 && shown >= 3) {
         const i = n - 1;
