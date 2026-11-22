@@ -7,7 +7,11 @@ import { h } from '../core/dom';
 import { commit, save } from '../core/save';
 import { hero, recruit, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat } from '../game/model';
-import { PRESET_LABEL, applyPreset, policyOpen, presetFocus, setFocus, type Member, type Preset, type Season } from '../game/season';
+import {
+  PRESET_LABEL, applyPreset, clubTacticLv, hasTactic, policyOpen, presetFocus, setFocus, setTactic, suggestedTactic, tacticOf, tacticOpen,
+  type Member, type Preset, type Season,
+} from '../game/season';
+import { TACTIC, TACTICS, TACTIC_LV_MAX } from '../game/tactics';
 import { burst, center, kick, ring } from './fx';
 import { ICON, icon, shortName } from './ground/bits';
 import { TALENT_COLOR, button, closeModal, gradeChip, modal, portrait, rankChip, statIcon } from './kit';
@@ -16,6 +20,50 @@ import { positions } from './shared';
 import { clearGoal, teach } from './tutor';
 
 const PRESETS: Preset[] = ['talent', 'offense', 'defense'];
+
+/**
+ * Eleven a side, the club's colour: the four to choose from (at a meeting), the manager's suggestion marked, the
+ * chosen one's strength and weakness, and how far the club has come with it. A new colour starts again from level 1.
+ */
+function tacticRow(s: Season): HTMLElement {
+  const open = tacticOpen(s);
+  const rec = suggestedTactic(s);
+  const note = h('p.pol-tac-note');
+  const lv = h('span.pol-tac-lv');
+  const btns = TACTICS.map((t) => {
+    const info = TACTIC[t];
+    const inner = [h('b', info.name), h('small', info.kind), t === rec ? h('i.pol-rec', 'おすすめ') : null];
+    return open
+      ? h('button.pol-tac-btn', {
+        type: 'button', style: { '--tc': info.color },
+        onclick: () => {
+          if (tacticOf(s) === t && s.tactic) return;
+          setTactic(s, t);
+          sfx.stamp();
+          vibrate(12);
+          draw();
+        },
+      }, inner)
+      : h('div.pol-tac-btn', { style: { '--tc': info.color } }, inner);
+  });
+  function draw(): void {
+    const now = tacticOf(s)!;
+    TACTICS.forEach((t, i) => {
+      btns[i]!.classList.toggle('is-on', t === now);
+      if (open) btns[i]!.setAttribute('aria-pressed', String(t === now));
+    });
+    const level = clubTacticLv(s);
+    lv.replaceChildren('練度 ', h('em', '★'.repeat(level)), '☆'.repeat(TACTIC_LV_MAX - level));
+    const info = TACTIC[now];
+    note.replaceChildren(h('span.is-good', '強み'), info.good, h('span.is-bad', '弱み'), info.bad);
+    if (open) note.append(h('small', '色を変えると練度は1から'));
+  }
+  draw();
+  return h('div.pol-tac',
+    h('div.pol-tac-head', h('b', 'チームの色'), lv, open ? null : h('small', '春のミーティングで変えられます')),
+    h('div.pol-tac-btns', { role: open ? 'group' : undefined, 'aria-label': 'チームの色' }, btns),
+    note);
+}
 
 export function policyPanel(s: Season, onClose: () => void): void {
   const open = policyOpen(s);
@@ -94,6 +142,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
   draw();
 
   const body = h('div.pol', { class: open ? 'is-open' : 'is-locked' },
+    hasTactic(s) ? tacticRow(s) : null,
     h('div.pol-lead',
       h('p', open
         ? ['ヒーローごとに', h('b', '伸ばす能力を1つ'), '決めます。練習の経験は、まずその能力になります。']
