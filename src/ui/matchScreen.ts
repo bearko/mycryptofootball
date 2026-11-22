@@ -26,7 +26,7 @@ import {
 import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
 import { clubSheet, finishMatch, labelOf, opponentFor, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
-import { burst, center, confetti, countUp, flash, kick, kinetic, pop, shake, sparks } from './fx';
+import { burst, center, confetti, countUp, flash, kick, kinetic, motion, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
 import { route } from './nav';
 import { changeList, settingsModal } from './shared';
@@ -342,6 +342,45 @@ export function matchScreen(): [HTMLElement, () => void] {
         void countUp(scoreEls[t]!, prev.score[t], v.score[t], 700, String, () => sfx.countTick());
       }
       if (prev && v.mom[t] > prev.mom[t] && t === 0) sfx.momentum(v.mom[t]);
+    });
+  };
+
+  /**
+   * Momentum gained: flames fly from where it was said (the telop) to the scoreboard, and each lights the flame it
+   * lands on; the gauge flares and says how much. Without motion they just light.
+   */
+  const flyFlames = (from: HTMLElement, t: 0 | 1, was: number, n: number): void => {
+    const side = bug.querySelector<HTMLElement>(`.bug-team.${t === 0 ? 'home' : 'away'} .bug-mom`);
+    const targets = [...(side?.querySelectorAll<HTMLElement>('.flame') ?? [])].slice(was, was + n);
+    if (!side || !targets.length) return;
+    side.append(h('span.mom-plus', `+${n}`));
+    kick(side, 'is-gain');
+    const a = from.querySelector('.flame')?.getBoundingClientRect();
+    if (!a || !a.width || !motion() || debug.bot) return;
+    targets.forEach((f, i) => {
+      f.classList.add('wait');
+      const b = f.getBoundingClientRect();
+      const x0 = a.left + a.width / 2;
+      const y0 = a.top + a.height / 2;
+      const dx = b.left + b.width / 2 - x0;
+      const dy = b.top + b.height / 2 - y0;
+      const fly = h('i.flame.on.mom-fly', { style: { left: `${x0}px`, top: `${y0}px` } });
+      document.body.append(fly);
+      const anim = fly.animate([
+        { transform: 'translate(0, 0) rotate(-45deg) scale(1.8)' },
+        { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - 50}px) rotate(-45deg) scale(1.5)`, offset: 0.45 },
+        { transform: `translate(${dx}px, ${dy}px) rotate(-45deg) scale(1)` },
+      ], { duration: 620, delay: 150 + i * 130, easing: 'cubic-bezier(0.45, 0, 0.6, 1)', fill: 'backwards' });
+      const land = (): void => {
+        fly.remove();
+        f.classList.remove('wait');
+        f.classList.add('ignite');
+        const r = f.getBoundingClientRect();
+        if (r.width) burst(r.left + r.width / 2, r.top + r.height / 2, { count: 9, color: ['#ffe14a', '#ff7a2e', '#fffbe8'], shape: ['star', 'rect'] });
+        if (t === 0) sfx.cardPick();
+      };
+      anim.onfinish = land;
+      anim.oncancel = land;
     });
   };
 
@@ -979,6 +1018,13 @@ export function matchScreen(): [HTMLElement, () => void] {
         : sack || res.turnover === 'int' || res.turnover === 'fumble' ? h('span.telop-who', hero(res.defender).name) : res.td ? h('span.telop-who', hero(res.carrier).name) : null,
       extra && res.points ? h('span.telop-yards', `+${res.points}`, h('i', '点')) : null,
       yardsText && !res.td && !res.turnover && (res.firstDown || res.yards < 0) ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
+    // momentum gained on this play: said under the telop (the club's first), then it flies to the scoreboard
+    const gained = ([0, 1] as const).map((t) => Math.max(0, res.momAfter[t] - res.momBefore[t]));
+    const momSide: 0 | 1 | null = gained[0] ? 0 : gained[1] ? 1 : null;
+    const momTag = momSide === null ? null : h('span.telop-mom', { class: momSide === 0 ? 'mine' : 'theirs' },
+      h('i.flame.on'), h('span.telop-mom-n', `${momSide === 1 ? `${away.short}に` : ''}流れ +${gained[momSide]}`),
+      res.momWhy[momSide] ? h('em', res.momWhy[momSide]) : null);
+    if (momTag) telop.append(momTag);
     stage.append(telop);
     // the play-by-play steps down out of the telop's way
     root.classList.toggle('telop-up', true);
@@ -995,6 +1041,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     // the scoreboard catches up: score rolls, momentum lights, the ball moves on the little map
     // (a quarter that ended is shown with its last play gone; the next turn turns the page)
     drawBug(res.period ? { ...snap(), quarter: before.quarter, left: Math.max(0, before.left - 1) } : snap());
+    if (momTag && momSide !== null) flyFlames(momTag, momSide, res.momBefore[momSide], gained[momSide]!);
     await pause(big ? 1500 : quick ? 520 : 900);
     if (!alive) return;
     telop.classList.add('out');
