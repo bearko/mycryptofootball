@@ -67,6 +67,7 @@ function blocks(l: Line, roles: { off: Role | null; def: Role | null; kicker: bo
       : def === 'DL'
         ? [['タックル', n(l.tk)], ['サック', n(l.sck)], ['ロスタックル', n(l.tfl)], ['ファンブル奪取', n(l.ff)]]
         : [['タックル', n(l.tk)], ['サック', n(l.sck)], ['ロスタックル', n(l.tfl)], ['INT', n(l.int)], ['パス阻止', n(l.pd)]];
+    if (l.rtn && !l.kr) cells.push(['リターンTD', n(l.rtn)]);
     out.push({ key: 'def', head: '守備', tag, cells: [['出場プレー', n(l.ds)], ...cells] });
   }
   if (roles.kicker || (l.fga ?? 0) + (l.xpa ?? 0) + (l.pn ?? 0) + (l.ko ?? 0) > 0) {
@@ -74,7 +75,11 @@ function blocks(l: Line, roles: { off: Role | null; def: Role | null; kicker: bo
     if (l.pn) cells.push(['パント平均', avg(l.pny, l.pn), 'yd']);
     out.push({ key: 'kick', head: 'キック', tag: 'K', cells });
   }
-  if ((l.kr ?? 0) > 0) out.push({ key: 'ret', head: 'リターン', tag: 'KR', cells: [['回数', n(l.kr)], ['獲得', n(l.kry), 'yd'], ['平均', avg(l.kry, l.kr), 'yd']] });
+  if ((l.kr ?? 0) > 0) {
+    const cells: Cell[] = [['回数', n(l.kr)], ['獲得', n(l.kry), 'yd'], ['平均', avg(l.kry, l.kr), 'yd']];
+    if (l.rtn) cells.push(['TD', n(l.rtn)]);
+    out.push({ key: 'ret', head: 'リターン', tag: 'KR', cells });
+  }
   return out;
 }
 

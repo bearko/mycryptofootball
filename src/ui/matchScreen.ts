@@ -17,8 +17,8 @@ import {
 import { callFor, type Beat, type Call, type CallNames } from '../game/calls';
 import { hero } from '../game/heroes';
 import {
-  FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, PLAYS_PER_Q, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
-  createStory, dropStory, storyFresh,
+  FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
+  createStory, dropStory, storyFresh, isEleven, playsPerQ, showtime,
   fgChance, halftimeTalk, huddle, keyHeroes, kickBlock, kickPicks, kickerOf, onsideChance, outlook, patChance, resolvePlay, senseHint, specialBlock, specialPick,
   usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
@@ -98,6 +98,16 @@ export function matchScreen(): [HTMLElement, () => void] {
   let busy = true;
   let skip: (() => void) | null = null;
   const speed = (): number => (debug.bot ? 12 : save().fast ? 2 : 1);
+  /**
+   * Eleven a side the coach may call only the big moments (the setting chosen before the match): the other plays are
+   * called for him and run quickly. A time-out stops the match for one play of his choosing.
+   */
+  const flowing = (): boolean => isEleven(st) && prefs().calls !== 'all' && !st.script && !debug.bot;
+  const TIMEOUTS = 3;
+  /** time-outs left in this half */
+  let timeouts = TIMEOUTS;
+  /** a time-out has been called: the next play is the coach's */
+  let stopNext = false;
 
   // ------------------------------------------------------------------ skeleton
   const canvas = h('canvas.stadium');
@@ -127,7 +137,25 @@ export function matchScreen(): [HTMLElement, () => void] {
   const clutch = h('div.clutch-frame', { 'aria-hidden': 'true' }, h('span', '勝負どころ'), h('span', '勝負どころ'));
   /** a hero's scouting sheet, beside him on the field (heroCard.ts) */
   const peekEl = h('div.hcard-layer', { 'aria-live': 'polite' });
-  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, casterEl, stage, hand, booth.el, peekEl);
+  // while the match runs itself: what is going on, and the time-out
+  const timeoutBtn = h('button.flow-to', { type: 'button', onclick: () => callTimeout() });
+  const flowBar = h('div.flowbar', h('span.flow-tag', h('i', { 'aria-hidden': 'true' }), 'おまかせ進行中'), timeoutBtn);
+  const drawFlow = (): void => {
+    timeoutBtn.classList.toggle('is-set', stopNext);
+    timeoutBtn.disabled = !stopNext && timeouts <= 0;
+    timeoutBtn.replaceChildren(h('b', stopNext ? '次は指示する' : 'タイムアウト'), h('span.flow-left', { 'aria-label': `のこり${timeouts}回` }, '●'.repeat(timeouts) + '○'.repeat(TIMEOUTS - timeouts)));
+  };
+  const callTimeout = (): void => {
+    if (stopNext || timeouts <= 0 || !alive) return;
+    timeouts -= 1;
+    stopNext = true;
+    sfx.whistle('short');
+    vibrate(16);
+    booth.say('タイムアウト！ 次のプレーは監督が指示します', 'guts');
+    drawFlow();
+  };
+  drawFlow();
+  const root = h('div.screen.match', canvas, h('div.shade', { 'aria-hidden': 'true' }), clutch, bug, keyTags, huddleEl, casterEl, stage, hand, booth.el, flowBar, peekEl);
   const stadium = new Stadium(canvas, [home, away]);
   stadium.setMotion(save().prefs.motion);
 
@@ -271,11 +299,11 @@ export function matchScreen(): [HTMLElement, () => void] {
         }, sprite(sp.owner), h('u', KIND[sp.kind].tag)))) : null);
     };
     const toGoal = FIELD - v.pos;
-    const plays = Array.from({ length: PLAYS_PER_Q }, (_, i) => h('i', { class: i < v.left ? 'on' : '' }));
+    const plays = Array.from({ length: playsPerQ(st) }, (_, i) => h('i', { class: i < v.left ? 'on' : '' }));
     bug.replaceChildren(
       team(0),
       h('div.bug-mid',
-        h('div.bug-clock', v.sudden ? h('b.hot', '延長') : h('b', `第${v.quarter}Q`), v.sudden ? h('span', '次の1点で決着') : h('span.plays', plays)),
+        h('div.bug-clock', v.sudden ? h('b.hot', '延長') : h('b', `第${v.quarter}Q`), v.sudden ? h('span', '次の1点で決着') : h('span.plays', { class: plays.length > 7 ? 'is-long' : '' }, plays)),
         v.ko ? h('div.bug-down', h('b', 'キックオフ'))
           : v.tfp
           // the try after a touchdown: no downs, one chance
@@ -384,6 +412,17 @@ export function matchScreen(): [HTMLElement, () => void] {
       void playOut(theirs, { type: 'zone', star: 1 });
       return;
     }
+    // only the big moments are the coach's: this one is called for him and runs quickly (a time-out stops it)
+    if (flowing() && !ko && !stopNext && !showtime(st)) {
+      hand.classList.remove('in');
+      busy = true;
+      const mine = autoPick(st, 0, theirs, true);
+      void playOut(onOffense ? mine : theirs, onOffense ? theirs : mine, true);
+      return;
+    }
+    stopNext = false;
+    flowBar.classList.remove('on');
+    drawFlow();
     let selected: Pick | null = null;
     let peeked: null | { ok: boolean } = null;
     let cards: Pick[] = [];
@@ -689,12 +728,16 @@ export function matchScreen(): [HTMLElement, () => void] {
   };
 
   // ------------------------------------------------------------------ showing a play
-  const playOut = async (off: Pick, def: Pick): Promise<void> => {
+  const playOut = async (off: Pick, def: Pick, quick = false): Promise<void> => {
     closePeek();
+    flowBar.classList.toggle('on', quick);
     const before = snap();
     const res: PlayResult = resolvePlay(st, off, def);
     storeMatch(st);
     const mineOff = res.off === 0;
+    /** a touchdown by either side: the offense's, or the other team's on a return (a kickoff, a ball taken away) */
+    const scored = res.td || !!res.returnTd;
+    const scorer: 0 | 1 = res.returnTd ? ((1 - res.off) as 0 | 1) : res.off;
     const mine = mineOff ? off : def;
     const theirs = mineOff ? def : off;
     keys = () => undefined;
@@ -716,6 +759,15 @@ export function matchScreen(): [HTMLElement, () => void] {
       const call = h('div.telop.plain.quarter', h('div.telop-band'), h('b', kinetic(KICK_INFO[kick.type].name)));
       stage.append(call);
       await pause(750);
+      call.remove();
+      if (!alive) return;
+    } else if (quick) {
+      // called for the coach: the two calls are simply named
+      root.classList.add('cine');
+      const call = h('div.telop.plain.quarter.flowcall', h('div.telop-band'),
+        h('b', h('span', cardName(off, 'off')), h('i', '×'), h('span', cardName(def, 'def'))));
+      stage.append(call);
+      await pause(650);
       call.remove();
       if (!alive) return;
     } else {
@@ -766,7 +818,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     booth.say(kick ? `${hero(kick.kicker).name}が蹴る！` : off.special ? `${hero(off.special.owner).name}が行く！` : isRun(off.type as OffType) ? 'ボールを持って、走る！' : '下がって、投げる！', 'idle');
     sfx.whistle('short');
     const call = (beat: Beat, route?: string): void => shout(callFor(beat, res, names, route), res.off);
-    await stadium.play(res, speed(), {
+    await stadium.play(res, speed() * (quick ? 1.7 : 1), {
       onSnap: () => {
         sfx.snap();
         call('snap');
@@ -820,9 +872,9 @@ export function matchScreen(): [HTMLElement, () => void] {
         call('break');
       },
       onTouchdown: () => {
-        sfx.touchdown(mineOff);
-        crowd.roar(mineOff ? 1 : 0.5);
-        flash(st.teams[res.off].color, 380, 0.6);
+        sfx.touchdown(scorer === 0);
+        crowd.roar(scorer === 0 ? 1 : 0.5);
+        flash(st.teams[scorer].color, 380, 0.6);
         vibrate([30, 40, 30, 40, 80]);
         call('touchdown');
       },
@@ -845,11 +897,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     const koff = kick?.type === 'kickoff';
     const onside = kick?.type === 'onside';
     const good = kick ? kick.good && kick.type !== 'punt' && !koff : tried ? res.points > 0 : res.td || res.firstDown || res.yards >= 5;
-    const forMe = kick ? (kick.type === 'punt' ? mineOff : kick.good === mineOff)
+    const forMe = res.returnTd ? scorer === 0 : kick ? (kick.type === 'punt' ? mineOff : kick.good === mineOff)
       : tried ? (res.points > 0) === mineOff
         : res.turnover ? !mineOff : mineOff ? good : !good && res.yards <= 2;
+    /** who stars in a return touchdown: the one who ran it back */
+    const runner = res.returnTd ? (kick ? kick.returner ?? res.carrier : res.defender) : null;
     let head: string;
-    if (kick) {
+    if (res.returnTd) head = koff ? 'リターンタッチダウン！' : res.turnover === 'int' ? 'インターセプトからTD！' : 'ファンブルからTD！';
+    else if (kick) {
       head = kick.type === 'punt' ? `パント ${kick.dist}ヤード`
         : koff ? (kick.ret ? `${kick.ret}ヤードのリターン` : 'タッチバック')
         : onside ? (kick.good ? 'オンサイドキック成功！' : 'オンサイドキック失敗')
@@ -865,14 +920,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     else if (res.outcome === 'incomplete') head = 'パス失敗';
     else if (res.outcome === 'nogain' || res.outcome === 'loss') head = 'ストップ！';
     else head = `${res.yards}ヤード前進`;
-    const extra = kick || tried;
+    const extra = (kick || tried) && !res.returnTd;
     const yardsText = extra ? '' : res.outcome === 'incomplete' || res.turnover === 'int' ? '' : `${res.yards > 0 ? '+' : ''}${res.yards}`;
     const sack = !kick && !tried && res.outcome === 'sack';
-    const big = res.td || (!!res.turnover && !kick) || (kick?.type === 'fg') || !!onside || sack;
+    const big = scored || (!!res.turnover && !kick) || (kick?.type === 'fg') || !!onside || sack;
     if (res.td && mineOff && s.results.length === 0) guideEvent(save(), 'first_td');
-    if (res.td) {
-      stadium.celebrate('td', res.off);
-      if (mineOff) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);
+    if (scored) {
+      stadium.celebrate('td', scorer);
+      if (scorer === 0) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);
     } else if (extra) {
       if (res.points) {
         sfx.firstDown();
@@ -893,34 +948,35 @@ export function matchScreen(): [HTMLElement, () => void] {
     else sfx.stopped(forMe);
     // a number pops out of the ball carrier on the field
     const who = stadium.screenPos(res.off, res.carrier);
-    if (yardsText && who && !res.td) {
+    if (yardsText && who && !scored) {
       const r = canvas.getBoundingClientRect();
       pop(r.left + who.x, r.top + who.y - 40 * who.scale, yardsText, res.yards > 0 ? (mineOff ? '' : 'bad') : mineOff ? 'bad' : 'cool');
     }
-    const telop = h('div.telop', { class: `${kick?.type === 'punt' || koff ? 'plain' : forMe ? 'good' : mineOff || res.td || res.turnover || extra ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
+    const telop = h('div.telop', { class: `${(kick?.type === 'punt' || koff) && !res.returnTd ? 'plain' : forMe ? 'good' : mineOff || scored || res.turnover || extra ? 'bad' : 'plain'} ${big ? 'big' : ''}` },
       h('div.telop-band'),
-      big ? h('div.telop-hero', sprite(onside ? (kick!.good ? res.defender : kick!.returner ?? res.defender) : res.td || kick ? res.carrier : res.defender)) : null,
+      big ? h('div.telop-hero', sprite(runner ?? (onside ? (kick!.good ? res.defender : kick!.returner ?? res.defender) : res.td || kick ? res.carrier : res.defender))) : null,
       h('b', kinetic(head)),
-      sack || res.turnover === 'int' || res.turnover === 'fumble' ? h('span.telop-who', hero(res.defender).name) : res.td ? h('span.telop-who', hero(res.carrier).name) : null,
+      runner != null ? h('span.telop-who', hero(runner).name)
+        : sack || res.turnover === 'int' || res.turnover === 'fumble' ? h('span.telop-who', hero(res.defender).name) : res.td ? h('span.telop-who', hero(res.carrier).name) : null,
       extra && res.points ? h('span.telop-yards', `+${res.points}`, h('i', '点')) : null,
       yardsText && !res.td && !res.turnover && (res.firstDown || res.yards < 0) ? h('span.telop-yards', yardsText, h('i', 'ヤード')) : null);
     stage.append(telop);
     // the play-by-play steps down out of the telop's way
     root.classList.toggle('telop-up', true);
-    booth.say(res.lines[res.lines.length - 1] ?? head, res.td ? (mineOff ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
+    booth.say(res.lines[res.lines.length - 1] ?? head, scored ? (scorer === 0 ? 'cheer' : 'sad') : forMe ? 'guts' : 'idle');
 
-    const outcomeText = extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : onside && kick!.good ? '成功' : '失敗')
+    const outcomeText = res.returnTd ? '被TD' : extra ? (res.points ? `+${res.points}点` : kick?.type === 'punt' ? `${kick.dist}yd` : onside && kick!.good ? '成功' : '失敗')
       : res.td ? 'TD' : res.turnover ? '交代' : res.outcome === 'incomplete' ? '失敗' : yardsText;
     // (an ordinary kickoff is nobody's call: it is not written down)
     if (!koff) history.unshift({ mine: mineOff, name: tried ? `${TWO_POINTS}点ねらい` : cardName(off, 'off'), result: outcomeText, special: !!off.special, good: mineOff ? good : false });
     if (!kick) history.unshift({ mine: !mineOff, name: cardName(def, 'def'), result: '', special: !!def.special, good: false });
 
-    await pause(big ? 900 : 500);
+    await pause(big ? 900 : quick ? 260 : 500);
     if (!alive) return;
     // the scoreboard catches up: score rolls, momentum lights, the ball moves on the little map
     // (a quarter that ended is shown with its last play gone; the next turn turns the page)
     drawBug(res.period ? { ...snap(), quarter: before.quarter, left: Math.max(0, before.left - 1) } : snap());
-    await pause(big ? 1500 : 900);
+    await pause(big ? 1500 : quick ? 520 : 900);
     if (!alive) return;
     telop.classList.add('out');
     await pause(200);
@@ -928,8 +984,8 @@ export function matchScreen(): [HTMLElement, () => void] {
     root.classList.remove('telop-up');
 
     // ---- once more, from another angle: a touchdown, a big gain, a ball taken away. A tap skips it
-    const worthAnotherLook = !kick && !tried && (res.td || res.turnover === 'int' || res.turnover === 'fumble' || (res.outcome === 'gain' && res.yards >= BIG_PLAY));
-    if (worthAnotherLook && prefs().replay && !debug.bot) {
+    const worthAnotherLook = !kick && !tried && (res.td || res.returnTd || res.turnover === 'int' || res.turnover === 'fumble' || (res.outcome === 'gain' && res.yards >= BIG_PLAY));
+    if (worthAnotherLook && (!quick || scored) && prefs().replay && !debug.bot) {
       const tag = h('div.replay-tag', h('i'), h('b', 'リプレイ'), h('span', touchy ? 'タップでとばす' : 'クリックでとばす'));
       root.append(tag);
       sfx.transition();
@@ -949,6 +1005,11 @@ export function matchScreen(): [HTMLElement, () => void] {
       sfx.halftime();
       const half = res.period === 'half';
       if (half) halftimeTalk(st, 1, autoTalk(st, 1));
+      // a new half, a new set of time-outs
+      if (half) {
+        timeouts = TIMEOUTS;
+        drawFlow();
+      }
       if (debug.bot) {
         if (half) halftimeTalk(st, 0, autoTalk(st, 0));
       } else {
@@ -990,6 +1051,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     closePeek();
     alive = false;
     busy = true;
+    flowBar.classList.remove('on');
     hand.classList.remove('in');
     insets(false);
     crowd.tension(false);

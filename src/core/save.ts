@@ -21,9 +21,14 @@ export interface Prefs {
   colorSafe: boolean;
   /** touchdowns, big gains and lost balls are shown once more from another angle */
   replay: boolean;
+  /**
+   * eleven a side, which plays the coach calls: 'key' the big moments only (the rest are called for him and run
+   * quickly), 'all' every one
+   */
+  calls: 'key' | 'all';
 }
 
-export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true });
+export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true, calls: 'key' });
 
 export interface SaveData {
   v: 1;

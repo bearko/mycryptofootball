@@ -4,6 +4,8 @@
 //   auto=1            keep playing a real match by itself
 //   speed=1|2|12      playback speed
 //   force=longtd|runtd|shorttd|int|sack|bigrun|run|catchrun|longgain|special|defspecial|fumble|incomplete|stuff   show this outcome first
+//         |pick6|scoop6|kr6   (a ball taken away and run back, a kickoff run all the way back)
+//   league=0..6       the level of the schools (2 and up: eleven a side)
 //   delay=ms          with force: how long to wait before the forced play (default 900)
 //   loop=1            with force: repeat the forced play forever
 //   preview=inside|outside|short|long|stuff|contain|zone|deep|blitz   chalk this card
@@ -25,7 +27,7 @@ import '@fontsource/dotgothic16/japanese-400.css';
 import '@fontsource/dotgothic16/latin-400.css';
 import { DEF_INFO, DEF_TYPES, KIND, OFF_INFO, OFF_TYPES, type DefType, type OffType } from '../src/game/cards';
 import {
-  FIELD, autoPeek, autoPick, createMatch, resolvePlay, specialPick,
+  FIELD, KICKOFF_FROM, autoPeek, autoPick, createMatch, resolvePlay, specialPick,
   type MatchState, type Pick, type PlayResult, type TeamSheet,
 } from '../src/game/match';
 import { RECRUITS, hero, specialOf } from '../src/game/heroes';
@@ -48,8 +50,9 @@ function clubOfSeven(): TeamSheet {
   };
 }
 const startOnGround = q.get('ground') === '1';
-const home = startOnGround || q.get('club') === '1' ? clubOfSeven() : opponentSheet(num('home', 3));
-const away = opponentSheet(num('away', 0));
+const league = num('league', 0);
+const home = startOnGround || q.get('club') === '1' ? clubOfSeven() : opponentSheet(num('home', 3), league);
+const away = opponentSheet(num('away', 0), league);
 let seed = num('seed', 7);
 let st: MatchState = createMatch(home, away, seed);
 if (q.has('pos')) st.pos = num('pos', st.pos);
@@ -157,6 +160,18 @@ function forced(kind: string): PlayResult {
       return { ...base, offPick: { type: 'short', star: 2 }, defPick: { type: 'deep', star: 1 }, yards: Math.min(15, toGoal - 1), carrier: O.lineup.off.WR1, defender: D.lineup.def.CB1 };
     case 'longgain':
       return { ...base, offPick: { type: 'long', star: 2 }, defPick: { type: 'stuff', star: 1 }, yards: Math.min(24, toGoal - 1), carrier: O.lineup.off.WR2, defender: D.lineup.def.S };
+    case 'pick6':
+      return { ...forced('int'), returnTd: true, points: 6 };
+    case 'scoop6':
+      return { ...forced('fumble'), returnTd: true, points: 6 };
+    case 'kr6': {
+      const back = D.lineup.off.WR1;
+      return {
+        ...base, before: { ...base.before, pos: KICKOFF_FROM }, outcome: 'kick', yards: 0, offPick: { type: 'kickoff', star: 1 }, carrier: O.lineup.k ?? O.lineup.off.QB,
+        defender: O.lineup.def.LB, kick: { type: 'kickoff', good: true, dist: 24, kicker: O.lineup.k ?? O.lineup.off.QB, returner: back, ret: FIELD - (FIELD - KICKOFF_FROM - 24), spot: FIELD },
+        returnTd: true, points: 6,
+      };
+    }
     case 'defspecial': {
       const sp = D.specials.find((s) => KIND[s.kind].side === 'def' && s.kind !== 'peekDef');
       if (!sp) return forced('stuff');
@@ -300,7 +315,7 @@ btn(`速さ ×${speed}`, (b) => {
   b.textContent = `速さ ×${speed}`;
 });
 sep();
-for (const [label, kind] of [['ロングTD', 'longtd'], ['ランTD', 'runtd'], ['インターセプト', 'int'], ['サック', 'sack'], ['外ラン大', 'bigrun'], ['特別作戦', 'special'], ['守備の特別', 'defspecial'], ['ファンブル', 'fumble'], ['パス失敗', 'incomplete'], ['ロス', 'stuff']] as const) {
+for (const [label, kind] of [['ロングTD', 'longtd'], ['ランTD', 'runtd'], ['インターセプト', 'int'], ['サック', 'sack'], ['外ラン大', 'bigrun'], ['特別作戦', 'special'], ['守備の特別', 'defspecial'], ['ファンブル', 'fumble'], ['パス失敗', 'incomplete'], ['ロス', 'stuff'], ['INTからTD', 'pick6'], ['ファンブルからTD', 'scoop6'], ['リターンTD', 'kr6']] as const) {
   btn(label, () => void next(kind));
 }
 sep();

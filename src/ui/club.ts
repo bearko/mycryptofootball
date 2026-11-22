@@ -7,7 +7,7 @@
 
 import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
-import { commit, save, storeMatch } from '../core/save';
+import { commit, prefs, save, storeMatch } from '../core/save';
 import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
@@ -447,7 +447,27 @@ export function clubScreen(): [HTMLElement, () => void] {
         stars.map((a, i) => h('li', { style: { '--i': String(i) } },
           h('span.ace-face', sprite(a.id)),
           h('span.ace-text', h('b', `「${a.play}」`), h('i', a.tag))))),
-      h('div.vs-go', button('試合へ', goMatch, { cls: 'go big', sound: 'confirm', key: 'Enter' })));
+      h('div.vs-go', sizeOf(s.lineup!) === 11 ? callsSwitch() : null, button('試合へ', goMatch, { cls: 'go big', sound: 'confirm', key: 'Enter' })));
+  };
+  /**
+   * Eleven a side: which plays the coach calls in the match. The big moments only (the others are called for him and
+   * run quickly), or every one. What he chose last time stays chosen: going to the match is still one tap.
+   */
+  const callsSwitch = (): HTMLElement => {
+    const opts: ['key' | 'all', string, string][] = [['key', '見せ場だけ', 'おすすめ'], ['all', '全プレー', '']];
+    const btns = opts.map(([v, label, tag]) => h('button.vs-call', {
+      type: 'button', 'aria-pressed': String(prefs().calls === v),
+      onclick: () => {
+        if (prefs().calls === v) return;
+        prefs().calls = v;
+        commit();
+        sfx.cardPick();
+        vibrate(10);
+        for (const [i, b] of btns.entries()) b.setAttribute('aria-pressed', String(opts[i]![0] === v));
+        coach.say(v === 'key' ? '3回目の攻撃やゴール前など、見せ場だけ監督が指示します。ほかは任せてください！' : '全部のプレーを監督が指示します。じっくりいきましょう！', 'point');
+      },
+    }, h('b', label), tag ? h('i', tag) : null));
+    return h('div.vs-calls', { role: 'group', 'aria-label': '試合で指示するプレー' }, h('span', '指示'), btns);
   };
   let vs: HTMLElement | null = null;
 

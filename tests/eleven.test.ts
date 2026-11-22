@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { isKick, isRun } from '../src/game/cards';
 import { bestLineup, fielded, validLineup } from '../src/game/lineup';
-import { FIELD, autoPeek, autoPick, createMatch, group, resolvePlay, simulate, unitSummary, type PlayResult, type TeamSheet } from '../src/game/match';
+import {
+  FIELD, PLAYS_PER_Q, PLAYS_PER_Q_11, autoPeek, autoPick, createMatch, group, isEleven, playsPerQ, resolvePlay, showtime, simulate, unitSummary,
+  type PlayResult, type TeamSheet,
+} from '../src/game/match';
 import { DEF_POS_OF, OFF_POS_OF, defPos, offPos, roleOf, sizeOf } from '../src/game/model';
 import { TIERS } from '../src/game/prestige';
 import { asPlayer, clubSheet, clubSize, mend, nextYear, signRecruits, type Season } from '../src/game/season';
@@ -121,6 +124,75 @@ describe('eleven a side', () => {
       points += st.score[0] + st.score[1];
     }
     expect(points / 20).toBeGreaterThan(10);
+  });
+
+  it('plays ten plays a quarter and scores about twice as much as six a side, from more ways than one', () => {
+    const six = createMatch(opponentSheet(0), opponentSheet(1), 3);
+    expect(playsPerQ(six)).toBe(PLAYS_PER_Q);
+    expect(six.left).toBe(PLAYS_PER_Q);
+    const eleven = createMatch(opponentSheet(0, 2), opponentSheet(3, 2), 3);
+    expect(isEleven(eleven)).toBe(true);
+    expect(playsPerQ(eleven)).toBe(PLAYS_PER_Q_11);
+    expect(eleven.left).toBe(PLAYS_PER_Q_11);
+    const totals = (league: number): { points: number; plays: number; returns: number; breaks: number; show: number } => {
+      const out = { points: 0, plays: 0, returns: 0, breaks: 0, show: 0 };
+      for (let seed = 1; seed <= 120; seed += 1) {
+        const st = createMatch(opponentSheet(seed % 4, league), opponentSheet((seed + 1) % 4, league), seed);
+        while (!st.over) {
+          if (!st.ko && !st.tfp && showtime(st)) out.show += 1;
+          const d = autoPick(st, (1 - st.poss) as 0 | 1);
+          const res = resolvePlay(st, autoPick(st, st.poss, d), d);
+          if (!res.kick && !res.tfp) out.plays += 1;
+          if (res.returnTd) {
+            out.returns += 1;
+            // the other side scored: it tries for more next
+            expect(st.poss).toBe(1 - res.off);
+            expect(st.tfp || st.over).toBe(true);
+          }
+          if (res.breakaway) out.breaks += 1;
+        }
+        out.points += st.score[0] + st.score[1];
+      }
+      return out;
+    };
+    const a = totals(0);
+    const b = totals(2);
+    // six a side: none of the new ways to score
+    expect(a.returns + a.breaks).toBe(0);
+    expect(b.points / 120).toBeGreaterThan(35);
+    expect(b.points / 120).toBeLessThan(65);
+    expect(b.points).toBeGreaterThan(a.points * 1.6);
+    expect(b.returns).toBeGreaterThan(5);
+    expect(b.breaks / 120).toBeGreaterThan(1);
+    // the coach who calls only the big moments calls about two in five of them
+    expect(b.show / b.plays).toBeGreaterThan(0.25);
+    expect(b.show / b.plays).toBeLessThan(0.5);
+  });
+
+  it('a kickoff run back and a ball taken away and run back are pictured all the way into the end zone', () => {
+    const teams: [TeamSheet, TeamSheet] = [HOME, opponentSheet(0, 2)];
+    let seen = 0;
+    for (let seed = 1; seed <= 300 && seen < 6; seed += 1) {
+      const st = createMatch(...teams, seed);
+      while (!st.over) {
+        const d = autoPick(st, (1 - st.poss) as 0 | 1);
+        const res = resolvePlay(st, autoPick(st, st.poss, d), d);
+        if (!res.returnTd) continue;
+        seen += 1;
+        const sc = buildScript(teams, specOf(res), () => null, false);
+        expect(sc.tTD).toBeGreaterThan(0);
+        expect(sc.cues.some((c) => c.c === 'td')).toBe(true);
+        // the one who ran it back ends up behind the goal line he ran at
+        const scorer = (1 - res.off) as 0 | 1;
+        const who = res.kick ? res.kick.returner! : res.defender;
+        const plan = sc.plans.find((p) => p.team === scorer && p.id === who)!;
+        const tmp = { x: 0, z: 0 };
+        evalKeys(plan.keys, sc.dur, tmp);
+        const goal = scorer === 0 ? FIELD : 0;
+        expect(scorer === 0 ? tmp.x > goal : tmp.x < goal, `${res.kick?.type ?? res.turnover} ${tmp.x}`).toBe(true);
+      }
+    }
+    expect(seen).toBeGreaterThanOrEqual(3);
   });
 
   it('twenty-two heroes line up, nobody on top of anybody, whatever the defense calls', () => {
