@@ -1,0 +1,52 @@
+/* ---------- the tournament's bracket (ui/bracket.ts) ---------- */
+.bk-board { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--display); }
+.bk-round { fill: var(--dim); font-size: 17px; text-anchor: middle; }
+.bk-line { fill: none; stroke: rgba(170, 179, 221, 0.45); stroke-width: 4; stroke-linejoin: round; }
+.bk-line.lost { stroke: rgba(170, 179, 221, 0.18); }
+.bk-line.won { stroke: var(--chalk); stroke-width: 7; }
+.bk-line.won.club { stroke: var(--yellow); filter: drop-shadow(0 0 6px rgba(255, 225, 74, 0.8)); }
+.bk-line.fresh { stroke-dasharray: 1; stroke-dashoffset: 1; animation: bk-draw 0.55s var(--d, 0s) cubic-bezier(0.5, 0, 0.3, 1) forwards; }
+@keyframes bk-draw { to { stroke-dashoffset: 0; } }
+.bk-score { fill: var(--chalk); font-size: 19px; paint-order: stroke fill; stroke: var(--ink); stroke-width: 5px; }
+.bk-score.is-left { text-anchor: start; }
+.bk-score.is-right { text-anchor: end; }
+.bk-score.is-final { text-anchor: middle; }
+.bk-score.fresh { animation: bk-pop 0.4s var(--d, 0s) var(--spring) backwards; }
+.bk-team .bk-box { fill: #141846; stroke: var(--ink); stroke-width: 4; }
+.bk-team .bk-chip { fill: var(--tc); }
+.bk-name { fill: var(--chalk); font-size: 25px; dominant-baseline: middle; }
+.bk-name.is-right { text-anchor: end; }
+.bk-team.is-club .bk-box { fill: var(--yellow); }
+.bk-team.is-club .bk-name { fill: var(--ink); }
+.bk-team.is-out { opacity: 0.38; transition: opacity 0.5s 0.6s; }
+.bk-team.is-champ .bk-box { stroke: var(--yellow); stroke-width: 6; }
+.bk-trophy { fill: #5a5f98; stroke: var(--ink); stroke-width: 3; }
+.bk-cup.is-won .bk-trophy { fill: var(--yellow); filter: drop-shadow(0 0 10px rgba(255, 225, 74, 0.9)); }
+.bk-cup.fresh .bk-trophy { animation: bk-pop 0.6s 1.2s var(--spring) backwards; }
+.bk-champ { fill: var(--dim); font-size: 22px; text-anchor: middle; paint-order: stroke fill; stroke: var(--ink); stroke-width: 6px; }
+.bk-cup.is-won .bk-champ { fill: var(--yellow); }
+@keyframes bk-pop { from { transform: scale(0.2); opacity: 0; } }
+.bk-score, .bk-cup * { transform-box: fill-box; transform-origin: center; }
+/* the draw announced: the teams come in from the sides, the lines after them */
+.bk-board.is-reveal .bk-team { animation: bk-in 0.4s calc(0.3s + var(--i) * 0.18s) var(--spring) backwards; }
+.bk-board.is-reveal .bk-line, .bk-board.is-reveal .bk-cup { animation: fade-in 0.5s 1.9s backwards; }
+.bk-board.is-reveal .bk-team:nth-of-type(2) .bk-box { animation: bk-mark 0.9s 2.6s ease-in-out 2; }
+@keyframes bk-in { from { opacity: 0; transform: translateY(40px); } }
+@keyframes bk-mark { 50% { stroke: var(--pink); stroke-width: 10; } }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* shown over the screen: it goes on by itself, a tap goes on at once */
+.bk-show { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 1rem; background: rgba(6, 8, 26, 0.9); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: fade-in 0.25s; cursor: pointer; }
+.bk-show.out { opacity: 0; transition: opacity 0.25s; }
+.bk-panel { width: min(64rem, 100%); max-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+.bk-head { display: flex; align-items: baseline; gap: 1.2rem; }
+.bk-cupname { font-family: var(--display); font-size: var(--fs-m); color: var(--chalk); padding: 0 0.8rem; background: var(--orange); transform: skewX(-10deg); }
+.bk-head b { font-family: var(--display); font-weight: 400; font-size: 2.6rem; line-height: 1.1; color: var(--yellow); -webkit-text-stroke: 0.4rem var(--ink); paint-order: stroke fill; animation: slam 0.45s var(--spring) backwards; }
+.bk-panel .bk-board { max-height: calc(100vh - 9rem); max-height: calc(100dvh - 9rem); width: auto; max-width: 100%; }
+.bk-note { font-family: var(--display); font-size: var(--fs-l); color: var(--chalk); animation: fade-up 0.4s 2.4s backwards; }
+.bk-show.is-update .bk-note { animation-delay: 1s; }
+.bk-show.is-champ .bk-note { color: var(--yellow); }
+.bk-tap { position: absolute; right: 1.2rem; bottom: 0.8rem; font-size: var(--fs-xs); color: var(--dim); }
+/* looked at from the practice ground */
+.bk-view { display: flex; flex-direction: column; gap: 0.6rem; }
+.bk-view .bk-board { max-height: calc(100vh - 12rem); max-height: calc(100dvh - 12rem); }

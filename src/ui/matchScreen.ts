@@ -37,6 +37,7 @@ import { lessonDue } from '../game/tutorial';
 import { guideEvent } from './platform';
 import { clearGoal, teach } from './tutor';
 import { factsOf, heroCard } from './heroCard';
+import { showBracket } from './bracket';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足', fourth: '4回目だけ' } as const;
 
@@ -1177,7 +1178,13 @@ export function matchScreen(): [HTMLElement, () => void] {
       changes.length ? h('div.fulltime-changes', { class: changes.length > 12 ? 'is-crowd' : changes.length > 9 ? 'is-many' : '' }, changeList(s, changes)) : null,
       h('div.modal-actions', button(ended ? '結果を見る' : 'グラウンドへもどる', () => {
         closeModal();
-        route();
+        // a round of the tournament: its results go onto the bracket first
+        if (p.cup && (p.stage === 'spring' || p.stage === 'autumn')) {
+          void showBracket(root, s, p.stage, 'update').then(() => {
+            commit();
+            route();
+          });
+        } else route();
       }, { cls: 'big go' }))), { sticky: true, cls: 'wide', quiet: true });
   };
 

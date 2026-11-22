@@ -5,6 +5,7 @@ import { RECRUITS, hero } from '../src/game/heroes';
 import { roleOf } from '../src/game/model';
 import { TIERS } from '../src/game/prestige';
 import { MATCH_COUNT, mend, nextYear, schoolAt, schoolId } from '../src/game/season';
+import { BRACKET_SCHOOLS } from '../src/game/bracket';
 import { CUP_SCHOOLS, FIRST_DRAW, ROUNDS, SCHOOLS, aces, complete, cupIndex, drawSchools, opponentSheet } from '../src/game/teams';
 import { runCareer, runSeason } from './bot';
 
@@ -97,11 +98,15 @@ describe('the schools', () => {
     expect(CUP_SCHOOLS[1]!.filter((id) => CUP_SCHOOLS[0]!.includes(id)).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('a club\'s first spring is always against the same four; from the second year the draw changes', () => {
+  it('a club\'s first practice match is always the same; the tournaments\' schools come from their brackets; from the second year the draw changes', () => {
     const { season: s } = runSeason(3 * 31);
-    expect(s.draw.slice(0, 4)).toEqual([...FIRST_DRAW]);
+    expect(s.draw[0]).toBe(FIRST_DRAW[0]);
     expect(s.draw.length).toBe(MATCH_COUNT);
-    expect(schoolAt(s, 3).name).toBe(SCHOOLS[3]!.name);
+    // every school the club met in a tournament stood in that tournament's bracket
+    for (const r of s.results.filter((x) => x.opp > 0)) {
+      const b = r.m < 4 ? s.cups!.spring! : s.cups!.autumn!;
+      expect(b.field).toContain(s.draw[r.m]);
+    }
     // the autumn's schools are of the tournament the club reached by then
     for (const id of s.draw.slice(5)) expect(CUP_SCHOOLS[cupIndex(s.league)]).toContain(id);
     const seen = new Set<string>();
@@ -110,9 +115,9 @@ describe('the schools', () => {
       t.tier = 2;
       nextYear(t, seed);
       expect(t.draw.length).toBe(MATCH_COUNT);
-      for (const id of t.draw) expect(CUP_SCHOOLS[1]).toContain(id);
+      for (const id of t.draw) expect([...CUP_SCHOOLS[1]!, ...BRACKET_SCHOOLS[1]!]).toContain(id);
       // the spring's four in order of strength, the June practice match one of the others when there is one
-      expect(t.draw.slice(0, 4).includes(t.draw[4]!)).toBe(false);
+      expect([t.draw[0], t.draw[2], t.draw[3]].includes(t.draw[4]!)).toBe(false);
       expect(schoolId(t, 0)).toBe(t.draw[0]);
       seen.add(t.draw.join());
     }

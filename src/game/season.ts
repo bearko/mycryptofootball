@@ -20,6 +20,7 @@ import { bookMatch, type Box } from './boxscore';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { FAME_WEIGHT, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
+import { bookRound, clubOpponent, makeBracket, type Bracket } from './bracket';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
@@ -479,6 +480,8 @@ export interface Season {
   stageAt?: number;
   /** the standing the year began with, once the autumn has its own (`league`) */
   springLeague?: number;
+  /** the brackets of this year's tournaments (bracket.ts): the spring's from the year's start, the autumn's from autumn */
+  cups?: Partial<Record<'spring' | 'autumn', Bracket>>;
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
   /** this season's numbers of every hero who played (boxscore.ts; emptied when a new year begins) */
@@ -539,10 +542,12 @@ export function newSeason(seed: number): Season {
   }
   candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
   const draw = drawYear(0, rng, FIRST_DRAW);
+  const spring = makeBracket(0, rng);
+  draw[cupFirst('spring')] = clubOpponent(spring, 1)!;
   return {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
-    year: 1, tier: 0, fame: 0, league: 0, draw, alumni: {}, stageAt: 0,
+    year: 1, tier: 0, fame: 0, league: 0, draw, alumni: {}, stageAt: 0, cups: { spring },
   };
 }
 
@@ -681,6 +686,8 @@ export function nextYear(s: Season, seed: number): void {
   s.seen = [];
   s.event = null;
   s.champion = false;
+  s.cups = {};
+  s.springLeague = undefined;
   s.hand = [];
   s.review = false;
   for (const m of s.members) m.sta = STA_MAX;
@@ -690,6 +697,7 @@ export function nextYear(s: Season, seed: number): void {
   // and they come from every ability in turn, so a club can fill whatever its graduates left open
   s.candidates = candidatesFor(s, rng, room, (n) => Math.min(3, Math.max(1, Math.round(n / 2))));
   s.draw = drawYear(s.league, rng);
+  drawCup(s, 'spring', rng);
   if (s.candidates.length) {
     s.phase = 'recruit';
     keep(s, rng);
@@ -904,9 +912,44 @@ function enterStage(s: Season, rng: Rng): void {
     s.springLeague = s.league;
     s.league = s.tier;
     s.draw = [...s.draw.slice(0, stageMatches('autumn')), ...autumnDraw(s.league, rng)];
+    drawCup(s, 'autumn', rng);
     fitLineup(s);
   }
 }
+/** Draws a tournament's bracket; its first round's school becomes the club's first opponent. */
+export function drawCup(s: Season, stage: 'spring' | 'autumn', rng: Rng): void {
+  const b = makeBracket(s.league, rng);
+  (s.cups ??= {})[stage] = b;
+  s.draw[cupFirst(stage)] = clubOpponent(b, 1)!;
+}
+/** the index into Season.draw of a tournament's first round */
+const cupFirst = (stage: 'spring' | 'autumn'): number => SCHEDULE.find((d) => d.stage === stage && d.cup && d.round === 1)!.m;
+/** The bracket of the tournament a day belongs to (the spring's or the autumn's), if there is one. */
+export const cupFor = (s: Season, d: DayPlan = plan(s)): Bracket | undefined =>
+  d.stage === 'spring' ? s.cups?.spring : d.stage === 'autumn' ? s.cups?.autumn : undefined;
+/** Is the school of a match not known yet (a round of a tournament whose earlier games are still to be played)? */
+export function undecided(s: Season, d: DayPlan): boolean {
+  const b = d.cup ? cupFor(s, d) : undefined;
+  return !!b && d.round > 1 && clubOpponent(b, d.round) == null;
+}
+
+/**
+ * The tournament whose draw is to be announced now: its bracket is drawn, not yet shown, and the practice match
+ * before it is over (spring: from the second week; autumn: after the August practice match).
+ */
+export function drawDue(s: Season): 'spring' | 'autumn' | null {
+  const p = plan(s);
+  if (s.phase !== 'club' || (p.stage !== 'spring' && p.stage !== 'autumn')) return null;
+  const b = s.cups?.[p.stage];
+  const practice = SCHEDULE.find((d) => d.stage === p.stage && d.t === 'match' && !d.cup)!;
+  return b && !b.shown && s.day > practice.n ? p.stage : null;
+}
+/** The tournament whose bracket the practice ground can show: the autumn's once announced, else the spring's. */
+export function bracketNow(s: Season): 'spring' | 'autumn' | null {
+  if (s.cups?.autumn?.shown) return 'autumn';
+  return s.cups?.spring?.shown && plan(s).stage !== 'autumn' ? 'spring' : null;
+}
+
 /** the index into Season.draw of the first match of a part of the year */
 const stageMatches = (stage: Stage): number => SCHEDULE.find((d) => d.stage === stage && d.t === 'match')!.m;
 
@@ -1221,6 +1264,17 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     }
   }).filter((c) => c.trust !== 0 || c.sta !== 0);
   // the club's standing: the gauge moves with every result
+  // the tournament's bracket: the club's game, the other games of the round, and who the club meets next
+  if (p.cup && (p.stage === 'spring' || p.stage === 'autumn')) {
+    const b = s.cups?.[p.stage];
+    if (b) {
+      const rng = rngOf(s);
+      bookRound(b, p.round, win, [st.score[0], st.score[1]], s.league, rng);
+      const next = clubOpponent(b, p.round + 1);
+      if (win && next != null) s.draw[p.m + 1] = next;
+      keep(s, rng);
+    }
+  }
   const fame = applyResult({ tier: s.tier, fame: s.fame }, p.round, win, FAME_WEIGHT[p.stage]);
   s.tier = fame.after.tier;
   s.fame = fame.after.fame;
@@ -1268,6 +1322,28 @@ export function mend(s: Season): Season {
   for (const r of s.results) if (typeof r.m !== 'number') r.m = SCHEDULE[r.day]?.m ?? r.opp;
   // a year that began before the summer existed is in its spring
   s.stageAt ??= s.day < stageStart('summer') ? 0 : s.day;
+  // the brackets came later: drawn now, with the club's games so far booked on them (its first school kept)
+  if (!s.cups) {
+    s.cups = {};
+    const rng = new Rng(s.seed ^ 0xb7);
+    for (const stage of ['spring', 'autumn'] as const) {
+      if (stage === 'autumn' && s.day < stageStart('autumn')) continue;
+      const league = stage === 'spring' ? s.springLeague ?? s.league : s.league;
+      const b = makeBracket(league, rng);
+      const first = s.draw[cupFirst(stage)];
+      const at = first == null ? -1 : b.field.indexOf(first);
+      if (at > 1) [b.field[1], b.field[at]] = [b.field[at]!, b.field[1]!];
+      s.draw[cupFirst(stage)] = b.field[1]!;
+      for (const r of s.results.filter((x) => SCHEDULE[x.day]?.stage === stage && SCHEDULE[x.day]?.cup)) {
+        bookRound(b, r.opp, r.win, [r.us, r.them], league, rng);
+        const next = clubOpponent(b, r.opp + 1);
+        if (r.win && next != null) s.draw[r.m + 1] = next;
+      }
+      b.shown = s.results.some((x) => SCHEDULE[x.day]?.stage === stage);
+      b.seen = b.won.map((w, g) => (w == null ? -1 : g)).filter((g) => g >= 0);
+      s.cups[stage] = b;
+    }
+  }
   // eleven a side came later: a club that plays in the prefecture or above gets a line-up of eleven
   if (s.phase !== 'recruit') fitLineup(s);
   // kickers came later still: the club's best foot gets the job

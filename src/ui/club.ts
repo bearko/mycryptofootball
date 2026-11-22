@@ -13,7 +13,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, bracketNow, drawDue, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { aces } from '../game/teams';
@@ -31,6 +31,7 @@ import { matchScreen } from './matchScreen';
 import { show } from './nav';
 import { policyPanel } from './policy';
 import { reviewModal } from './review';
+import { bracketModal, showBracket } from './bracket';
 import { memberModal, settingsModal } from './shared';
 import { standingChip } from './standing';
 import { titleScreen } from './title';
@@ -110,13 +111,14 @@ function contextLine(s: Season): Line {
   const next = nextMatch(s);
   const until = next ? daysTo(s, next) : 0;
   if (next && until <= 1) return [`あしたは${shortLabel(next)}！ 仕上げの1枚をえらびましょう。`, 'cheer'];
-  if (p.days > 1) return [next ? `${schoolAt(s, next.m).name}との${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！` : 'この2週間の1枚をどうぞ！', 'smile'];
+  const vsName = next && !undecided(s, next) ? `${schoolAt(s, next.m).name}との` : '';
+  if (p.days > 1) return [next ? `${vsName}${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！` : 'この2週間の1枚をどうぞ！', 'smile'];
   if (p.stage === 'camp') return ['合宿の1日をえらびましょう！ バテたら「休養」も忘れずに。', 'smile'];
   const near = s.members.filter((m) => !learned(m)).sort((a, b) => b.trust - a.trust)[0];
   if (near && TRUST_LEARN - near.trust <= 12) {
     return [`${shortName(near.id)}はあと信頼${TRUST_LEARN - near.trust}で特別作戦を覚えます。マンツーマンのカードが近道ですよ。`, 'point'];
   }
-  if (next) return [`${schoolAt(s, next.m).name}との${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！`, 'smile'];
+  if (next) return [`${vsName}${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！`, 'smile'];
   return ['きょうの1枚をえらびましょう！', 'smile'];
 }
 
@@ -161,6 +163,15 @@ export function clubScreen(): [HTMLElement, () => void] {
     policyBtn.classList.toggle('is-open', on);
     policyTag.hidden = !on;
   };
+  // the tournament's bracket, once its draw has been announced
+  const bracketBtn = button('組合せ', () => {
+    const at = bracketNow(s);
+    if (at) bracketModal(s, at);
+  }, 'alt');
+  const drawBracketBtn = (): void => {
+    bracketBtn.hidden = !bracketNow(s);
+  };
+  drawBracketBtn();
   const top = h('header.pg-top',
     h('div.pg-school', h('b', TEAM_NAME), standingChip(s)),
     cal.el,
@@ -168,6 +179,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       button('編成', () => show(lineupScreen(() => show(...clubScreen()))), 'alt'),
       h('span.pg-policy', policyBtn, policyTag),
       button('成長', () => reviewModal(s, { closed: false }), 'alt'),
+      bracketBtn,
       button('設定', settingsModal, 'alt'),
       button('タイトル', () => {
         save().season = s;
@@ -738,6 +750,21 @@ export function clubScreen(): [HTMLElement, () => void] {
             commit();
             arrive(first);
           },
+        });
+      }, first ? 650 : 350);
+      return;
+    }
+    // the tournament's draw is announced (once), before anything else of the day
+    const due = drawDue(s);
+    if (due) {
+      coach.say(`${due === 'spring' ? '春' : '秋'}の${cupOf(s)}の組み合わせが決まりました！`, 'cheer');
+      setTimeout(() => {
+        if (!alive) return;
+        void showBracket(root, s, due, 'reveal').then(() => {
+          save().season = s;
+          commit();
+          drawBracketBtn();
+          if (alive) arrive(first);
         });
       }, first ? 650 : 350);
       return;
