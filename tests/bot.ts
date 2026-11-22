@@ -149,7 +149,7 @@ export function runSeason(seed: number, style: Style = 'sensible'): SeasonRun {
   return { season: s, matches };
 }
 
-export interface YearLog { year: number; league: number; tier: number; fame: number; members: number; wins: number; played: number; champion: boolean; avg: number }
+export interface YearLog { year: number; league: number; tier: number; fame: number; members: number; wins: number; played: number; champion: boolean; avg: number; summit?: 'won' | 'lost' }
 
 /** Plays the same club for several years. */
 export function runCareer(seed: number, years: number, style: Style = 'sensible'): { season: Season; log: YearLog[] } {
@@ -163,7 +163,7 @@ export function runCareer(seed: number, years: number, style: Style = 'sensible'
     const on = s.members.filter((m) => isStarter(s.lineup!, m.id));
     log.push({
       year: s.year, league, tier: s.tier, fame: s.fame, members: s.members.length,
-      wins: s.results.filter((r) => r.win).length, played: s.results.length, champion: s.champion,
+      wins: s.results.filter((r) => r.win).length, played: s.results.length, champion: s.champion, summit: s.summit,
       avg: on.reduce((v, m) => v + STATS.reduce((a, k) => a + m.stats[k], 0) / STATS.length, 0) / Math.max(1, on.length),
     });
   }

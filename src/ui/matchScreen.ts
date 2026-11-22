@@ -64,7 +64,7 @@ export function matchScreen(): [HTMLElement, () => void] {
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
   // the spring's final and the autumn's (the one that counts)
-  const isFinal = p.cup && p.round === 3;
+  const isFinal = (p.cup && p.round === 3) || !!p.summit;
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
@@ -1161,6 +1161,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (ended) {
       save().seasons += 1;
       if (s.champion) save().titles += 1;
+      if (s.summit === 'won') save().cleared = (save().cleared ?? 0) + 1;
     }
     commit();
     drawBug(snap());

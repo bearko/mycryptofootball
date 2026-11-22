@@ -56,7 +56,7 @@ describe('the colours', () => {
         expect(t.tacticLv).toBeLessThanOrEqual(5);
       }
     }
-    expect(SCHOOLS.filter((x) => x.tactic === 'royal').length).toBe(2);
+    expect(SCHOOLS.filter((x) => x.tactic === 'royal' && !x.pro).length).toBe(2);
     // six a side: none
     expect(opponentSheet(2, 0).tactic).toBeUndefined();
   });

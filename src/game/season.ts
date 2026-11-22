@@ -20,7 +20,7 @@ import { bookMatch, type Box } from './boxscore';
 import { acesFit, suggestAces, type Aces } from './duel';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
-import { FIRST_DRAW, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
+import { FIRST_DRAW, PRO_SCHOOL, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
 import { bookRound, clubOpponent, makeBracket, BRACKET_SCHOOLS, type Bracket } from './bracket';
 import {
   ALLOWANCE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost,
@@ -92,6 +92,11 @@ export interface DayPlan {
   /** '練習試合', '春の地区大会 1回戦' (the tournament's name follows the club's standing: labelOf); practice: '練習', '5月前半' */
   label: string;
   cup: boolean;
+  /**
+   * the summit: the weeks after the autumn and the match against the corporate champion. Only a club at the top that
+   * wins the nation's tournament gets there (summitDue); everybody else's year ends with the autumn
+   */
+  summit?: boolean;
 }
 export const DOW = ['月', '火', '水', '木', '金', '土', '日'] as const;
 
@@ -122,11 +127,11 @@ function buildSchedule(): DayPlan[] {
       label: '練習', cup: false, ...rest,
     });
   };
-  const match = (stage: Stage, round: number, opp = round): void => {
-    const cup = round > 0;
+  const match = (stage: Stage, round: number, opp = round, extra: Partial<DayPlan> = {}): void => {
+    const cup = round > 0 && !extra.summit;
     // the autumn's first round: the schools that get that far have had a summer too
     const lift = LIFT[stage] + (stage === 'autumn' && round === 1 ? AUTUMN_FIRST : 0);
-    slot(stage, { t: 'match', m: matches, opp, round, cup, lift, label: cup ? `${stage === 'spring' ? '春' : '秋'}の地区大会 ${ROUND_NAME[round]}` : '練習試合' });
+    slot(stage, { t: 'match', m: matches, opp, round, cup, lift, label: cup ? `${stage === 'spring' ? '春' : '秋'}の地区大会 ${ROUND_NAME[round]}` : '練習試合', ...extra });
     matches += 1;
     off += 1;
   };
@@ -169,10 +174,22 @@ function buildSchedule(): DayPlan[] {
   week('autumn', 2);
   span('autumn', 2, '10月前半');
   week('autumn', 3);
+  // the summit: four weeks to get ready, then the corporate champion
+  slot('autumn', { days: SUMMIT_WEEKS * 7 - 1, label: '頂上決戦へ', summit: true });
+  off += SUMMIT_WEEKS * 7 - 1;
+  match('autumn', 3, 3, { summit: true, label: SUMMIT_NAME, lift: LIFT.autumn + SUMMIT_LIFT });
   return out;
 }
 
+/** the summit's name, and how long the club gets ready for it */
+export const SUMMIT_NAME = 'オアシストーナメント 頂上決戦';
+const SUMMIT_WEEKS = 4;
+/** what the corporate champion has on top of the schools of the club's tournament at that time of year (before liftOf) */
+const SUMMIT_LIFT = 2;
 export const SCHEDULE: readonly DayPlan[] = buildSchedule();
+/** the first day of the summit's weeks, and the summit itself */
+export const SUMMIT_DAY = SCHEDULE.findIndex((d) => d.summit);
+export const SUMMIT_MATCH = SCHEDULE.find((d) => d.summit && d.t === 'match')!;
 /** how many matches a year has (if the club goes all the way) */
 export const MATCH_COUNT = SCHEDULE.filter((d) => d.t === 'match').length;
 /** the first day of each part of the year */
@@ -546,6 +563,8 @@ export interface Season {
   tacticWas?: { t: Tactic; wins: number };
   /** eleven a side, the aces the coach has named (game/duel.ts); one not fielded gives way to the suggestion */
   aces?: Partial<Aces>;
+  /** the summit against the corporate champion, once played: won (the game is beaten) or lost */
+  summit?: 'won' | 'lost';
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -706,6 +725,7 @@ export function nextYear(s: Season, seed: number): void {
   s.seen = [];
   s.event = null;
   s.champion = false;
+  delete s.summit;
   s.cups = {};
   s.trip = undefined;
   payAllowance(s);
@@ -734,13 +754,15 @@ export function nextYear(s: Season, seed: number): void {
 }
 
 /** The school of one of the year's matches (`m`: DayPlan.m, MatchRecord.m). */
-export const schoolId = (s: Season, m: number): number => s.draw?.[m] ?? FIRST_DRAW[m] ?? 0;
+export const schoolId = (s: Season, m: number): number => (m === SUMMIT_MATCH.m ? PRO_SCHOOL : s.draw?.[m] ?? FIRST_DRAW[m] ?? 0);
 export const schoolAt = (s: Season, m: number): School => SCHOOLS[schoolId(s, m)]!;
 /** The school a match was played against. */
 export const metAt = (s: Season, r: MatchRecord): School => SCHOOLS[r.school ?? schoolId(s, r.m)]!;
 /** The school a match day brings, as the match engine sees it. */
 export const opponentFor = (s: Season, d: DayPlan = plan(s)): TeamSheet =>
-  isTrip(s, d)
+  // the summit: the corporate champion, stronger than anybody in the nation's tournament
+  d.summit ? opponentSheet(3, s.league, 11, PRO_SCHOOL, liftOf(d, s.league))
+  : isTrip(s, d)
     // away: a school of the tournament above, as strong as a semi-final there
     ? opponentSheet(2, Math.min(TOP_TIER, s.league + 1), clubSize(s), tripSchool(s, d), liftOf(d, Math.min(TOP_TIER, s.league + 1)))
     : opponentSheet(d.opp, s.league, clubSize(s), schoolId(s, d.m), liftOf(d, s.league));
@@ -819,9 +841,17 @@ export function daysTo(s: Season, d: DayPlan): number {
 
 /** The next match on the calendar from today on (null after the last one). */
 export function nextMatch(s: Season): DayPlan | null {
-  for (let d = s.day; d < SCHEDULE.length; d += 1) if (SCHEDULE[d]!.t === 'match') return SCHEDULE[d]!;
+  for (let d = s.day; d < SCHEDULE.length; d += 1) {
+    // (the summit is no match to look forward to until the club has earned it)
+    if (SCHEDULE[d]!.summit && s.day < SUMMIT_DAY) return null;
+    if (SCHEDULE[d]!.t === 'match') return SCHEDULE[d]!;
+  }
   return null;
 }
+/** Has the club earned the summit: at the top, and the nation's tournament won? (from the autumn's final on) */
+export const summitDue = (tier: number, won: boolean): boolean => won && tier >= TOP_TIER;
+/** The summit's day or the weeks before it. */
+export const inSummit = (s: Season): boolean => s.day >= SUMMIT_DAY;
 
 // ------------------------------------------------------------------ the training policy
 
@@ -1383,7 +1413,7 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     }
   }
   // the supporters give for a win; a trip costs
-  const gift = win ? donationOf(p.round, s.league) + (isFinal(p) ? TITLE_DONATION : 0) : 0;
+  const gift = win ? donationOf(p.round, s.league) + (isFinal(p) || p.summit ? TITLE_DONATION : 0) : 0;
   const trip = away ? tripPrice(s) : 0;
   s.money = moneyOf(s) + gift - trip;
   s.trip = undefined;
@@ -1394,9 +1424,14 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   // knocked out: in spring the club goes on to the summer, in autumn the year is over
   const out = p.cup && !win && p.stage === 'spring';
   if (p.cup && !win && p.stage !== 'spring') ended = true;
-  if (s.day >= SCHEDULE.length - 1) {
+  // the autumn's final won: the title. A club at the top goes on to the summit; for anybody else the year is over
+  if (isFinal(p) && win) {
+    s.champion = true;
+    if (!summitDue(s.tier, win)) ended = true;
+  }
+  if (p.summit) {
+    s.summit = win ? 'won' : 'lost';
     ended = true;
-    s.champion = win && p.cup;
   }
   if (ended) s.phase = 'done';
   else {
@@ -1430,7 +1465,8 @@ export function mend(s: Season): Season {
   // the yearly draw came later: a district club keeps the four schools it knew, the others get a draw of their
   // tournament; the year's summer and autumn came later still (their schools are drawn on to the spring's)
   if (!Array.isArray(s.draw) || s.draw.length < 4) s.draw = tierOf(s.league).cup === tierOf(0).cup ? [...FIRST_DRAW] : drawYear(s.league, new Rng(s.seed)).slice(0, 4);
-  if (s.draw.length < MATCH_COUNT) s.draw = drawYear(s.league, new Rng(s.seed ^ 0x5ca1), s.draw.slice(0, 4));
+  // (the summit's opponent is not drawn: it is always the corporate champion)
+  if (s.draw.length < MATCH_COUNT - 1) s.draw = drawYear(s.league, new Rng(s.seed ^ 0x5ca1), s.draw.slice(0, 4));
   for (const r of s.results) if (typeof r.m !== 'number') r.m = SCHEDULE[r.day]?.m ?? r.opp;
   // a year that began before the summer existed is in its spring
   s.stageAt ??= s.day < stageStart('summer') ? 0 : s.day;

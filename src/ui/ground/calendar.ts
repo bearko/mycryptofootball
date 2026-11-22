@@ -5,7 +5,7 @@
 
 import { h } from '../../core/dom';
 import { SCHOOLS } from '../../game/teams';
-import { DOW, SCHEDULE, daysTo, isTrip, tripSchool, nextMatch, plan, roundOf, schoolAt, spanText, undecided, weeksOf, type Season } from '../../game/season';
+import { DOW, SCHEDULE, daysTo, inSummit, isTrip, tripSchool, nextMatch, plan, roundOf, schoolAt, spanText, undecided, weeksOf, type Season } from '../../game/season';
 import { kick } from '../fx';
 
 export interface Calendar {
@@ -39,6 +39,8 @@ export function calendar(s: Season): Calendar {
     const next = nextMatch(st);
     tiles.forEach((li, n) => {
       const d = SCHEDULE[n]!;
+      // (the summit is not on the calendar until the club has earned it)
+      li.hidden = !!d.summit && !inSummit(st);
       li.classList.toggle('is-past', n < st.day);
       li.classList.toggle('is-today', n === st.day);
       const note = li.lastElementChild as HTMLElement;
@@ -50,7 +52,7 @@ export function calendar(s: Season): Calendar {
         cls = res.win ? 'is-win' : 'is-lose';
       } else if (n === st.day) {
         const until = next ? daysTo(st, next) : 0;
-        if (d.t === 'match') text = d.cup ? (d.stage === 'spring' ? '春の大会' : '負けたら終わり') : '試合の日！';
+        if (d.t === 'match') text = d.summit ? '頂上決戦！' : d.cup ? (d.stage === 'spring' ? '春の大会' : '負けたら終わり') : '試合の日！';
         else if (next) text = until <= 1 ? `あしたは${roundOf(next)}` : `あと${until}日で${roundOf(next)}`;
       } else if (d.t === 'train') text = n < st.day ? '✓' : '';
       if (note.textContent !== text) note.textContent = text;

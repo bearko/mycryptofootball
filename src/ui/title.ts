@@ -85,7 +85,7 @@ export function titleScreen(): [HTMLElement, () => void] {
     ticker([
       'My Crypto Heroes の非公式ファンゲームです',
       s.season ? `${s.season.year}年目　格：${tierOf(s.season.tier).name}　部員${s.season.members.length}人` : '素人ばかりのアメフト部を、名門に育てよう',
-      s.seasons ? `これまで ${s.seasons} シーズン、優勝 ${s.titles} 回` : '作戦カードで地区大会の頂点へ',
+      s.seasons ? `これまで ${s.seasons} シーズン、優勝 ${s.titles} 回${s.cleared ? `・頂上決戦制覇 ${s.cleared} 回` : ''}` : '作戦カードで地区大会の頂点へ',
       '作戦カードをえらぶだけ。アメフトを知らなくても遊べます', 'スマホは横向きで',
     ], 'KICK OFF'));
   root.addEventListener('shown', () => {

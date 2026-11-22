@@ -26,6 +26,8 @@ function sheetOf(s: Season): ReturnType<typeof clubSheet> | null {
 export function endScreen(): [HTMLElement, () => void] {
   const s = save().season!;
   const champion = s.champion;
+  /** the summit won: the game is beaten */
+  const cleared = s.summit === 'won';
   playBgm(champion ? 'final' : 'club');
   const last = s.results[s.results.length - 1];
   const where = last ? roundOf(SCHEDULE[last.day]!) : '';
@@ -55,7 +57,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const sheet = champion ? sheetOf(s) : null;
   if (sheet) {
-    stadium = new Stadium(canvas, [sheet, opponentFor(s, SCHEDULE[SCHEDULE.length - 1]!)]);
+    stadium = new Stadium(canvas, [sheet, opponentFor(s, SCHEDULE[last?.day ?? SCHEDULE.length - 1]!)]);
     stadium.setMotion(save().prefs.motion);
     stadium.attract();
     stadium.setExcitement(1);
@@ -74,13 +76,15 @@ export function endScreen(): [HTMLElement, () => void] {
     });
     return el;
   }));
-  const root = h('div.screen.end', { class: champion ? 'champion' : 'out' },
+  const root = h('div.screen.end', { class: `${champion ? 'champion' : 'out'} ${cleared ? 'is-cleared' : ''}` },
     sheet ? canvas : backdrop(['NEXT YEAR ◆ もう一度 ◆', 'あと一歩 ◆ NEVER GIVE UP ◆'], ['#2a2452', '#0b0d1f', '#6a6fa8']),
     h('div.end-shade', { 'aria-hidden': 'true' }),
     h('div.end-main',
-      h('span.label.dark', `${TEAM_NAME} アメフト部`),
-      h('h1', kinetic(champion ? `${cup} 優勝！` : `${where}で敗退`)),
-      h('p.end-sub', champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : leaving.length ? `あと一歩。3年生の${leaving.length}人は、これで卒業。思いは後輩がつぐ。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
+      h('div.end-tags', h('span.label.dark', `${TEAM_NAME} アメフト部`), cleared ? h('b.end-clear', '全クリア') : null),
+      h('h1', kinetic(cleared ? '頂上決戦 制覇！' : champion ? `${cup} 優勝！` : `${where}で敗退`)),
+      h('p.end-sub', cleared ? `${s.year}年目の${TEAM_NAME}が、社会人の王者・鳳凰電機を倒した。高校アメフトの、本当の頂点へ。`
+        : s.summit === 'lost' ? `${cup}を制し、社会人の王者に挑んだ。頂点まで、あと一歩。`
+          : champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : leaving.length ? `あと一歩。3年生の${leaving.length}人は、これで卒業。思いは後輩がつぐ。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
       h('div.end-standing', h('span', `${s.year}年目をおえて`), tierPlate(s.tier), fameBar(s.fame),
         h('i', s.tier !== began ? (s.tier > began ? `${tierOf(began).name}から昇格！` : `${tierOf(began).name}から降格…`) : ''),
         h('em', [
@@ -94,7 +98,7 @@ export function endScreen(): [HTMLElement, () => void] {
         (autumn.length ? autumn : s.results.slice(-1)).map((r, i) => {
           const w = SCHEDULE[r.day]!;
           return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i + 1) } },
-            h('span', `${w.stage === 'autumn' ? '秋の' : ''}${roundOf(w)}`),
+            h('span', `${w.stage === 'autumn' && !w.summit ? '秋の' : ''}${roundOf(w)}`),
             h('b.led', `${r.us}-${r.them}`),
             h('span', `${r.win ? '○' : '●'} ${schoolAt(s, r.m).name}`));
         })),
@@ -103,7 +107,9 @@ export function endScreen(): [HTMLElement, () => void] {
         button(`${s.year + 1}年目へ`, again, { cls: 'big go' }),
         button('タイトルへ', () => show(...titleScreen()), { cls: 'alt', sound: 'back' }))),
     h('div.end-foot.pad', say.el),
-    ticker(champion
+    ticker(cleared
+      ? ['全クリア！', `${TEAM_NAME} 社会人の王者を撃破`, `頂上決戦制覇 ${save().cleared ?? 1} 回目`, '部はまだまだ続く']
+      : champion
       ? [`${TEAM_NAME} ${cup}を制覇`, `格：${tier.name}`, `優勝 ${save().titles} 回目`]
       : ['シーズン終了', `格：${tier.name}`, leaving.length ? '3年生は卒業。1・2年生は、身につけた力を来年にもちこせる' : '部員も、身につけた力も、来年にもちこせる'], champion ? '速報' : 'また来年'));
 
@@ -118,7 +124,9 @@ export function endScreen(): [HTMLElement, () => void] {
         stadium?.celebrate('td', 0);
         crowd.roar(0.5);
       }, 5200);
-      say.say(leaving.length ? `やりましたね、監督！！ 3年生${leaving.length}人を、最高の形で送り出せます！` : s.tier > s.league ? `やりましたね、監督！！ 来年は「${tier.name}」として挑めますよ！` : 'やりましたね、監督！！ 来年も勝ちましょう！', 'cheer');
+      say.say(cleared ? 'やりましたね、監督！！ 社会人の王者まで倒して、本当の日本一です！ ここまで、ありがとうございました。部は、まだまだ続きますよ！'
+        : s.summit === 'lost' ? '全国制覇、おめでとうございます！ 頂上決戦はくやしかったけど…来年こそ、社会人の王者を倒しましょう！'
+        : leaving.length ? `やりましたね、監督！！ 3年生${leaving.length}人を、最高の形で送り出せます！` : s.tier > s.league ? `やりましたね、監督！！ 来年は「${tier.name}」として挑めますよ！` : 'やりましたね、監督！！ 来年も勝ちましょう！', 'cheer');
     } else {
       sfx.lose();
       say.say(s.tier < s.league ? 'くやしいです…。格は下がりましたが、相手も少しやさしくなります。立て直しましょう！' : leaving.length ? `くやしいです…。3年生${leaving.length}人は卒業ですが、1・2年生と新入部員で、またいきましょう！` : 'くやしいです…。でも、みんな来年も残ります。もう一度、いきましょう！', 'cry');

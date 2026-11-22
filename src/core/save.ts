@@ -44,6 +44,8 @@ export interface SaveData {
   /** seasons finished / titles won, for the title screen */
   seasons: number;
   titles: number;
+  /** summits won against the corporate champion (the game beaten) */
+  cleared?: number;
   helpSeen: boolean;
 }
 

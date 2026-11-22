@@ -13,6 +13,8 @@ describe('the schools', () => {
   it('each has its own heroes (nobody plays for two schools, nobody is a hero the club can sign)', () => {
     const seen = new Map<number, string>();
     for (const t of SCHOOLS) {
+      // (the corporate champion's players are legends of the great schools)
+      if (t.pro) continue;
       for (const p of [...t.players, ...t.more]) {
         expect(() => hero(p.id)).not.toThrow();
         expect(seen.has(p.id), `${hero(p.id).name}: ${seen.get(p.id)} and ${t.name}`).toBe(false);
@@ -30,7 +32,8 @@ describe('the schools', () => {
       const big = CUP_SCHOOLS.some((pool, cup) => cup > 0 && pool.includes(i));
       if (big) expect(complete(t), t.name).toBe(true);
       else expect([0, 5]).toContain(t.more.length);
-      expect(CUP_SCHOOLS.some((pool) => pool.includes(i)), `${t.name} plays nowhere`).toBe(true);
+      expect(CUP_SCHOOLS.some((pool) => pool.includes(i)) !== !!t.pro, `${t.name} plays nowhere`).toBe(true);
+      if (t.pro) expect(complete(t)).toBe(true);
     });
   });
 
@@ -101,7 +104,7 @@ describe('the schools', () => {
   it('a club\'s first practice match is always the same; the tournaments\' schools come from their brackets; from the second year the draw changes', () => {
     const { season: s } = runSeason(3 * 31);
     expect(s.draw[0]).toBe(FIRST_DRAW[0]);
-    expect(s.draw.length).toBe(MATCH_COUNT);
+    expect(s.draw.length).toBe(MATCH_COUNT - 1);
     // every school the club met in a tournament stood in that tournament's bracket
     for (const r of s.results.filter((x) => x.opp > 0)) {
       const b = r.m < 4 ? s.cups!.spring! : s.cups!.autumn!;
@@ -114,7 +117,7 @@ describe('the schools', () => {
       const { season: t } = runSeason(3 * 31);
       t.tier = 2;
       nextYear(t, seed);
-      expect(t.draw.length).toBe(MATCH_COUNT);
+      expect(t.draw.length).toBe(MATCH_COUNT - 1);
       for (const id of t.draw) expect([...CUP_SCHOOLS[1]!, ...BRACKET_SCHOOLS[1]!]).toContain(id);
       // the spring's four in order of strength, the June practice match one of the others when there is one
       expect([t.draw[0], t.draw[2], t.draw[3]].includes(t.draw[4]!)).toBe(false);
@@ -129,7 +132,7 @@ describe('the schools', () => {
     delete (s as unknown as Record<string, unknown>).draw;
     mend(s);
     expect(s.draw.slice(0, 4)).toEqual([...FIRST_DRAW]);
-    expect(s.draw.length).toBe(MATCH_COUNT);
+    expect(s.draw.length).toBe(MATCH_COUNT - 1);
     const { season: t } = runSeason(5 * 31);
     t.league = 4;
     delete (t as unknown as Record<string, unknown>).draw;
