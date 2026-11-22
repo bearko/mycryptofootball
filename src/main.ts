@@ -12,6 +12,7 @@ import './styles/lineup.css';
 import './styles/match.css';
 import './styles/end.css';
 import './styles/tutor.css';
+import './styles/bracket.css';
 
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';
@@ -20,7 +21,7 @@ import { save } from './core/save';
 import { RECRUITS } from './game/heroes';
 import { TOP_TIER } from './game/prestige';
 import { drawYear } from './game/teams';
-import { ROSTER_SIZE, SCHEDULE, hasTactic, joinCount, newSeason, nextYear, signRecruits, stageStart, startDay, tacticOf, type DayPlan } from './game/season';
+import { ROSTER_SIZE, SCHEDULE, drawCup, hasTactic, joinCount, newSeason, nextYear, signRecruits, stageStart, startDay, tacticOf, type DayPlan } from './game/season';
 import { LEVEL_PTS, TACTICS, type Tactic } from './game/tactics';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
@@ -91,6 +92,7 @@ function jump(to: string): void {
     }
     s.league = s.tier;
     s.draw = drawYear(s.league, new Rng(debug.seed ?? 7));
+    drawCup(s, 'spring', new Rng(debug.seed ?? 7));
     const have = new Set(s.members.map((m) => m.id));
     s.candidates = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
     if (joinCount(s) > 0) signRecruits(s, s.candidates.slice(0, joinCount(s)));
@@ -111,7 +113,10 @@ function jump(to: string): void {
   const at = SCHEDULE[s.day]!;
   if (s.day !== stageStart(at.stage)) {
     s.stageAt = stageStart(at.stage);
-    if (at.stage === 'autumn') s.league = s.tier;
+    if (at.stage === 'autumn') {
+      s.league = s.tier;
+      drawCup(s, 'autumn', new Rng(debug.seed ?? 7));
+    }
   }
   s.hand = [];
   startDay(s);
