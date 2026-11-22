@@ -249,7 +249,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     card.style.transform = `translate(${Math.round(Math.max(6, x))}px, ${Math.round(y)}px)`;
     card.classList.toggle('on-left', !right);
   };
-  const canPeek = (): boolean => alive && !skip && !modalOpen();
+  // the sheets are for the huddle, while the coach chooses his card: once the play is on, the field is the play's
+  const canPeek = (): boolean => alive && !skip && !modalOpen() && hand.classList.contains('in');
+  new MutationObserver(() => {
+    if (!hand.classList.contains('in')) {
+      clearTimeout(hoverTimer);
+      closePeek();
+    }
+  }).observe(hand, { attributes: true, attributeFilter: ['class'] });
   canvas.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     const who = canPeek() ? heroUnder(e, 0) : null;
