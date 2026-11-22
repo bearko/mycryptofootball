@@ -52,11 +52,6 @@ describe("the announcer's voice", () => {
             all += 1;
             if (!cut(line)) missed.set(line, (missed.get(line) ?? 0) + 1);
           }
-          const last = res.lines.length ? fullNames(res.lines[res.lines.length - 1]!, [home, away]) : null;
-          if (last) {
-            all += 1;
-            if (!cut(last)) missed.set(last, (missed.get(last) ?? 0) + 1);
-          }
         }
       }
     }

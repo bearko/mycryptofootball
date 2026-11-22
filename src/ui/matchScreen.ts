@@ -452,7 +452,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     // a kickoff just happens, too: theirs always, ours unless there is something to decide (behind, late: the short kick)
     if (ko && (!onOffense || kickPicks(st, 0).length < 2)) {
       hand.classList.remove('in');
-      booth.say(onOffense ? `${home.short}のキックオフです` : `${away.short}のキックオフ。しっかり受けて、前へ戻しましょう`, 'idle');
+      booth.say(onOffense ? `${home.short}のキックオフです` : `${away.short}のキックオフ。しっかりボールをキャッチして、前へ戻しましょう`, 'idle');
       busy = true;
       void playOut(onOffense ? { type: 'kickoff', star: 1 } : theirs, { type: 'zone', star: 1 });
       return;
@@ -494,8 +494,8 @@ export function matchScreen(): [HTMLElement, () => void] {
 
     const theirName = (): string => cardName(theirs, onOffense ? 'def' : 'off');
     const prompt = (): void => {
-      if (ko) booth.say('負けています。遠くへ蹴るか、オンサイドキックでボールを取り返しにいくか、えらべます', 'guts');
-      else if (peeked) booth.say(peeked.ok ? `見えた！ 相手は「${theirName()}」です！` : 'うーん、読めませんでした…。でも好きな作戦をえらべます', peeked.ok ? 'sparkle' : 'sad');
+      if (ko) booth.say('さぁここは逆転をねらって、オンサイドキックという選択肢も考えられるところ！', 'guts');
+      else if (peeked) booth.say(peeked.ok ? `見えた！ 相手は「${theirName()}」です！` : '作戦は不発だったようです。作戦は監督の判断に委ねられました！', peeked.ok ? 'sparkle' : 'sad');
       else if (tfp && onOffense) booth.say(kickerOf(home) ? `タッチダウンのあとの追加点！ キックなら${PAT_POINTS}点、プレーで押しこめば${TWO_POINTS}点` : `追加点のチャンス！ キッカーがいないので、プレーで${TWO_POINTS}点をねらいます`, 'guts');
       else if (tfp) booth.say(`${away.short}が${TWO_POINTS}点をねらってきます。ここを止めましょう！`, 'guts');
       else if (onOffense && !taughtOff) booth.say('攻撃です！ カードの◎は得意な相手、×は苦手な相手。相手の守りを予想してえらびましょう', 'wave');
@@ -1161,7 +1161,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     drawBug(snap());
     sfx.whistle('long');
     stage.replaceChildren(h('div.telop.big', { class: win ? 'good' : 'bad' }, h('div.telop-band'), h('b', kinetic('試合終了！'))));
-    booth.say(win ? `${home.short}の勝利です！！` : `${away.short}の勝利…。くやしい！`, win ? 'cheer' : 'cry');
+    booth.say(win ? `${home.short}の勝利です！！` : `${away.short}の勝利です！`, win ? 'cheer' : 'cry');
     if (!debug.bot) speak(fullNames(`${(win ? home : away).short}の勝利です！！`, [home, away]), { hot: true });
     await new Promise((r) => setTimeout(r, debug.bot ? 100 : 1500));
     playBgm('');
