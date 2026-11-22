@@ -1,0 +1,71 @@
+/* The alumni's room (src/ui/alumni.ts): OB points, the shop, the medal game. Prices use the facilities' buttons. */
+
+.ob { display: flex; flex-direction: column; gap: 0.7rem; }
+.ob-top { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.ob-pts, .ob-medals, .ob-money { display: flex; align-items: baseline; gap: 0.4rem; padding: 0.15rem 0.9rem; transform: skewX(-8deg); white-space: nowrap; }
+.ob-pts { color: var(--ink); background: var(--lime); }
+.ob-medals { color: var(--ink); background: var(--yellow); align-items: center; }
+.ob-medals img { width: 1.8rem; height: 1.8rem; image-rendering: pixelated; }
+.ob-money { color: var(--chalk); background: #2a2f5a; }
+.ob-top b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); }
+.ob-top small { font-size: var(--fs-xs); }
+.ob-how { flex: 1 1 18rem; font-size: var(--fs-xs); line-height: 1.4; color: var(--dim); }
+.ob h4 { font-family: var(--display); font-weight: 400; font-size: var(--fs-m); color: var(--yellow); margin: 0 0 0.3rem; }
+
+.ob-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.5rem; }
+.ob-item { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: center; gap: 0.05rem 0.4rem; padding: 0.4rem; background: linear-gradient(180deg, #23603a, #12301e); border: 0.16rem solid var(--ink); animation: fade-up 0.35s calc(var(--i) * 40ms) backwards; }
+.ob-item.is-medal { background: linear-gradient(180deg, #6a5a14, #2e2608); }
+.ob-art { position: relative; grid-row: 1 / 3; }
+.ob-art img { display: block; width: 3rem; height: 3rem; object-fit: contain; image-rendering: pixelated; }
+.ob-have { position: absolute; right: -0.3rem; bottom: -0.2rem; font-style: normal; font-family: var(--display); font-size: var(--fs-xs); color: var(--ink); background: var(--yellow); padding: 0 0.3rem; }
+.ob-name { font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ob-eff { font-size: var(--fs-xs); line-height: 1.25; color: var(--lime); }
+.ob-btns { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.3rem; }
+.ob-btns .fac-buy { margin-top: 0.2rem; font-size: var(--fs-xs); }
+.ob-eat { background: var(--lime); }
+
+.ob-slot { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 0.3rem 1rem; align-items: center; }
+.ob-slot h4 { grid-column: 1 / -1; }
+.ob-machine { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; padding: 0.5rem 0.8rem; background: linear-gradient(180deg, #5a1030, #2a0718); border: 0.2rem solid var(--ink); box-shadow: 0 0 0 0.2rem var(--yellow) inset; }
+.ob-reels { display: flex; gap: 0.4rem; }
+.ob-reel { display: grid; place-items: center; width: 4.4rem; height: 4.4rem; background: #fffbe8; border: 0.18rem solid var(--ink); overflow: hidden; }
+.ob-reel img { width: 3.6rem; height: 3.6rem; image-rendering: pixelated; }
+.ob-reel.is-spin img { filter: blur(1px); transform: translateY(0.3rem); }
+.ob-reel.is-stop { animation: ob-stop 0.3s var(--spring); }
+@keyframes ob-stop { 0% { transform: translateY(-0.6rem); } }
+.ob-result { min-height: 1.4em; font-family: var(--display); font-size: var(--fs-s); color: var(--chalk); text-align: center; }
+.ob-result.is-pair { color: var(--lime); }
+.ob-result.is-triple { color: var(--yellow); animation: bump 0.7s var(--spring); }
+.ob-bets { display: flex; flex-direction: column; gap: 0.4rem; }
+.ob-bet, .ob-cash { min-height: max(44px, 2.8rem); display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0 1rem; font-family: var(--display); font-size: var(--fs-s); color: var(--ink); background: var(--yellow); border: 0.16rem solid var(--ink); box-shadow: 0.2rem 0.2rem 0 var(--ink); cursor: pointer; transform: skewX(-8deg); }
+.ob-bet b, .ob-cash b { font-weight: 400; }
+.ob-cash { background: var(--lime); }
+.ob-bet.off, .ob-cash.off { color: var(--dim); background: #2a2f5a; box-shadow: none; cursor: default; }
+.ob-pay { display: grid; grid-template-columns: repeat(3, auto); gap: 0.1rem 0.8rem; margin: 0; padding: 0; list-style: none; font-size: var(--fs-xs); color: var(--dim); }
+.ob-pay li { display: flex; align-items: center; gap: 0.3rem; }
+.ob-pay span { display: flex; align-items: center; }
+.ob-pay img { width: 1.3rem; height: 1.3rem; image-rendering: pixelated; }
+.ob-pay i { font-style: normal; width: 1.3rem; text-align: center; }
+.ob-pay b { font-weight: 400; color: var(--yellow); }
+
+/* the button on the practice ground */
+.pg-ob small { display: block; font-size: var(--fs-xs); color: var(--lime); }
+
+/* a short screen (a phone held sideways): everything tighter, the shop's buttons side by side */
+@media (max-height: 520px) {
+  .ob { gap: 0.4rem; }
+  .ob-how { display: none; }
+  .ob h4 { margin: 0; }
+  .ob-item { padding: 0.25rem 0.3rem; }
+  .ob-art img { width: 2.4rem; height: 2.4rem; }
+  .ob-btns { flex-direction: row; }
+  .ob-btns .fac-buy { flex: 1; margin-top: 0.1rem; padding: 0 0.2rem; min-width: 0; }
+  .ob-btns .fac-buy span { white-space: nowrap; }
+  .ob-eat span { font-size: 0.85em; }
+  .ob-slot { grid-template-columns: auto auto minmax(0, 1fr); }
+  .ob-reel { width: 3.6rem; height: 3.6rem; }
+  .ob-reel img { width: 3rem; height: 3rem; }
+  .ob-bets { flex-direction: row; flex-wrap: wrap; }
+  .ob-pay { grid-template-columns: repeat(2, auto); gap: 0 0.5rem; }
+  .ob-btns:has(.ob-eat) .fac-buy:not(.ob-eat) span { display: none; }
+}

@@ -86,6 +86,17 @@ for (const [key, base] of Object.entries(DRILL_ART)) {
   });
 }
 
+// the alumni's shop (src/game/alumni.ts): the lunch boxes, and the medals of the medal game
+const ext = (id) => {
+  const e = extById.get(id);
+  if (!e) throw new Error(`missing extension ${id}`);
+  return { name: e.name.ja, img: use(e.image_file_path) };
+};
+const items = {
+  bento: [2142, 3142, 4142, 5142].map(ext),
+  medal: [1033, 2033, 3033, 4033, 5033].map(ext),
+};
+
 // ---------------------------------------------------------------- sound
 const bgm = {
   club: use('Audio/BGM/land.mp3'),
@@ -105,5 +116,5 @@ const se = {
 };
 
 mkdirSync(dirname(outCatalog), { recursive: true });
-writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, bgm, se }, null, 1)}\n`);
+writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, items, bgm, se }, null, 1)}\n`);
 console.log(`[sync-assets] ${Object.keys(heroes).length} heroes, ${copied} files → public/mch`);
