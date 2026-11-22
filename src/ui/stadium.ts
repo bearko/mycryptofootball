@@ -392,6 +392,8 @@ export class Stadium {
   private speedLines = 0;
   private fx = new Fx(900);
   private rings: { x: number; z: number; t: number; dur: number; r: number; color: string }[] = [];
+  /** the heroes who cannot be stopped (team * 100000 + id) */
+  private beasts = new Set<number>();
   private bursts: { x: number; y: number; z: number; t: number; dur: number; size: number; seed: number }[] = [];
   private fireworks: { at: number; x: number; y: number; z: number; color: string; done: boolean }[] = [];
   private confettiUntil = 0;
@@ -852,6 +854,11 @@ export class Stadium {
       }
     }
     return best ? { team: best.team, id: best.id } : null;
+  }
+
+  /** The heroes who cannot be stopped right now (game/duel.ts): they burn while they stand on the field. */
+  setBeasts(list: { team: 0 | 1; id: number }[]): void {
+    this.beasts = new Set(list.map((b) => b.team * 100000 + b.id));
   }
 
   /** Puts a gold ring under one hero (the one whose card is open); null takes it away. */
@@ -1443,6 +1450,21 @@ export class Stadium {
     }
   }
 
+  /** A flame off a hero who cannot be stopped: dark red, licking upward. */
+  private beastFlame(ac: Actor): void {
+    const a = Math.random() * TAU;
+    const p = this.fx.spawn(SPARK, ac.x + Math.cos(a) * 0.7, 0.1 + Math.random() * 1.6, ac.z + Math.sin(a) * 0.5);
+    p.vy = 3 + Math.random() * 3;
+    p.vx = Math.cos(a) * 0.4;
+    p.vz = Math.sin(a) * 0.4;
+    p.grav = -3;
+    p.drag = 1.6;
+    p.max = 0.5 + Math.random() * 0.4;
+    p.size = 0.16;
+    p.alpha = 0.95;
+    p.color = Math.random() < 0.5 ? '#ff3a2e' : '#b0124a';
+  }
+
   private auraSpark(ac: Actor, power: number): void {
     const a = Math.random() * TAU;
     const p = this.fx.spawn(SPARK, ac.x + Math.cos(a) * 0.9, 0.2 + Math.random() * 1.2, ac.z + Math.sin(a) * 0.6);
@@ -1741,6 +1763,7 @@ export class Stadium {
           p.alpha = 0.35;
           p.drag = 2;
         }
+        if (this.beasts.has(ac.team * 100000 + ac.id) && Math.random() < pdt * 30) this.beastFlame(ac);
         if (ac.aura) {
           if (Math.random() < pdt * 22) this.auraSpark(ac, 1);
           ac.trailT -= pdt;

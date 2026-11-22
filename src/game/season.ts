@@ -17,6 +17,7 @@ import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
+import { acesFit, suggestAces, type Aces } from './duel';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
@@ -543,6 +544,8 @@ export interface Season {
   tacticWins?: number;
   /** the colour as it stood when this meeting began: changing back to it before the meeting ends costs nothing */
   tacticWas?: { t: Tactic; wins: number };
+  /** eleven a side, the aces the coach has named (game/duel.ts); one not fielded gives way to the suggestion */
+  aces?: Partial<Aces>;
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -1298,7 +1301,32 @@ export function clubSheet(s: Season): TeamSheet {
   };
   // eleven a side, the colour's own plays
   if (sheet.tactic) sheet.specials.push(...tacticCards(sheet, sheet.tactic, sheet.tacticLv ?? 1));
+  // eleven a side, the aces: the coach's, or the suggestion (who trusts the coach most weighs a little more)
+  if (clubSize(s) === 11) sheet.aces = clubAcesOf(s, sheet);
   return sheet;
+}
+
+/** The club's aces as they would take the field (eleven a side): the coach's choice where it fits, else the suggestion. */
+function clubAcesOf(s: Season, sheet: TeamSheet): Aces {
+  const auto = suggestAces(sheet, (id) => (s.members.find((m) => m.id === id)?.trust ?? 0) / 10);
+  const named = s.aces ?? {};
+  const pick = { off: named.off ?? auto.off, def: named.def ?? auto.def };
+  return acesFit(sheet, pick) ? pick : acesFit(sheet, { off: pick.off, def: auto.def }) ? { off: pick.off, def: auto.def }
+    : acesFit(sheet, { off: auto.off, def: pick.def }) ? { off: auto.off, def: pick.def } : auto;
+}
+/** The club's aces now, and whether each is the coach's own choice (eleven a side; null six a side). */
+export function clubAces(s: Season): (Aces & { named: { off: boolean; def: boolean }; auto: Aces }) | null {
+  if (clubSize(s) !== 11 || !s.lineup) return null;
+  const sheet = clubSheet(s);
+  const now = sheet.aces!;
+  const auto = suggestAces(sheet, (id) => (s.members.find((m) => m.id === id)?.trust ?? 0) / 10);
+  return { ...now, auto, named: { off: s.aces?.off === now.off, def: s.aces?.def === now.def } };
+}
+/** The coach names an ace (null: back to the suggestion). */
+export function setAce(s: Season, unit: 'off' | 'def', id: number | null): void {
+  s.aces = { ...(s.aces ?? {}) };
+  if (id == null) delete s.aces[unit];
+  else s.aces[unit] = id;
 }
 
 /** Which of the club's special plays the coming opponent has studied. */

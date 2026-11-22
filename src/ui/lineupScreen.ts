@@ -14,7 +14,8 @@ import {
   ROLE_FULL, ROLE_HINT, ROLE_LABEL, ROLE_WEIGHTS, RANKS, STAT_LABEL, defPos, fit, kickFit, offPos, rank, rankIndex, roleOf, sizeOf,
   type DefPos, type Lineup, type OffPos, type Rank, type Role, type Size, type Stat,
 } from '../game/model';
-import { asPlayer, clubSheet, learned, member } from '../game/season';
+import { asPlayer, clubAces, clubSheet, learned, member, setAce } from '../game/season';
+import { ACE_DEF, ACE_OFF } from '../game/duel';
 import { burst, center, countUp, kick, motion, pop, ring, sparks } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, modalOpen, portrait, speech, statIcon } from './kit';
 import { teach } from './tutor';
@@ -521,6 +522,7 @@ export function lineupScreen(back: () => void): HTMLElement {
     held = null;
     commit();
     drawKicker();
+    drawAces();
     const moved = render(was, opts);
     const settle = motion() ? 380 + (opts.stagger ? moved * 60 : 0) : 0;
     const after = snap();
@@ -764,8 +766,53 @@ export function lineupScreen(back: () => void): HTMLElement {
   }
   drawKicker();
 
+  // ---------------------------------------------------------------- the aces (eleven a side)
+  // Each unit has an ace: the hero the day's duel is built around (game/duel.ts). One tap hands it to the next one
+  // who can be the ace, the suggestion first.
+  const aceEls: Record<'off' | 'def', HTMLButtonElement> | null = size === 11 ? { off: h('button.lu-kicker.lu-ace'), def: h('button.lu-kicker.lu-ace.is-def') } : null;
+  const aceOrder = (unit: 'off' | 'def'): number[] => {
+    const l = s.lineup!;
+    const list = unit === 'off'
+      ? OFF_POS.filter((p) => ACE_OFF.includes(roleOf(p))).map((p) => ({ id: l.off[p], v: fit(statsOf(l.off[p]), roleOf(p)) }))
+      : DEF_POS.filter((p) => ACE_DEF.includes(roleOf(p))).map((p) => ({ id: l.def[p], v: fit(statsOf(l.def[p]), roleOf(p)) }));
+    const auto = clubAces(s)?.auto[unit];
+    return [...new Set([...(auto != null ? [auto] : []), ...list.sort((a, b) => b.v - a.v).map((x) => x.id)])];
+  };
+  function drawAces(): void {
+    const now = clubAces(s);
+    if (!aceEls || !now) return;
+    for (const unit of ['off', 'def'] as const) {
+      const el = aceEls[unit];
+      const id = now[unit];
+      const auto = now.auto[unit] === id;
+      el.replaceChildren(h('b', unit === 'off' ? '攻' : '守'), h('img.px', { src: hero(id).img, alt: '', draggable: false }),
+        h('span.lu-kicker-name', shortName(hero(id).name)), h('small', auto ? 'エース（おすすめ）' : 'エース'));
+      el.title = `${unit === 'off' ? '攻撃' : '守備'}のエース。試合の「対決」の主役になる。タップで交代`;
+      el.setAttribute('aria-label', `${unit === 'off' ? '攻撃' : '守備'}のエース：${hero(id).name}。押すと次のヒーローに交代`);
+    }
+  }
+  if (aceEls) {
+    for (const unit of ['off', 'def'] as const) {
+      aceEls[unit].type = 'button';
+      aceEls[unit].addEventListener('click', () => {
+        const order = aceOrder(unit);
+        const cur = clubAces(s)![unit];
+        const next = order[(order.indexOf(cur) + 1) % order.length]!;
+        setAce(s, unit, next);
+        commit();
+        sfx.swap();
+        vibrate(10);
+        drawAces();
+        kick(aceEls[unit], 'bump');
+        tell(`${unit === 'off' ? '攻撃' : '守備'}のエースは${shortName(hero(next).name)}。試合では、この子の対決が見どころになります。`, 'smile');
+      });
+    }
+    drawAces();
+  }
+
   const side = h('aside.lu-side', { class: benches.length > 2 ? 'is-many' : '' },
-    h('div.lu-bench', benches.length > 2 ? h('b.lu-bench-head', '控え') : null, h('div.lu-bench-seats', benches.map((b) => b.el)), h('span.lu-seatwood', { 'aria-hidden': 'true' })), kickEl, note);
+    h('div.lu-bench', benches.length > 2 ? h('b.lu-bench-head', '控え') : null, h('div.lu-bench-seats', benches.map((b) => b.el)), h('span.lu-seatwood', { 'aria-hidden': 'true' })), kickEl,
+    aceEls ? h('div.lu-aces', aceEls.off, aceEls.def) : null, note);
   const root = h('div.screen.lineup',
     backdrop(['FORMATION', '作戦ボード'], ['#0f4a4a', '#090d24', '#37e3ff']),
     h('header.head.pad', h('h2', '編成'), hint),

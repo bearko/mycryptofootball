@@ -13,6 +13,7 @@ import './styles/match.css';
 import './styles/end.css';
 import './styles/tutor.css';
 import './styles/bracket.css';
+import './styles/duel.css';
 
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';

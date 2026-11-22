@@ -24,6 +24,7 @@ import {
 import { edgeOf, tacticPower, type Tactic } from './tactics';
 import { defPos, fit, kickFit, offPos, roleOf, sizeOf, type DefPos, type Lineup, type OffPos, type Player, type Role } from './model';
 import { tally, type Box } from './boxscore';
+import { BEAST_RUN, DUEL_SWING, duelOdds, meets, offPosOf, setupDuels, skillOf, type Aces, type Duel } from './duel';
 
 export const FIELD = 50;
 /** where a drive starts on average (a kickoff run back) */
@@ -63,6 +64,8 @@ export interface TeamSheet {
   /** its colour eleven a side (game/tactics.ts) and how far it has come with it (1..5) */
   tactic?: Tactic;
   tacticLv?: number;
+  /** its aces eleven a side (game/duel.ts); missing or not fielded: the team's own suggestion */
+  aces?: Aces;
 }
 
 export interface Pick {
@@ -121,6 +124,8 @@ export interface MatchState {
   script?: Scripted[];
   /** who did what in this match, per team (boxscore.ts; filled after every play) */
   box?: [Box, Box];
+  /** eleven a side, the day's duels (game/duel.ts) */
+  duels?: Duel[];
 }
 
 /**
@@ -164,6 +169,11 @@ export interface PlayResult {
   breakaway?: boolean;
   /** what the offense's colour did to the clock: 'stop' (an incomplete pass, late) cost no play, 'run' cost two */
   clock?: 'stop' | 'run';
+  /**
+   * eleven a side, a duel was fought on this play (an index into MatchState.duels): who won, how likely it was, and
+   * whether a hero became unstoppable (`born`) or was stopped (`stopped`) by it
+   */
+  duel?: { i: number; win: boolean; p: number; born?: 'ace' | 'foe'; stopped?: 'ace' | 'foe' };
   /** points scored on this play */
   points: number;
   /** who read whom: the card match-up alone */
@@ -242,6 +252,8 @@ export function createMatch(home: TeamSheet, away: TeamSheet, seed: number): Mat
     totals: [emptyTotals(), emptyTotals()],
     n: 0,
   };
+  const duels = setupDuels([home, away]);
+  if (duels.length) st.duels = duels;
   deal(st);
   return st;
 }
@@ -532,6 +544,29 @@ function worth(type: OffType, q: number, blitz: boolean, room: number, safe = fa
 }
 
 /**
+ * What the day's duel is expected to add to the quality of a play of this kind with team o on offense (no dice):
+ * how often the play puts the two on each other, times how the duel should go. `aceSp`/`foeSp`: a special play of
+ * one of the two is being called.
+ */
+function duelLean(st: MatchState, o: 0 | 1, type: OffType, aceSp?: SpecialCard, foeSp?: SpecialCard): number {
+  const du = st.duels?.find((x) => x.side === o);
+  if (!du || st.tfp || st.script) return 0;
+  const O = st.teams[o];
+  const D = st.teams[1 - o]!;
+  const pos = offPosOf(O, du.ace);
+  if (!pos || !meets(O, D, du, type, du.ace)) return 0;
+  const role = roleOf(pos);
+  // a runner has the ball on every run, a passer on every pass; a receiver is thrown to about half the time
+  const share = role === 'RB' ? (isRun(type) ? 1 : 0) : role === 'QB' ? (isRun(type) ? 0 : 1) : isRun(type) ? 0 : 0.55;
+  if (!share) return 0;
+  const p = duelOdds(O, D, du, st.mom, {
+    aceSpecial: aceSp?.owner === du.ace ? potency(st, o, aceSp) : 0,
+    foeSpecial: foeSp?.owner === du.foe ? potency(st, (1 - o) as 0 | 1, foeSp) : 0,
+  });
+  return share * (2 * p - 1) * DUEL_SWING;
+}
+
+/**
  * A rough 1..10 for a card in team t's hand, not knowing what the other side will call:
  * the abilities of the heroes involved against the ones across from them, the card's stars, a special's push.
  * On offense it is the ground the play should gain; on defense, how little it should give up.
@@ -558,7 +593,8 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
   if (onOffense) {
     const type = pick.type as OffType;
     const kind = sp?.kind as OffKind | undefined;
-    const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE + colourQ(colourOf(st, t), colourOf(st, (1 - t) as 0 | 1), type);
+    const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE + colourQ(colourOf(st, t), colourOf(st, (1 - t) as 0 | 1), type)
+      + duelLean(st, t, type, sp);
     const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3
       : kind === 'reverse' ? 0.6 : kind === 'fakePunt' ? 1.6 : kind === 'drive' ? 1.3 + (room <= 5 ? 0.8 : 0) : kind === 'shotgun' ? 1.0 : 0;
     let sum = 0;
@@ -587,7 +623,8 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
   let hit = 0;
   for (const type of OFF_TYPES) {
     const share = (isRun(type) ? opp.runBias : 1 - opp.runBias) / 2;
-    const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE + colourQ(colourOf(st, (1 - t) as 0 | 1), colourOf(st, t), type);
+    const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE + colourQ(colourOf(st, (1 - t) as 0 | 1), colourOf(st, t), type)
+      + duelLean(st, (1 - t) as 0 | 1, type, undefined, sp);
     let m = kind && kind !== 'peekDef' ? DEF_SPECIAL_MATCH[kind][type] : MATCH[type][call];
     if (kind === 'roar') m -= 1.6 * pot;
     if (kind === 'rush' && type !== 'outside') m -= 0.9 * pot;
@@ -754,10 +791,13 @@ const keyMoment = (st: MatchState): boolean =>
 
 /**
  * Eleven a side, a play the coach calls himself when he only calls the big moments: a third or fourth down, close to
- * the goal, the try after a touchdown, the end of the match, extra time. The others are called for him.
+ * the goal, the try after a touchdown, the end of the match, extra time, a hero of the other side (team 1) who cannot
+ * be stopped. The others are called for him.
  */
 export const showtime = (st: MatchState): boolean =>
-  !!st.tfp || st.sudden || st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3);
+  !!st.tfp || st.sudden || st.down >= 3 || FIELD - st.pos <= 10 || (st.quarter >= QUARTERS && st.left <= 3)
+  // (an unstoppable hero of the other side on the field: the coach decides what to do about him)
+  || !!st.duels?.some((x) => x.side === st.poss && (x.side === 1 ? x.beast === 'ace' : x.beast === 'foe'));
 
 function offWeights(st: MatchState, t: 0 | 1): (p: Pick) => number {
   const team = st.teams[t];
@@ -817,6 +857,9 @@ function defWeights(st: MatchState, t: 0 | 1): (p: Pick) => number {
 
 /** How much a special suits the moment (0: do not bother). */
 function specialAppeal(st: MatchState, sp: SpecialCard): number {
+  // an unstoppable ace on the other side: his rival's own play, or a mark, is what stops him
+  const beast = st.duels?.find((x) => x.side === st.poss && x.beast === 'ace');
+  if (beast && (sp.owner === beast.foe || sp.kind === 'manMark') && KIND[sp.kind].side === 'def') return 3;
   const goal = FIELD - st.pos;
   const long = st.toGo >= 7;
   const short = st.toGo <= 3;
@@ -1099,6 +1142,11 @@ function tick(st: MatchState): PlayResult['period'] {
         }
       } else {
         st.quarter += 1;
+        // the break cools everybody down: nobody is unstoppable any more, the runs start again
+        for (const du of st.duels ?? []) {
+          du.beast = undefined;
+          du.run = 0;
+        }
         // a told story is as long as its plays
         st.left = st.script ? st.script.length : playsPerQ(st);
         period = 'quarter';
@@ -1237,6 +1285,10 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     // eleven a side, every other short pass that does not go to the first choice goes to the tight end
     const second = type === 'short' && st.n % 2 && O.lineup.off.TE != null && best !== 'TE' ? 'TE' : other;
     targetPos = rng.chance(0.75) ? best : second;
+    // eleven a side, the ball finds the team's ace more often
+    const ace = st.duels?.find((x) => x.side === o)?.ace;
+    const ap = ace == null || st.script || tryPlay ? null : offPosOf(O, ace);
+    if (ap && ap !== targetPos && (type === 'long' ? roleOf(ap) === 'WR' : ['WR', 'TE'].includes(roleOf(ap))) && rng.chance(0.35)) targetPos = ap;
     if (ok === 'flyLong') targetPos = ownerPos(O, osp!) as OffPos;
   }
   const carrier = isRun(type) ? O.lineup.off.RB : O.lineup.off[targetPos];
@@ -1272,6 +1324,21 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   if (ok === 'shotgun') q += 1.0 * op;
   const marked = dk === 'manMark' ? markedAce(O) : null;
   if (marked != null) q -= (carrier === marked ? 1.8 : 0.3) * dp;
+  // eleven a side: the day's duel, when the play puts its two on each other (the other side's own special play
+  // brings its own hero to the ball instead)
+  const di = !st.duels || tryPlay || st.script ? -1 : st.duels.findIndex((x) => x.side === o && meets(O, D, x, type, carrier));
+  const du = di >= 0 && (!dsp || dsp.owner === st.duels![di]!.foe) ? st.duels![di]! : null;
+  let duelRes: PlayResult['duel'];
+  if (du) {
+    defender = du.foe;
+    const p = duelOdds(O, D, du, st.mom, { aceSpecial: osp?.owner === du.ace ? op : 0, foeSpecial: dsp?.owner === du.foe ? dp : 0, marked: marked === du.ace ? dp : 0 });
+    const win = rng.chance(p);
+    q += win ? DUEL_SWING : -DUEL_SWING;
+    duelRes = { i: di, win, p };
+  } else if (st.duels?.some((x) => x.side === o && x.beast === 'ace' && x.ace === carrier)) {
+    // an unstoppable ace with the ball and nobody to meet him
+    q += 0.6;
+  }
   // eleven a side, the two colours
   const oc = colourOf(st, o);
   const dc = colourOf(st, d);
@@ -1386,6 +1453,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   const pn = nm(O, passer);
   if (osp) lines.push(`${nm(O, osp.owner)}の「${osp.name}」！`);
   if (dsp) lines.push(`${nm(D, dsp.owner)}の「${dsp.name}」！`);
+  if (du) lines.push(`${du.rival ?? '対決！'} ${nm(O, du.ace)}「${skillOf(du.ace)}」対${nm(D, du.foe)}「${skillOf(du.foe)}」`);
   let turnover: PlayResult['turnover'] = null;
   let firstDown = false;
   const tot = st.totals[o];
@@ -1401,6 +1469,41 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
       gotBy[t] = v;
     }
   };
+
+  // the duel's book: who won, and who cannot be stopped any more (or has just been stopped)
+  if (du && duelRes) {
+    const winner = duelRes.win ? 'ace' : 'foe';
+    const wt = duelRes.win ? o : d;
+    const who = (k: 'ace' | 'foe'): string => (k === 'ace' ? nm(O, du.ace) : nm(D, du.foe));
+    if (duelRes.win) {
+      du.w += 1;
+      du.run = Math.max(0, du.run) + 1;
+    } else {
+      du.l += 1;
+      du.run = Math.min(0, du.run) - 1;
+    }
+    if (du.beast && du.beast !== winner) {
+      duelRes.stopped = du.beast;
+      lines.push(`${who(winner)}が${who(du.beast)}を止めた！`);
+      du.beast = undefined;
+      mom(wt, 2, '怪物を止めた');
+    } else {
+      lines.push(`${who(winner)}が対決に勝った！`);
+      mom(wt, 1, '対決に勝った');
+    }
+    if (!du.beast && !duelRes.stopped && Math.abs(du.run) >= BEAST_RUN) {
+      du.beast = winner;
+      duelRes.born = winner;
+      lines.push(`${who(winner)}、もう手がつけられない！`);
+    }
+  }
+  // an ace who breaks away is unstoppable from now on
+  const runaway = breakaway ? st.duels?.find((x) => x.side === o && x.ace === carrier && !x.beast) : undefined;
+  if (runaway && !duelRes?.stopped) {
+    runaway.beast = 'ace';
+    if (duelRes && st.duels![duelRes.i] === runaway) duelRes.born = 'ace';
+    lines.push(`${nm(O, runaway.ace)}、もう手がつけられない！`);
+  }
 
   let points = 0;
   /** a touchdown is followed by a try: the clock waits for it */
@@ -1527,7 +1630,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     n: st.n, off: o, offPick, defPick, before, outcome, yards, td, firstDown, turnover, edge,
     passer, carrier, defender, offPotency: op, defPotency: dp,
     momBefore, momAfter: [st.mom[0], st.mom[1]], momWhy: gotWhy, period, lines, points, tfp: tryPlay || undefined,
-    ...(returnTd ? { returnTd } : {}), ...(breakaway ? { breakaway } : {}), ...(clock ? { clock } : {}),
+    ...(returnTd ? { returnTd } : {}), ...(breakaway ? { breakaway } : {}), ...(clock ? { clock } : {}), ...(duelRes ? { duel: duelRes } : {}),
   };
 }
 

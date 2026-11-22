@@ -1,0 +1,79 @@
+/* The duels (src/ui/duelView.ts): the day's match-ups, the moment two heroes meet, and what came of it. */
+
+.duel-show { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 1rem; background: rgba(6, 8, 26, 0.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: fade-in 0.25s; cursor: pointer; }
+.duel-show.out { opacity: 0; transition: opacity 0.25s; }
+.duel-panel { display: flex; flex-direction: column; gap: 1.2rem; width: min(100%, 62rem); }
+.duel-head { display: flex; align-items: baseline; justify-content: center; gap: 1.4rem; flex-wrap: wrap; }
+.duel-head b { font-family: var(--display); font-weight: 400; font-size: 3.4rem; line-height: 1.1; color: var(--yellow); -webkit-text-stroke: 0.4rem var(--ink); paint-order: stroke fill; }
+.duel-head span { font-size: var(--fs-s); color: var(--dim); }
+.duel-tap { position: absolute; bottom: 1.2rem; right: 1.6rem; font-size: var(--fs-xs); color: var(--dim); }
+
+.duel-row { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; animation: duel-row-in 0.5s calc(0.5s + var(--i) * 0.9s) cubic-bezier(0.2, 1.3, 0.4, 1) backwards; }
+.duel-kind { font-family: var(--display); font-size: var(--fs-s); color: var(--chalk); background: var(--ink); padding: 0 1.2rem; clip-path: polygon(0.5rem 0, 100% 0, calc(100% - 0.5rem) 100%, 0 100%); }
+.duel-kind em { font-style: normal; color: #ff8a5a; }
+.duel-pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; width: 100%; }
+.duel-vs { font-family: var(--display); font-weight: 400; font-size: 3rem; color: #ff5a2e; -webkit-text-stroke: 0.3rem var(--ink); paint-order: stroke fill; transform: rotate(-8deg); animation: duel-vs 0.4s calc(0.9s + var(--i) * 0.9s) cubic-bezier(0.2, 1.6, 0.4, 1) backwards; }
+.duel-face { display: grid; grid-template-columns: 5.6rem 1fr; grid-template-rows: auto auto; column-gap: 0.8rem; align-items: center; min-width: 0; padding: 0.5rem 0.9rem; background: linear-gradient(90deg, color-mix(in srgb, var(--team) 45%, #0b0f2e), #0b0f2e); border: 0.18rem solid var(--ink); box-shadow: 0.3rem 0.3rem 0 var(--ink); }
+.duel-face.theirs { grid-template-columns: 1fr 5.6rem; background: linear-gradient(270deg, color-mix(in srgb, var(--team) 45%, #0b0f2e), #0b0f2e); text-align: right; }
+.duel-art { grid-row: 1 / span 2; width: 5.6rem; height: 5.6rem; }
+.duel-face.theirs .duel-art { grid-column: 2; }
+.duel-art img { width: 100%; height: 100%; image-rendering: pixelated; }
+.duel-face.mine .duel-art img { transform: scaleX(-1); }
+.duel-who { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.duel-face.theirs .duel-who { justify-content: flex-end; grid-column: 1; grid-row: 1; }
+.duel-who i { font-style: normal; font-size: var(--fs-xs); color: var(--ink); background: var(--chalk); padding: 0 0.4rem; }
+.duel-who b { font-size: var(--fs-m); color: var(--chalk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duel-skill { font-family: var(--display); font-size: var(--fs-s); color: var(--yellow); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.duel-face.theirs .duel-skill { grid-column: 1; grid-row: 2; }
+@keyframes duel-row-in { from { opacity: 0; transform: scale(1.25); } }
+@keyframes duel-vs { from { opacity: 0; transform: rotate(-8deg) scale(2.4); } }
+
+/* the moment two heroes meet on a play */
+.duel-cut { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; pointer-events: none; }
+.duel-cut-band { position: absolute; left: -10%; right: -10%; top: 22%; height: 56%; transform: skewY(-4deg); background: linear-gradient(90deg, rgba(255, 90, 46, 0.85), rgba(11, 15, 46, 0.92) 45%, rgba(11, 15, 46, 0.92) 55%, rgba(80, 60, 200, 0.85)); border-top: 0.5rem solid var(--ink); border-bottom: 0.5rem solid var(--ink); animation: band-in 0.25s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
+.duel-cut.is-rival .duel-cut-band { background: linear-gradient(90deg, rgba(200, 30, 30, 0.9), rgba(30, 6, 12, 0.95) 45%, rgba(30, 6, 12, 0.95) 55%, rgba(200, 30, 30, 0.9)); }
+.duel-cut-head { position: relative; font-family: var(--display); font-size: 3.6rem; line-height: 1.1; color: var(--chalk); -webkit-text-stroke: 0.5rem var(--ink); paint-order: stroke fill; transform: rotate(-4deg); }
+.duel-cut .duel-row { position: relative; width: min(94%, 60rem); animation: none; }
+.duel-cut .duel-kind { display: none; }
+.duel-cut .duel-face.mine { animation: duel-slide-l 0.35s cubic-bezier(0.1, 1.2, 0.3, 1) backwards; }
+.duel-cut .duel-face.theirs { animation: duel-slide-r 0.35s cubic-bezier(0.1, 1.2, 0.3, 1) backwards; }
+.duel-cut .duel-vs { animation-delay: 0.2s; --i: 0; }
+.duel-cut.out { transform: scaleY(0); transition: transform 0.18s cubic-bezier(0.6, 0, 1, 0.4); }
+@keyframes duel-slide-l { from { transform: translateX(-60%); opacity: 0; } }
+@keyframes duel-slide-r { from { transform: translateX(60%); opacity: 0; } }
+
+/* what came of it, under the telop */
+.telop-duel { position: absolute; left: 50%; top: calc(100% + 3.4rem); display: flex; align-items: center; gap: 0.5rem; padding: 0.1rem 1rem 0.1rem 0.4rem; font-family: var(--display); font-size: var(--fs-m); line-height: 1.4; white-space: nowrap; color: var(--chalk); background: #1d2a6e; border: 0.18rem solid var(--ink); box-shadow: 0.25rem 0.25rem 0 var(--ink); transform: translateX(-50%) rotate(2deg); animation: mom-tag-in 0.45s 0.55s var(--spring) backwards; }
+.telop-duel.mine { background: linear-gradient(90deg, #c0392b, #ff7a2e); }
+.telop-duel img { width: 2.2rem; height: 2.2rem; image-rendering: pixelated; }
+.telop-duel.is-beast { background: linear-gradient(90deg, #4b0f5c, #b0124a); color: #ffe0f0; }
+.telop-duel.is-stop { background: linear-gradient(90deg, #0f6c5c, #18a0d0); }
+.telop:not(:has(.telop-mom)) .telop-duel { top: calc(100% + 0.6rem); }
+
+/* the club's duels on the scoreboard */
+.bug-duel { display: inline-flex; align-items: baseline; gap: 0.3rem; font-size: var(--fs-xs); color: var(--dim); white-space: nowrap; }
+.bug-duel em { font-style: normal; }
+.bug-duel b { color: var(--yellow); font-weight: 700; }
+
+/* the club's aces on the line-up screen */
+.ace-pick { display: flex; flex-direction: column; gap: 0.4rem; }
+.ace-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.ace-row > b { font-size: var(--fs-xs); color: var(--dim); min-width: 6.5rem; }
+.ace-opt { min-height: 44px; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.1rem 0.6rem 0.1rem 0.2rem; border: 0.14rem solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.04); color: var(--chalk); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.ace-opt img { width: 2.4rem; height: 2.4rem; image-rendering: pixelated; }
+.ace-opt i { font-style: normal; color: var(--dim); }
+.ace-opt.is-on { border-color: var(--yellow); background: rgba(255, 225, 74, 0.16); box-shadow: 0 0 0 0.12rem var(--yellow) inset; }
+.ace-opt.is-on::after { content: 'エース'; font-family: var(--display); color: var(--ink); background: var(--yellow); padding: 0 0.35rem; margin-left: 0.2rem; }
+.ace-opt:hover { border-color: var(--chalk); }
+.ace-note { font-size: var(--fs-xs); color: var(--dim); }
+.bug-team.home .bug-duel { grid-column: 3; grid-row: 1 / span 2; justify-self: end; flex-direction: column; align-items: center; gap: 0; line-height: 1.2; }
+.bug-team.home .bug-duel b { font-family: var(--display); font-weight: 400; font-size: var(--fs-m); }
+.hcard-duel { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--fs-xs); color: var(--yellow); }
+.hcard-duel i { font-style: normal; color: var(--ink); background: var(--yellow); padding: 0 0.3rem; }
+.hcard-duel em { font-style: normal; color: #ff5a7a; }
+.hcard-duel.is-beast i { background: #ff3a2e; color: var(--chalk); }
+.lu-aces { display: grid; grid-template-columns: 1fr; gap: 0.4rem; }
+.lu-ace { background: #3b1c0c; }
+.lu-ace > b { background: var(--orange); }
+.lu-ace.is-def > b { background: var(--cyan); }
+.lu-ace small { color: var(--yellow); }

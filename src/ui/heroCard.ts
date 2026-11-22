@@ -22,6 +22,8 @@ export interface CardFacts {
   span: 'season' | 'match';
   /** matches these numbers come from (the season's) */
   games: number;
+  /** eleven a side, the hero's duel in this match (game/duel.ts) */
+  duel?: { w: number; l: number; beast: boolean } | null;
 }
 
 const avg = (a: number | undefined, b: number | undefined, digits = 1): string => (b ? (Math.round(((a ?? 0) / b) * 10 ** digits) / 10 ** digits).toFixed(digits) : '—');
@@ -97,7 +99,8 @@ export function heroCard(f: CardFacts): HTMLElement {
       h('div.hcard-who',
         h('div.hcard-pos', where ? h('b', where) : h('b.is-bench', '控え'), f.member ? gradeChip(f.member.grade ?? 1) : null),
         h('strong', p.name),
-        h('span', f.team.name)),
+        h('span', f.team.name),
+        f.duel ? h('span.hcard-duel', { class: f.duel.beast ? 'is-beast' : '' }, h('i', '対決'), `${f.duel.w}勝${f.duel.l}敗`, f.duel.beast ? h('em', '手がつけられない') : null) : null),
       h('dl.hcard-body',
         h('div', h('dt', '40ヤード走'), h('dd', forty(p.stats, f.id).toFixed(2), h('small', '秒'))),
         h('div', h('dt', 'ベンチプレス'), h('dd', String(bench(p.stats, f.id)), h('small', 'kg'))))),
@@ -111,12 +114,12 @@ export function heroCard(f: CardFacts): HTMLElement {
 }
 
 /** The numbers for a hero: the club's own heroes show the season (this match included until it is booked). */
-export function factsOf(opts: { team: TeamSheet; mine: boolean; id: number; members: Member[]; season?: Box; match?: Box; booked: boolean }): CardFacts {
+export function factsOf(opts: { team: TeamSheet; mine: boolean; id: number; members: Member[]; season?: Box; match?: Box; booked: boolean }, duel?: CardFacts['duel']): CardFacts {
   const { team, mine, id } = opts;
-  if (!mine) return { team, id, line: lineOf(id, opts.match), span: 'match', games: 0 };
+  if (!mine) return { team, id, line: lineOf(id, opts.match), span: 'match', games: 0, duel };
   const now = opts.booked ? undefined : opts.match;
   const line = lineOf(id, opts.season, now);
   const games = (opts.season?.[id]?.gp ?? 0) + (now && played(now[id]) ? 1 : 0);
   line.gp = games;
-  return { team, id, member: opts.members.find((m) => m.id === id), line, span: 'season', games };
+  return { team, id, member: opts.members.find((m) => m.id === id), line, span: 'season', games, duel };
 }

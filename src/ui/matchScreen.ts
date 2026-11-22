@@ -38,6 +38,8 @@ import { guideEvent } from './platform';
 import { clearGoal, teach } from './tutor';
 import { factsOf, heroCard } from './heroCard';
 import { showBracket } from './bracket';
+import { duelCut, duelScore, duelTag, showDuels } from './duelView';
+import { beasts, clubRecord, heroRecord } from '../game/duel';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足', fourth: '4回目だけ' } as const;
 
@@ -224,7 +226,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     stadium.mark(who);
     const card = heroCard(factsOf({
       team: st.teams[who.team], mine: who.team === 0, id: who.id, members: s.members, season: s.box, match: st.box?.[who.team], booked: false,
-    }));
+    }, heroRecord(st.duels, who.team, who.id)));
     peekEl.append(card);
     placePeek();
     sfx.tap();
@@ -316,6 +318,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         h('span.bug-name', h('i.bug-ball', { 'aria-hidden': 'true' }), st.teams[t].short),
         score,
         h('span.bug-mom', h('em', '流れ'), flames(v.mom[t], prev ? prev.mom[t] : v.mom[t])),
+        t === 0 ? duelScore(st) : null,
         threats.length ? h('span.threats', threats.map((sp) => h('i', {
           class: specialBlock(st, 1, sp) === null ? 'armed' : '',
           title: `${hero(sp.owner).name}「${sp.name}」${KIND[sp.kind].tag}／こちらの読み：${READ_LABEL[st.read[1][sp.key] ?? 0]}`,
@@ -419,6 +422,8 @@ export function matchScreen(): [HTMLElement, () => void] {
     }
     closePeek();
     stadium.setScene(st);
+    // a hero who cannot be stopped burns on the field
+    stadium.setBeasts(beasts(st.duels));
     drawBug(snap());
     stage.replaceChildren();
     // the play is over: the play-by-play clears the right side for the huddle
@@ -878,6 +883,21 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (off.special) await cutIn(off.special, res.off, res.offPotency);
     if (def.special && !kick) await cutIn(def.special, (1 - res.off) as 0 | 1, res.defPotency);
     if (!alive) return;
+    // ---- the day's duel: the two meet on this play
+    const cut = duelCut(st, res);
+    if (cut) {
+      const du = st.duels![res.duel!.i]!;
+      sfx.specialCutin(du.side === 0);
+      flash('#ff5a2e', 200, 0.35);
+      vibrate(24);
+      stage.append(cut);
+      shout({ head: du.rival ?? '対決！', tail: `${hero(du.ace).name}対${hero(du.foe).name}！`, side: 'none', hot: !!du.rival }, res.off);
+      await pause(quick ? 950 : 1500);
+      cut.classList.add('out');
+      await pause(180);
+      cut.remove();
+      if (!alive) return;
+    }
     root.classList.remove('cine');
 
     // ---- the play itself: sound, shake and the phone's buzz follow the picture
@@ -1033,6 +1053,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       h('i.flame.on'), h('span.telop-mom-n', `${momSide === 1 ? `${away.short}に` : ''}流れ +${gained[momSide]}`),
       res.momWhy[momSide] ? h('em', res.momWhy[momSide]) : null);
     if (momTag) telop.append(momTag);
+    const dTag = duelTag(st, res);
+    if (dTag) telop.append(dTag);
     stage.append(telop);
     // the play-by-play steps down out of the telop's way
     root.classList.toggle('telop-up', true);
@@ -1173,7 +1195,8 @@ export function matchScreen(): [HTMLElement, () => void] {
           row('進んだヤード', totals[0].yards, totals[1].yards, 0),
           row('ファーストダウン', totals[0].firstDowns, totals[1].firstDowns, 1),
           row('タッチダウン', totals[0].td, totals[1].td, 2),
-          row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
+          row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3),
+          st.duels?.length ? row('対決の勝ち', clubRecord(st.duels).w, clubRecord(st.duels).l, 4) : null),
         h('div.fulltime-side', fameReport(fame),
           gift || trip ? h('p.fulltime-money', gift ? h('span', '寄付', h('b', `+${gift}万円`)) : null, trip ? h('span', '遠征', h('b.is-cost', `−${trip}万円`)) : null,
             trip ? h('span', '全員に遠征の経験値') : null) : null)),
@@ -1198,7 +1221,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     insets(false);
     sfx.whistle('long');
     crowd.roar(0.5);
-    turn();
+    // eleven a side, before the kickoff: the day's duels
+    if (st.duels?.length && st.n === 0 && st.ko && !debug.bot) void showDuels(root, st).then(() => alive && turn());
+    else turn();
   }, { once: true });
 
   return [root, () => {
