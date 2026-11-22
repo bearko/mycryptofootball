@@ -182,6 +182,8 @@ const REST: Record<Who, Record<string, string>> = {
   manager: {
     idle: 'navi_ain_11_idle', point: 'navi_ain_00_pointer_up', cheer: 'navi_ain_02_both_arms_up', smile: 'navi_ain_06_smile',
     sparkle: 'navi_ain_08_sparkle', cry: 'navi_ain_09_cry', wink: 'navi_ain_05_wink', think: 'navi_ain_01_arms_crossed', wave: 'navi_ain_03_wave',
+    // (the poses the match's side commentary asks for)
+    guts: 'navi_ain_00_pointer_up', sad: 'navi_ain_01_arms_crossed', laugh: 'navi_ain_06_smile',
   },
   announcer: {
     idle: 'chris_09_idle', cheer: 'chris_03_cheer', guts: 'chris_04_guts_pose', smile: 'chris_05_smile', laugh: 'chris_06_laugh',
