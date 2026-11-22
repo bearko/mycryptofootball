@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RANKS, STATS, STAT_MAX, rank, rankIndex } from '../src/game/model';
-import { ROSTER_SIZE, SCHEDULE, growth, markMonth, mend, newSeason, plan, signRecruits, startDay, train } from '../src/game/season';
+import { ROSTER_SIZE, SCHEDULE, growth, markMonth, mend, newSeason, plan, signRecruits, stageStart, startDay, train } from '../src/game/season';
 
 describe('ranks', () => {
   it('the scale: G under 20, F under 40, then a letter every ten, SS from 100', () => {
@@ -55,23 +55,26 @@ describe('the month\'s review', () => {
     expect(growth(s).rows[0]!.ups).toContain('spd');
   });
 
-  it('comes up on the first day of a new month, looks back as far as yesterday, and then counts afresh', () => {
+  it('comes up on the first day of the next part of the year, looks back as far as yesterday, and then counts afresh', () => {
     const s = start();
-    const first = SCHEDULE.findIndex((d) => d.month !== SCHEDULE[0]!.month);
-    expect(first).toBeGreaterThan(0);
+    const first = stageStart('summer');
+    expect(first).toBe(28);
     for (let day = 1; day < SCHEDULE.length; day += 1) {
       s.day = day;
       s.review = false;
+      s.phase = 'club';
       startDay(s);
-      expect(!!s.review).toBe(day === first);
+      expect(!!s.review).toBe(day === first || day === stageStart('camp') || day === stageStart('autumn'));
     }
+    s.phase = 'club';
+    s.stageAt = 0;
     s.day = first;
     s.members[0]!.stats.spd += 7;
     startDay(s);
     const g = growth(s, true);
     expect(g.from).toBe(0);
     expect(g.to).toBe(first - 1);
-    expect(SCHEDULE[g.to]!.month).toBe(SCHEDULE[0]!.month);
+    expect(SCHEDULE[g.to]!.stage).toBe('spring');
     expect(g.total).toBe(7);
     markMonth(s);
     expect(s.review).toBe(false);

@@ -5,12 +5,11 @@ import { recruit, talentOf } from '../src/game/heroes';
 import { bestLineup, isStarter } from '../src/game/lineup';
 import { simulate, type MatchState } from '../src/game/match';
 import { STATS, type Stat } from '../src/game/model';
-import { opponentSheet } from '../src/game/teams';
 import {
   STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, asPlayer, cardInfo, clubSheet, costOf, finishMatch, intake, joinCount, needOf, newSeason,
   nextMatch, nextYear, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
-  clubSize, schoolId,
+  clubSize, opponentFor,
 } from '../src/game/season';
 
 export type Style = 'sensible' | 'careless';
@@ -85,10 +84,14 @@ export interface SeasonRun {
 
 /** Plays the year the club is in to its end (recruiting first, when a briefing is due). */
 function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): void {
-  if (s.phase === 'recruit') signRecruits(s, pickRecruits(s, rng, style));
   let guard = 0;
-  while (s.phase === 'club' && guard < 80) {
+  while (s.phase !== 'done' && guard < 200) {
     guard += 1;
+    // the briefings: in April, and in May when there is room
+    if (s.phase === 'recruit') {
+      signRecruits(s, pickRecruits(s, rng, style));
+      continue;
+    }
     const p = plan(s);
     if (p.t === 'train') {
       if (style === 'sensible' && policyOpen(s)) setPolicy(s);
@@ -108,7 +111,7 @@ function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): voi
     } else {
       // a sensible coach looks at the line-up again before every match
       if (style === 'sensible') s.lineup = bestLineup(s.members.map(asPlayer), clubSize(s));
-      const st = simulate(clubSheet(s), opponentSheet(p.opp, s.league, clubSize(s), schoolId(s, p.opp)), rng.int(1, 2 ** 31 - 1));
+      const st = simulate(clubSheet(s), opponentFor(s), rng.int(1, 2 ** 31 - 1));
       matches.push(st);
       finishMatch(s, st);
     }

@@ -11,8 +11,8 @@ import { DEF_POS_OF, OFF_POS_OF, STATS, fit, roleOf } from '../src/game/model';
 import { SCHOOLS, opponentSheet } from '../src/game/teams';
 import {
   CANDIDATES, EVENTS, HAND_SIZE, PRACTICE, PRACTICE_KEYS, REST_STA, ROSTER_SIZE, SCHEDULE, STA_MAX, STAT_COST, TRUST_DRILL, TRUST_LEARN, answerEvent, applyPreset,
-  cardInfo, clubSheet, costOf, dateText, finishMatch, learned, newSeason, plan, policyOpen, presetFocus, previewTrain, setFocus,
-  signRecruits, train, type PracticeCard, type Season,
+  CAMP_XP, MATCH_COUNT, WEEK_XP, cardInfo, clubSheet, costOf, cupOf, dateText, finishMatch, joinCount, labelOf, learned, newSeason, plan, policyOpen, presetFocus, previewTrain, setFocus,
+  signRecruits, spanText, stageStart, startDay, train, type PracticeCard, type Season,
 } from '../src/game/season';
 import { runSeason } from './bot';
 
@@ -289,12 +289,34 @@ describe('season', () => {
     }
   });
 
-  it('the calendar runs four weeks: practice Monday to Saturday, a match every Sunday', () => {
-    expect(SCHEDULE).toHaveLength(28);
+  it('the year: four weeks of spring, a summer a fortnight at a time, the camp, and the autumn', () => {
+    // spring: practice Monday to Saturday, a match every Sunday
     expect(dateText(SCHEDULE[0]!)).toBe('4月5日（月）');
     expect(dateText(SCHEDULE[27]!)).toBe('5月2日（日）');
-    expect(SCHEDULE.filter((d) => d.t === 'match').map((d) => d.n)).toEqual([6, 13, 20, 27]);
-    expect(SCHEDULE.filter((d) => d.t === 'match').map((d) => d.cup)).toEqual([false, true, true, true]);
+    const spring = SCHEDULE.filter((d) => d.stage === 'spring');
+    expect(spring).toHaveLength(28);
+    expect(spring.filter((d) => d.t === 'match').map((d) => d.n)).toEqual([6, 13, 20, 27]);
+    expect(spring.filter((d) => d.t === 'match').map((d) => d.cup)).toEqual([false, true, true, true]);
+    // the summer: a fortnight a card, one practice match
+    const summer = SCHEDULE.filter((d) => d.stage === 'summer');
+    expect(summer.filter((d) => d.t === 'train').every((d) => d.days >= 13)).toBe(true);
+    expect(summer.filter((d) => d.t === 'match').map((d) => d.cup)).toEqual([false]);
+    expect(spanText(summer[0]!)).toBe('5月3日〜16日');
+    // the camp: fourteen days, the scrimmage last
+    const camp = SCHEDULE.filter((d) => d.stage === 'camp');
+    expect(camp).toHaveLength(14);
+    expect(camp.every((d) => d.days === 1 && d.t === 'train')).toBe(true);
+    expect(camp.map((d) => d.scrim)).toEqual([...Array(13).fill(false), true]);
+    // the autumn: a practice match, then the three rounds, each after a week of daily practice
+    const autumn = SCHEDULE.filter((d) => d.stage === 'autumn');
+    expect(autumn.filter((d) => d.t === 'match').map((d) => d.round)).toEqual([0, 1, 2, 3]);
+    for (const m of autumn.filter((d) => d.cup)) expect(SCHEDULE.slice(m.n - 6, m.n).every((d) => d.days === 1)).toBe(true);
+    expect(dateText(SCHEDULE[SCHEDULE.length - 1]!)).toBe('10月31日（日）');
+    // the dates run on without a gap
+    let days = 0;
+    for (const d of SCHEDULE) days += d.days;
+    expect(days).toBe(30 * 7);
+    expect(SCHEDULE.map((d) => d.m).filter((m) => m >= 0)).toEqual([...Array(MATCH_COUNT).keys()]);
   });
 
   it('the first hero signed is captain and already knows the special play', () => {
@@ -448,7 +470,7 @@ describe('season', () => {
     }
   });
 
-  it('a lost practice match does not end the season and reopens the policy; a lost cup match ends it', () => {
+  it('a lost practice match does not end the season and reopens the policy; a lost spring match leads on to the summer, a lost autumn one ends the year', () => {
     const lose = (s: Season) => {
       const p = plan(s);
       if (p.t !== 'match') throw new Error('not a match day');
@@ -471,9 +493,54 @@ describe('season', () => {
     expect(policyOpen(s)).toBe(true);
     toMatch(s);
     expect(policyOpen(s)).toBe(false);
+    const spring = lose(s);
+    expect(spring.ended).toBe(false);
+    expect(spring.out).toBe(true);
+    // on to the summer: the May briefing, when there is room (one draws the briefing, the other goes on)
+    expect(s.day).toBe(stageStart('summer'));
+    if (s.phase === 'recruit') signRecruits(s, s.candidates.slice(0, joinCount(s)));
+    expect(s.phase).toBe('club');
+    expect(policyOpen(s)).toBe(true);
+    expect(s.review).toBe(true);
+    s.day = SCHEDULE.findIndex((d) => d.stage === 'autumn' && d.cup);
+    s.stageAt = stageStart('autumn');
     expect(lose(s).ended).toBe(true);
     expect(s.phase).toBe('done');
     expect(s.champion).toBe(false);
+  });
+
+  it('between the tournaments a card does a fortnight\'s work; at the camp, twice the day\'s, and it wears more', () => {
+    const s = club();
+    const card = basic('hit');
+    const day = cardInfo(s, card);
+    s.day = stageStart('summer');
+    const span = cardInfo(s, card);
+    expect(span.xp.pow).toBeCloseTo(day.xp.pow! * WEEK_XP * 2, 0);
+    expect(span.sta).toBeGreaterThan(day.sta);
+    s.day = stageStart('camp');
+    const camp = cardInfo(s, card);
+    expect(camp.xp.pow).toBeCloseTo(day.xp.pow! * CAMP_XP, 0);
+    expect(camp.sta).toBeLessThan(day.sta);
+    expect(camp.name).not.toBe(day.name);
+    // the scrimmage is the camp's last day's only card
+    s.stageAt = stageStart('camp');
+    s.day = SCHEDULE.findIndex((d) => d.scrim);
+    startDay(s);
+    expect(s.hand.map((c) => c.kind)).toEqual(['scrim']);
+    train(s, 0);
+    expect(plan(s).stage).toBe('autumn');
+    expect(s.hand.some((c) => c.kind === 'rest')).toBe(true);
+  });
+
+  it('the autumn follows the standing the club has reached: its tournament and its schools', () => {
+    const s = club();
+    s.tier = 2;
+    s.day = stageStart('autumn');
+    startDay(s);
+    expect(s.league).toBe(2);
+    expect(s.springLeague).toBe(0);
+    expect(cupOf(s)).toBe('県大会');
+    expect(labelOf(s, SCHEDULE.find((d) => d.stage === 'autumn' && d.round === 3)!)).toBe('秋の県大会 決勝');
   });
 
   it('a season survives being saved as JSON', () => {

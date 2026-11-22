@@ -11,6 +11,7 @@
 .end-results li { display: flex; flex-direction: column; align-items: center; background: var(--ink); padding: 0.3rem 1.2rem 0.4rem; font-size: var(--fs-xs); line-height: 1.3; border-bottom: 0.35rem solid var(--pink); transform: skewX(-8deg); animation: slam 0.45s var(--spring) backwards; animation-delay: calc(1.1s + var(--i) * 140ms); }
 .end-results li.win { border-bottom-color: var(--lime); }
 .end-results b { font-weight: 400; font-size: var(--fs-xl); line-height: 1.1; background: none; }
+.end-results li.is-spring b { font-family: var(--display); font-size: var(--fs-m); line-height: 1.5; }
 .end-team { display: flex; gap: 0.3rem; }
 /* a big club: everybody smaller, in rows, the names left out */
 .end-team.is-many { flex-wrap: wrap; gap: 0.1rem; max-width: 62rem; }

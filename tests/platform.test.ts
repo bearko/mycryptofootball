@@ -73,7 +73,7 @@ describe('the door to the shared platform', () => {
     p.guideEvent(d, 'second_play');
     p.guideEvent(d, 'first_td');
     d.match = null;
-    s.results.push({ day: 6, opp: 0, us: 6, them: 3, win: true });
+    s.results.push({ day: 6, m: 0, opp: 0, us: 6, them: 3, win: true });
     s.day = 7;
     p.trackGuide(d);
     expect(sent.map((x) => x[1]).pop()).toBe('match_done');

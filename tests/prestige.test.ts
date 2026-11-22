@@ -77,11 +77,11 @@ describe('the years of a club', () => {
       const { season: s } = runSeason(seed * 31);
       const wonFirst = s.results.some((r) => r.opp === 1 && r.win);
       if (wonFirst) expect(s.tier).toBeGreaterThanOrEqual(1);
-      else expect(s.tier).toBe(0);
       expect(s.fame).toBeGreaterThanOrEqual(0);
       expect(s.fame).toBeLessThanOrEqual(FAME_MAX);
-      // the opponents stayed those of the year's start
-      expect(s.league).toBe(0);
+      // the spring's opponents were those of the year's start; the autumn's follow the standing reached by then
+      expect(s.springLeague).toBe(0);
+      expect(s.league).toBeLessThanOrEqual(s.tier + 1);
     }
   });
 
@@ -94,12 +94,12 @@ describe('the years of a club', () => {
     expect(s.year).toBe(2);
     expect(s.league).toBe(2);
     expect(cupOf(s)).toBe('県大会');
-    expect(labelOf(s, SCHEDULE[13]!)).toBe('県大会 1回戦');
+    expect(labelOf(s, SCHEDULE[13]!)).toBe('春の県大会 1回戦');
     expect(labelOf(s, SCHEDULE[6]!)).toBe('練習試合');
     expect(s.results).toEqual([]);
     expect(s.day).toBe(0);
     expect(s.phase).toBe('recruit');
-    const room = TIERS[2]!.roster - ROSTER_SIZE;
+    const room = TIERS[2]!.roster - before.length;
     expect(joinCount(s)).toBe(room);
     expect(s.candidates.length).toBeGreaterThan(room);
     for (const id of s.candidates) expect(before.some((m) => m.id === id)).toBe(false);
@@ -127,9 +127,10 @@ describe('the years of a club', () => {
   it('a club with no room goes straight back to practice', () => {
     const { season: s } = runSeason(5 * 31);
     s.tier = 0;
+    const had = s.members.length;
     nextYear(s, 5);
     expect(s.phase).toBe('club');
-    expect(s.members.length).toBe(ROSTER_SIZE);
+    expect(s.members.length).toBe(had);
     expect(() => nextYear(s, 6)).toThrow();
   });
 
