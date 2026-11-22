@@ -129,6 +129,13 @@ function decode(ctx: BaseAudioContext, p: number): Promise<AudioBuffer | null> {
 
 /** a short breath between two pieces */
 const GAP = 0.03;
+/**
+ * a piece that goes on from a name ("マイクリ学園" "に"): no breath, and a little into the end of the name (a piece
+ * made alone ends as if the sentence did)
+ */
+const JOIN = -0.06;
+const GOES_ON = /^[にがのをはへとでもや]/;
+const ENDS = /[！？、。…]$/;
 /** a line that waits longer than this for its pieces has missed its moment */
 const TOO_LATE = 0.9;
 /** a line comes after the one being said if that one ends within this */
@@ -202,7 +209,8 @@ export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {
         else return;
       }
       const start = t;
-      for (const b of bufs as AudioBuffer[]) {
+      (bufs as AudioBuffer[]).forEach((b, i) => {
+        if (i > 0 && GOES_ON.test(PIECES[pieces[i]!]![0]) && !ENDS.test(PIECES[pieces[i - 1]!]![0])) t += JOIN - GAP;
         const src = ctx.createBufferSource();
         src.buffer = b;
         src.connect(out.node);
@@ -212,7 +220,7 @@ export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {
         };
         playing.push(src);
         t += b.duration + GAP;
-      }
+      });
       busyUntil = t;
       said += 1;
       out.duck((t - start) * 1000);
