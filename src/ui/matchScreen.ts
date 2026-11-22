@@ -139,16 +139,10 @@ export function matchScreen(): [HTMLElement, () => void] {
   const touchy = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
   /** a gain of this many yards is shown once more */
   const BIG_PLAY = 15;
-  const booth = speech('announcer');
+  // beside the field, the manager adds what the coach should know (the cards, the plays, the score). She is not
+  // heard: the announcer's voice says only his own calls (the shouted lines on the right)
+  const booth = speech('manager');
   booth.el.classList.add('booth');
-  // the booth speaks too, when the voice is free (between plays)
-  {
-    const say = booth.say;
-    booth.say = (line, p) => {
-      if (!debug.bot && !quickPlay) speak(fullNames(line, [home, away]), { quiet: true });
-      return say(line, p);
-    };
-  }
   warmVoice();
   const stage = h('div.stage');
   const hand = h('footer.hand');
@@ -1168,6 +1162,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     sfx.whistle('long');
     stage.replaceChildren(h('div.telop.big', { class: win ? 'good' : 'bad' }, h('div.telop-band'), h('b', kinetic('試合終了！'))));
     booth.say(win ? `${home.short}の勝利です！！` : `${away.short}の勝利…。くやしい！`, win ? 'cheer' : 'cry');
+    if (!debug.bot) speak(fullNames(`${(win ? home : away).short}の勝利です！！`, [home, away]), { hot: true });
     await new Promise((r) => setTimeout(r, debug.bot ? 100 : 1500));
     playBgm('');
     if (win) {

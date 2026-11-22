@@ -106,7 +106,7 @@
 .match.cine .booth { opacity: 0; transition: opacity 0.15s; }
 .hand-log[hidden] { display: none; }
 .hand-go .btn.off .btn-face { font-size: var(--fs-s); }
-.booth .speech-who { width: 3.4rem; height: 6.4rem; }
+.booth .speech-who { width: 5rem; height: 7.4rem; margin-right: -0.6rem; }
 
 /* ---------- centre stage: clash, cut-in, telop ---------- */
 .stage { position: absolute; left: 0; right: 0; top: 6.4rem; bottom: 2.2rem; z-index: 6; pointer-events: none; display: grid; place-items: center; overflow: hidden; }
