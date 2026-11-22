@@ -12,13 +12,14 @@
 //    the rest card, always in the hand, brings stamina back
 
 import { Rng, clamp } from '../core/rng';
-import { READ_MAX } from './cards';
+import { KIND, READ_MAX, type SpecialCard } from './cards';
 import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes';
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
 import { acesFit, suggestAces, type Aces } from './duel';
 import { BENTO, MEDAL_PACK, MEDAL_RATE, obOf, spin, type BentoKey, type Spin } from './alumni';
+import { BONDS, bondKey, type Bond } from './bonds';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, PRO_SCHOOL, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
@@ -27,7 +28,7 @@ import {
   ALLOWANCE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost,
   type FacKey, type Facilities,
 } from './funds';
-import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
+import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
 export const CANDIDATES = 9;
@@ -572,6 +573,8 @@ export interface Season {
   /** lunch boxes in the club room, and medals for the medal game */
   items?: Partial<Record<BentoKey, number>>;
   medals?: number;
+  /** how far each bond's story has been told (game/bonds.ts; by bondKey, 0..BOND_STEPS) */
+  bonds?: Record<string, number>;
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -1151,6 +1154,8 @@ export interface DayReport {
   changes: Change[];
   /** the tactic practice took the colour to this level */
   tacticUp?: number;
+  /** two heroes with a bond talked after practice: whose story, and which talk (BOND_STEPS: their play is born) */
+  bond?: { key: string; step: number };
 }
 
 /** Plays one practice card from the hand: experience, abilities, trust; then the calendar moves on a day. */
@@ -1188,12 +1193,54 @@ export function train(s: Season, index: number): DayReport {
     s.tacticWins = (s.tacticWins ?? 0) + 1;
     if (clubTacticLv(s) > was) tacticUp = clubTacticLv(s);
   }
+  // two heroes with a bond may talk after practice (a day off too: they eat together)
+  const bond = bondStep(s);
   s.hand.splice(index, 1);
   s.meeting = false;
   s.tacticWas = undefined;
   s.day += 1;
   startDay(s);
-  return { card, info, changes, tacticUp };
+  return { card, info, changes, tacticUp, ...(bond ? { bond } : {}) };
+}
+
+// ------------------------------------------------------------------ bonds (game/bonds.ts)
+
+/** How many talks a bond's story has; after the last, the two have their special play. */
+export const BOND_STEPS = 3;
+/** The chance that a bond's next talk happens after a day of practice (a fortnight's card counts twice). */
+export const BOND_CHANCE = 0.14;
+export const bondProgress = (s: Season, b: Bond): number => s.bonds?.[bondKey(b)] ?? 0;
+/** The bonds whose two heroes are both in the club. */
+export const clubBonds = (s: Season): Bond[] => BONDS.filter((b) => s.members.some((m) => m.id === b.a) && s.members.some((m) => m.id === b.b));
+/** Rolls whether a bond's story goes on after today's practice (and moves it on). */
+function bondStep(s: Season): DayReport['bond'] {
+  const open = clubBonds(s).filter((b) => bondProgress(s, b) < BOND_STEPS);
+  if (!open.length) return undefined;
+  const rng = rngOf(s);
+  const chance = BOND_CHANCE * (weeksOf(plan(s)) ? 2 : 1);
+  let out: DayReport['bond'];
+  if (rng.chance(chance)) {
+    const b = rng.pick(open);
+    const step = bondProgress(s, b) + 1;
+    s.bonds = { ...(s.bonds ?? {}), [bondKey(b)]: step };
+    out = { key: bondKey(b), step };
+  }
+  keep(s, rng);
+  return out;
+}
+/**
+ * The special plays of the bonds told to their end (both heroes still in the club). The play belongs to whichever
+ * of the two stands where it can be called; if neither does, to the first.
+ */
+export function bondCards(s: Season, l: Lineup | null = s.lineup): SpecialCard[] {
+  return clubBonds(s).filter((b) => bondProgress(s, b) >= BOND_STEPS).map((b) => {
+    const info = KIND[b.kind];
+    const unit: Record<string, number> = l ? (info.side === 'off' ? l.off : l.def) : {};
+    const fits = (id: number): boolean => Object.entries(unit).some(([pos, x]) => x === id && (!info.roles || info.roles.includes(roleOf(pos as OffPos | DefPos))));
+    const on = (id: number): boolean => Object.values(unit).includes(id);
+    const owner = [b.a, b.b].find(fits) ?? [b.a, b.b].find(on) ?? b.a;
+    return { key: `bond:${bondKey(b)}`, owner, kind: b.kind, name: b.name, boost: true };
+  });
 }
 
 /** What playing a card would do, without doing it (for showing who gains what). */
@@ -1333,7 +1380,7 @@ export function clubSheet(s: Season): TeamSheet {
       return { ...asPlayer(m), stats };
     }),
     lineup: l,
-    specials: s.members.filter(learned).map((m) => specialOf(m.id, recruit(m.id).kind, boosted(m))),
+    specials: [...s.members.filter(learned).map((m) => specialOf(m.id, recruit(m.id).kind, boosted(m))), ...bondCards(s, l)],
     runBias: 0.5,
     smart: 0.7,
     scouted,

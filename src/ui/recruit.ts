@@ -10,6 +10,7 @@ import { KIND } from '../game/cards';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat, type Stats } from '../game/model';
 import { tierOf } from '../game/prestige';
+import { bondsOf } from '../game/bonds';
 import { founding as isFounding, genOf, joinCount, midYear, needsCaptain, signRecruits } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { burst, center, confetti, flash, flip, glitter, kick, kinetic, motion, pop, ring, shake, typewriter, type Typing } from './fx';
@@ -139,6 +140,8 @@ export function recruitScreen(): HTMLElement {
   const bubble = h('div.bubble.rc-bubble', ghost, say);
   const blurb = h('p.rc-blurb');
   const roles = h('p.rc-roles');
+  /** heroes this one has a bond with, among the club and the candidates (game/bonds.ts) */
+  const bondNote = h('p.rc-bond');
   const rd = radar(joinStats(focus));
   const cardBox = h('div.rc-card');
   const spName = h('b.rc-sp-name');
@@ -148,7 +151,7 @@ export function recruitScreen(): HTMLElement {
   const paper = h('div.rc-paper.paper.tape',
     formNo,
     h('div.rc-top', big, h('div.rc-id', who, chipBox), bubble),
-    h('div.rc-notes', blurb, roles),
+    h('div.rc-notes', blurb, roles, bondNote),
     h('div.rc-bottom',
       h('div.rc-radar', rd.el),
       cardBox,
@@ -177,6 +180,11 @@ export function recruitScreen(): HTMLElement {
     typing = typewriter(say, r.line, { cps: 48, onTick: () => sfx.typeTick() });
     blurb.textContent = r.blurb;
     roles.replaceChildren(h('b', '◎'), bestRoles(r.stats));
+    const inClub = (id: number): boolean => season.members.some((m) => m.id === id);
+    const pals = bondsOf(focus).map((b) => ({ b, other: b.a === focus ? b.b : b.a })).filter((x) => inClub(x.other) || ids.includes(x.other));
+    bondNote.replaceChildren(...pals.map((x) => h('span', h('i', '縁'), `${hero(x.other).name}「${x.b.title}」`, inClub(x.other) ? h('em', '部にいる') : null)));
+    bondNote.hidden = !pals.length;
+    bondNote.title = '縁のあるふたりが同じ部にいると、練習のあとに会話が進み、3回目でふたりの特別作戦が生まれる';
     rd.set(joinStats(focus));
     const card = playCard({ type: info.base, star: 1, special: sp }, info.side, {
       small: true,

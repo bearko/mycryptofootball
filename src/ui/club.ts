@@ -13,7 +13,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
@@ -34,6 +34,7 @@ import { reviewModal } from './review';
 import { bracketModal, showBracket } from './bracket';
 import { facilitiesModal } from './facilities';
 import { alumniModal } from './alumni';
+import { BONDS, bondKey } from '../game/bonds';
 import { memberModal, settingsModal } from './shared';
 import { standingChip } from './standing';
 import { titleScreen } from './title';
@@ -629,6 +630,36 @@ export function clubScreen(): [HTMLElement, () => void] {
       await cutIn(root, s, id, prize);
     }
   };
+  /**
+   * Two heroes with a bond talk after practice: their lines pop up over their heads, one after the other, while the
+   * coach plays on. The last talk of their story gives them a special play of their own.
+   */
+  const bondScene = async (bd: { key: string; step: number }): Promise<void> => {
+    const b = BONDS.find((x) => bondKey(x) === bd.key);
+    if (!b) return;
+    const names = [shortName(b.a), shortName(b.b)];
+    coach.say(`おや、${names[0]}と${names[1]}が何か話しています。「${b.title}」（${bd.step}/${BOND_STEPS}）`, 'think');
+    sfx.event();
+    for (const [who, text] of b.talk[bd.step - 1]!) {
+      await wait(who === 0 && text === b.talk[bd.step - 1]![0]![1] ? 600 : 2300);
+      if (!alive) return;
+      const t = tags.get(who === 0 ? b.a : b.b);
+      if (!t) continue;
+      t.say.textContent = text;
+      kick(t.el, 'is-say');
+      sfx.typeTick();
+    }
+    if (bd.step < BOND_STEPS) return;
+    await wait(2300);
+    if (!alive) return;
+    sfx.learn();
+    for (const id of [b.a, b.b]) {
+      const r = tags.get(id)?.el.getBoundingClientRect();
+      if (r) burst(r.left + r.width / 2, r.top, { count: 18, color: ['#ffe14a', '#fffbe8', '#ff8fd0'], shape: ['star', 'rect'] });
+    }
+    coach.say(`${names[0]}と${names[1]}が、ふたりの特別作戦「${b.name}」を編み出しました！ 試合で使えます。`, 'sparkle');
+  };
+
   const play = async (uid: number): Promise<void> => {
     const i = s.hand.findIndex((c) => c.uid === uid);
     const cardEl = cardEls.get(uid);
@@ -752,6 +783,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     root.classList.remove('is-busy');
     busy = false;
     arrive(false);
+    if (report.bond) void bondScene(report.bond);
   };
 
   // ---- the event of the day, the meeting, and what the manager says on arriving

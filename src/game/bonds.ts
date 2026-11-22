@@ -1,5 +1,10 @@
-// Heroes with a history between them (from history and legend). Two of them on opposite sides of a match are a
-// rivalry: they are put up against each other as the day's duel (game/duel.ts), with words of their own.
+// Heroes with a history between them (from history and legend).
+// - Two of them on opposite sides of a match are a rivalry: they are put up against each other as the day's duel
+//   (game/duel.ts), with words of their own (RIVALS).
+// - Two of them in the same club are a bond (BONDS): now and then, after practice, they talk; the third time their
+//   story is told to its end and they come up with a special play of their own (season.ts bondStep, clubSheet).
+
+import type { Kind } from './cards';
 
 /** [hero, hero, what is said when they meet] */
 export const RIVALS: readonly (readonly [number, number, string])[] = [
@@ -34,3 +39,137 @@ export function rivalLine(a: number, b: number): string | null {
   for (const [x, y, line] of RIVALS) if ((x === a && y === b) || (x === b && y === a)) return line;
   return null;
 }
+
+/** One line of a bond's talk: who says it (0: the first of the two, 1: the second), and what. Short: it is a bubble. */
+export type BondLine = readonly [who: 0 | 1, text: string];
+export interface Bond {
+  a: number;
+  b: number;
+  /** what the story is called (shown with each step) */
+  title: string;
+  /** the special play they come up with: its name and what it does */
+  name: string;
+  kind: Kind;
+  /** the three talks, one after another */
+  talk: readonly [readonly BondLine[], readonly BondLine[], readonly BondLine[]];
+}
+
+/** The pairs of heroes the club may sign together, and their stories. */
+export const BONDS: readonly Bond[] = [
+  {
+    a: 5019, b: 3018, title: '五条大橋の主従', name: '五条大橋の誓い', kind: 'pushRun', // 源義経・武蔵坊弁慶
+    talk: [
+      [[1, '橋の上で会ったあの日を覚えておられますか'], [0, '刀を千本集めていた大男だな'], [1, 'あの日から、殿の盾でございます']],
+      [[0, '弁慶、そなたの押しは天下一だ'], [1, '殿が走る道は、それがしが開きます']],
+      [[0, 'わたしが走る、そなたが押す'], [1, '主従ひとつになれば、通れぬ道なし！'], [0, '行くぞ、弁慶！']],
+    ],
+  },
+  {
+    a: 5032, b: 4004, title: '巌流島の好敵手', name: '巌流島の決闘', kind: 'roar', // 宮本武蔵・佐々木小次郎
+    talk: [
+      [[1, '武蔵、また遅刻か'], [0, '待たせるのも兵法のうちよ']],
+      [[1, '燕返し、今日こそ見切れるか'], [0, '二刀で受けて立とう']],
+      [[0, '小次郎、おぬしがいて強くなれた'], [1, '次の決着は、試合でつけよう'], [0, '並んで立つのも悪くない！']],
+    ],
+  },
+  {
+    a: 4001, b: 4016, title: '虎牢関の宿敵', name: '虎牢関の激突', kind: 'rush', // 張飛・呂布
+    talk: [
+      [[0, '三姓の家奴め、なぜここにいる！'], [1, '強いやつのいる所が、おれの居場所だ']],
+      [[1, 'おまえの突進、まだ甘い'], [0, 'なにを！ もう一本だ！']],
+      [[0, '敵だったおまえと、並んで突っこむとはな'], [1, '二人でかかれば、だれも止められん！']],
+    ],
+  },
+  {
+    a: 5015, b: 4050, title: '五丈原の知恵くらべ', name: '五丈原の読み合い', kind: 'peekDef', // 諸葛亮・司馬懿仲達
+    talk: [
+      [[1, '孔明どの、また何かたくらんでおるな'], [0, '仲達どのこそ、待ちの一手ですね']],
+      [[0, '相手の攻めを、ふたりで読みましょう'], [1, 'わしは待つ、そなたは見抜く']],
+      [[1, 'ふたりで読めば、外れることはない'], [0, '死せる孔明も、生ける仲達と組めば無敵です']],
+    ],
+  },
+  {
+    a: 2026, b: 2018, title: '大坂城の夫婦', name: '大坂城の絆', kind: 'sureShort', // 豊臣秀吉・茶々
+    talk: [
+      [[0, '茶々、パスの練習かの'], [1, '殿下のためではありませぬ']],
+      [[1, '殿下、今日のパスは捕れましたか'], [0, 'おお、手にすいつくようじゃ！']],
+      [[0, 'わしが走る、そなたが投げる'], [1, '大坂の城のように、ゆるがぬ二人です']],
+    ],
+  },
+  {
+    a: 2026, b: 3013, title: '天下人と大泥棒', name: '絶景かなの大泥棒', kind: 'steal', // 豊臣秀吉・石川五右衛門
+    talk: [
+      [[1, 'へっへ、太閤の弁当、いただき'], [0, 'こら五右衛門、それはわしのじゃ！']],
+      [[0, 'その手くせ、相手のボールに使えんか'], [1, 'お安いご用、なんでも盗んでみせますぜ']],
+      [[1, '天下人の頼みとあらば'], [0, '盗め、盗め！ 相手のボールを根こそぎじゃ！']],
+    ],
+  },
+  {
+    a: 3038, b: 3010, title: '忍びの競演', name: '甲賀伊賀の影走り', kind: 'trick', // 猿飛佐助・服部半蔵
+    talk: [
+      [[0, '伊賀の頭領どのか'], [1, '真田の忍びが、なぜ同じ部に']],
+      [[1, '足さばきは、さすがだな'], [0, 'そちらの気配の消し方こそ']],
+      [[0, '流派はちがえど、走りは同じ'], [1, '影ふたつ、だれにも読めはせぬ']],
+    ],
+  },
+  {
+    a: 4016, b: 3020, title: '鳳儀亭の約束', name: '鳳儀亭の約束', kind: 'roar', // 呂布・貂蝉
+    talk: [
+      [[1, '呂布さま、お疲れでしょう'], [0, '貂蝉、おまえの顔を見れば疲れなど']],
+      [[1, 'その力、だれのために使いますか'], [0, 'おまえと、この部のためだ']],
+      [[1, 'わたしが見ています'], [0, 'ならば、だれにも負けるものか！']],
+    ],
+  },
+  {
+    a: 5019, b: 5028, title: '屋島の扇の的', name: '屋島の扇の的', kind: 'sureLong', // 源義経・那須与一
+    talk: [
+      [[0, '与一、あの扇を射抜けるか'], [1, '…祈って、放つのみです']],
+      [[1, '殿の走る先なら、遠くても届けます'], [0, 'わたしは、そこへ走るだけだ']],
+      [[0, '屋島の一矢、今度はボールで'], [1, '南無八幡大菩薩…届け！']],
+    ],
+  },
+  {
+    a: 4055, b: 3010, title: '伊賀越えの道', name: '伊賀越えの護衛', kind: 'wall', // 本多忠勝・服部半蔵
+    talk: [
+      [[1, '本多どの、あの山越え以来ですな'], [0, '殿を守って越えた、あの道か']],
+      [[0, '道は半蔵、守りはわしだ'], [1, '頼もしい、傷ひとつ負わぬ将']],
+      [[1, 'あの日のように、仲間を守りましょう'], [0, 'わしの前は、だれも通さぬ！']],
+    ],
+  },
+  {
+    a: 4015, b: 3020, title: '傾国のふたり', name: '傾国の舞', kind: 'trick', // 楊貴妃・貂蝉
+    talk: [
+      [[0, 'あら、あなたも美女と呼ばれる方ね'], [1, 'お姉さまこそ']],
+      [[1, '舞いながら走ると、相手が見とれます'], [0, 'いいわね、いっしょに試しましょう']],
+      [[0, 'ふたりで舞えば'], [1, 'だれも目をはなせません！']],
+    ],
+  },
+  {
+    a: 4046, b: 2016, title: 'ロマノフの奇跡', name: 'ロマノフの奇跡', kind: 'flyLong', // ラスプーチン・アナスタシア
+    talk: [
+      [[1, 'あなたは…宮殿にいた'], [0, 'おお、皇女さま。ご無事で']],
+      [[0, 'わしの祈りは、ボールも運ぶ'], [1, '高く上がっても、あきらめません']],
+      [[1, 'もう一度、奇跡を'], [0, '起こしてみせましょうぞ！']],
+    ],
+  },
+  {
+    a: 4034, b: 2025, title: 'ふたりのサトシ', name: 'ふたりのサトシ', kind: 'peekOff', // サトシ・ナカモト OMEGA・ALPHA
+    talk: [
+      [[0, 'きみがサトシか'], [1, 'いや、きみこそサトシだろう']],
+      [[1, '相手の動きを記録してみた'], [0, 'その記録、守りのすきが見える']],
+      [[0, 'だれが本物かは、どうでもいい'], [1, 'ふたりで見抜けば、まちがいない']],
+    ],
+  },
+  {
+    a: 4021, b: 3028, title: '光と炎の画家', name: '光と炎の一投', kind: 'sureLong', // ゴッホ・モネ
+    talk: [
+      [[0, 'モネさん、あなたの光が好きです'], [1, 'きみの燃える色も、すばらしい']],
+      [[1, '遠くの景色まで、よく見えるんだ'], [0, 'そこへぼくが、飛びこみます']],
+      [[1, '光の先へ投げるよ'], [0, '燃えるように、捕りにいく！']],
+    ],
+  },
+];
+
+export const bondKey = (b: Bond): string => `${b.a}-${b.b}`;
+/** The bonds a hero has. */
+export const bondsOf = (id: number): Bond[] => BONDS.filter((b) => b.a === id || b.b === id);
