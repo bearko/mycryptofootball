@@ -44,11 +44,11 @@ const muted = (): boolean => {
     return false;
   }
 };
-const vol = (key: 'bgm' | 'se'): number => {
+const vol = (key: 'bgm' | 'se' | 'voice'): number => {
   try {
     return clamp(Number(prefs()[key]), 0, 1);
   } catch {
-    return key === 'bgm' ? 0.6 : 0.8;
+    return key === 'bgm' ? 0.6 : key === 'se' ? 0.8 : 0.9;
   }
 };
 
@@ -252,6 +252,33 @@ function setBuses(e: Engine, smooth: boolean): void {
   set(e.crowd.gain, vol('se') * CROWD_BASE);
   set(e.music.gain, vol('bgm') * MUSIC_BASE);
   set(e.mute.gain, e.live && muted() ? 0 : 1);
+}
+
+// ------------------------------------------------------------------------------------------------ the voice
+
+/** The announcer's voice at a volume setting of 1 (it sits above the band and the crowd). */
+const VOICE_BASE = 1.15;
+let voiceBus: GainNode | null = null;
+
+/**
+ * Where the announcer's voice goes (core/voice/voice.ts), and a duck of the music under it; null while nothing may
+ * be heard (before the first gesture, muted, the page asleep, the voice turned down to 0).
+ */
+export function voiceOut(): { ctx: BaseAudioContext; node: AudioNode; duck(ms: number): void } | null {
+  try {
+    if (!live || !unlocked || asleep || muted()) return null;
+    const v = vol('voice');
+    if (v <= 0) return null;
+    const e = live;
+    if (!voiceBus) {
+      voiceBus = e.ctx.createGain();
+      voiceBus.connect(e.mute);
+    }
+    voiceBus.gain.value = v * VOICE_BASE;
+    return { ctx: e.ctx, node: voiceBus, duck: (ms) => duckMusic(e, 0.4, ms) };
+  } catch {
+    return null;
+  }
 }
 
 /** Re-reads prefs().bgm / prefs().se and save().mute and applies them now. */

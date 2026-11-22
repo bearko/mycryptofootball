@@ -5,6 +5,7 @@ import { applyVolumes, sfx } from '../core/audio';
 import { h } from '../core/dom';
 import { canFullscreen, goFullscreen, installWay, onInstallChange, promptInstall } from '../core/install';
 import { commit, prefs, save } from '../core/save';
+import { speak } from '../core/voice/voice';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { ROLE_LABEL, STATS, STAT_LABEL, defPos, fit, offPos, roleOf, type Role, type Stats } from '../game/model';
@@ -156,6 +157,7 @@ export function settingsModal(): void {
       row('チュートリアル', '説明をもう一度', h('div.seg', h('button', { type: 'button', onclick: lessonsModal }, '場面をえらぶ'))),
       row('音楽', '', slider(p.bgm, (v) => { p.bgm = v; }, () => undefined)),
       row('効果音', '歓声もふくむ', slider(p.se, (v) => { p.se = v; }, () => sfx.cardConfirm())),
+      row('実況の声', '声：VOICEPEAK', slider(p.voice ?? 0.9, (v) => { p.voice = v; }, () => speak('キックオフ！'))),
       row('演出', 'ゆれ・光・スロー', seg(p.motion, [[true, 'フル'], [false, 'ひかえめ']], (v) => { p.motion = v; })),
       row('試合の速さ', '', seg(save().fast, [[false, 'ふつう'], [true, '2倍速']], (v) => { save().fast = v; })),
       row('リプレイ', '大きなプレーをもう一度', seg(p.replay, [[true, 'ON'], [false, 'OFF']], (v) => { p.replay = v; })),

@@ -26,9 +26,11 @@ export interface Prefs {
    * quickly), 'all' every one
    */
   calls: 'key' | 'all';
+  /** 0..1: the announcer's voice in a match (0: not spoken) */
+  voice: number;
 }
 
-export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true, calls: 'key' });
+export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true, calls: 'key', voice: 0.9 });
 
 export interface SaveData {
   v: 1;
