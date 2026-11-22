@@ -261,7 +261,9 @@
 .fulltime-mid table { flex: none; }
 .fulltime-mid th { padding: 0.05rem 1rem; white-space: nowrap; }
 .fulltime-mid td { min-width: 3.4rem; }
-.fulltime-mid .st-report { align-self: center; flex: 0 1 31rem; min-width: 0; padding: 0.5rem 0.8rem; }
+/* the standing (and the money under it) take the side of the numbers; the standing is only as tall as it needs */
+.fulltime-side { align-self: center; flex: 0 1 31rem; min-width: 0; }
+.fulltime-mid .st-report { flex: none; min-width: 0; padding: 0.5rem 0.8rem; }
 .fulltime-mid .st-news { flex-wrap: wrap; gap: 0.2rem 0.5rem; }
 .fulltime-mid .st-news em { flex-basis: 100%; text-align: center; clip-path: none; }
 .fulltime-changes { align-self: stretch; }
@@ -382,7 +384,7 @@ html.calm .hcard { animation: none; }
 .flowcall b { display: flex; align-items: center; gap: 1rem; font-size: var(--fs-l); }
 .flowcall b i { font-style: normal; color: var(--yellow); }
 /* money after a match: the supporters' gift, a trip's cost */
-.fulltime-side { display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; }
+.fulltime-side { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 0.3rem; }
 .fulltime-money { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.2rem 1rem; font-size: var(--fs-xs); color: var(--dim); }
 .fulltime-money b { margin-left: 0.3rem; font-family: var(--display); font-weight: 400; color: var(--lime); }
 .fulltime-money b.is-cost { color: var(--pink); }
