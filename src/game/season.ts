@@ -25,8 +25,8 @@ import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './p
 import { FIRST_DRAW, PRO_SCHOOL, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
 import { bookRound, clubOpponent, makeBracket, BRACKET_SCHOOLS, type Bracket } from './bracket';
 import {
-  ALLOWANCE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost,
-  type FacKey, type Facilities,
+  ALLOWANCE, CAMP_SITE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost, campCost,
+  type CampKey, type FacKey, type Facilities,
 } from './funds';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Role, type Size, type Stat, type Stats } from './model';
 
@@ -393,9 +393,9 @@ function xpFor(k: Stat, total: number): Partial<XpBag> {
 export const WEEK_XP = 1.6;
 /** stamina a week between the tournaments gives back on top of the card (Sundays, evenings) */
 export const WEEK_REST = 18;
-/** the camp: practice sticks twice as well, and wears the heroes out half as much again */
-export const CAMP_XP = 2;
-export const CAMP_STA = 1.5;
+/** the camp at the school: practice sticks twice as well, and wears the heroes out half as much again (CAMP_SITE) */
+export const CAMP_XP = CAMP_SITE.school.xp;
+export const CAMP_STA = CAMP_SITE.school.sta;
 /** the camp's own names for the ordinary drills */
 export const CAMP_NAME: Record<PracticeKey, string> = {
   dash: '砂浜ダッシュ', pass: '千本パス', catch: '千本キャッチ', hit: '丸太押し', tackle: 'どろんこタックル', study: '夜の作戦会議', game: '合宿ミニゲーム',
@@ -425,8 +425,9 @@ export function cardInfo(s: Season, card: PracticeCard): CardInfo {
     info.sta = card.kind === 'rest' ? STA_MAX : Math.round(info.sta + WEEK_REST * weeks);
     if (card.kind === 'solo') info.others = Math.round(WEEK_REST * weeks);
   } else if (p.stage === 'camp') {
-    scale(CAMP_XP);
-    if (info.sta < 0) info.sta = Math.round(info.sta * CAMP_STA);
+    const site = CAMP_SITE[campOf(s)];
+    scale(site.xp);
+    if (info.sta < 0) info.sta = Math.round(info.sta * site.sta);
     if (card.kind === 'basic') info.name = CAMP_NAME[card.key];
   }
   return info;
@@ -518,6 +519,8 @@ export interface Season {
   paid?: number;
   /** the practice match (an index into draw) the club goes away for */
   trip?: number;
+  /** where this year's summer camp is held (decided before it; the school when nobody did) */
+  camp?: CampKey;
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
   /** this season's numbers of every hero who played (boxscore.ts; emptied when a new year begins) */
@@ -739,6 +742,7 @@ export function nextYear(s: Season, seed: number): void {
   s.event = null;
   s.champion = false;
   delete s.summit;
+  delete s.camp;
   s.cups = {};
   s.trip = undefined;
   payAllowance(s);
@@ -1002,6 +1006,11 @@ function enterStage(s: Season, rng: Rng): void {
     s.candidates = candidatesFor(s, rng, room, (n) => Math.min(2, Math.max(1, Math.round(n / 3))));
     if (s.candidates.length) s.phase = 'recruit';
   }
+  if (p.stage === 'camp') {
+    // the camp: wherever it was decided (the school, if nobody decided), and a whole new hand of the camp's cards
+    s.camp ??= 'school';
+    s.hand = [];
+  }
   if (p.stage === 'autumn') {
     s.springLeague = s.league;
     s.league = s.tier;
@@ -1034,6 +1043,22 @@ export function buyFacility(s: Season, k: FacKey): boolean {
   s.money = moneyOf(s) - nextPrice(lv)!;
   (s.fac ??= newFacilities())[k] = Math.min(FAC_MAX, lv + 1);
   for (const c of s.hand) if (c.kind === 'basic' && c.key === k) c.star = s.fac[k];
+  return true;
+}
+
+/** the day the manager asks where the camp is to be: the last practice before it (July) */
+export const CAMP_ASK = stageStart('camp') - 1;
+/** Where this year's camp is (or would be). */
+export const campOf = (s: Season): CampKey => s.camp ?? 'school';
+/** Is the place of the camp to be decided now? */
+export const campOpen = (s: Season): boolean => s.phase === 'club' && s.day === CAMP_ASK && s.camp === undefined;
+/** What the camp at a place costs this club. */
+export const campPrice = (s: Season, k: CampKey): number => campCost(k, s.tier);
+/** Decides where the camp is (paid for at once). False when it is not the time, or the money is not there. */
+export function setCamp(s: Season, k: CampKey): boolean {
+  if (!campOpen(s) || moneyOf(s) < campPrice(s, k)) return false;
+  s.money = moneyOf(s) - campPrice(s, k);
+  s.camp = k;
   return true;
 }
 

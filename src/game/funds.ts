@@ -5,6 +5,8 @@
 //   (REST_LV). The pictures are My Crypto Heroes Extensions of the same series, Common at level 1 to Legendary at 5.
 // - Money comes in at the start of each part of the year (more for a club of a higher standing: ALLOWANCE), and
 //   from the supporters for every win (more for the later rounds and the bigger tournaments: DONATION).
+// - The summer camp may be held away from the school (CAMP_SITE): the further it goes, the more it costs and the more
+//   it does (experience) — and the cooler the place, the less it wears the heroes out. The school is free.
 // - A practice match in the summer or the autumn may be played away, against a school of the tournament above:
 //   it costs money (TRIP_COST), and the trip teaches everybody something whatever the score (TRIP_XP).
 // Nothing here uses the match's dice. Money is counted in units of 10,000 yen (万円).
@@ -60,3 +62,27 @@ export type Facilities = Record<FacKey, number>;
 export const newFacilities = (): Facilities => Object.fromEntries(FAC_KEYS.map((k) => [k, 1])) as Facilities;
 /** the price of the next level of a facility (null at the top) */
 export const nextPrice = (lv: number): number | null => (lv >= FAC_MAX ? null : FAC_PRICE[lv + 1]!);
+
+// ---- the summer camp's place
+
+export type CampKey = 'school' | 'beach' | 'highland' | 'center';
+export const CAMP_KEYS: readonly CampKey[] = ['school', 'beach', 'highland', 'center'];
+export interface CampSite {
+  name: string;
+  /** what it is like, in a few words */
+  what: string;
+  /** how much better practice sticks there (an ordinary day is 1) */
+  xp: number;
+  /** how much more a drill wears the heroes out there */
+  sta: number;
+  /** what it costs a beginners' club (万円; more for a club of a higher standing: campCost) */
+  price: number;
+}
+export const CAMP_SITE: Record<CampKey, CampSite> = {
+  school: { name: '学校', what: '校舎に泊まりこむ', xp: 2, sta: 1.5, price: 0 },
+  beach: { name: '海辺の民宿', what: '砂浜で足腰をきたえる', xp: 2.3, sta: 1.5, price: 3 },
+  highland: { name: '高原の合宿所', what: '涼しくて疲れにくい', xp: 2.3, sta: 1.15, price: 6 },
+  center: { name: 'スポーツセンター', what: '一流の設備とトレーナー', xp: 2.6, sta: 1.15, price: 10 },
+};
+/** What a camp at this place costs a club of this standing (万円). */
+export const campCost = (k: CampKey, tier: number): number => Math.round(CAMP_SITE[k].price * (1 + tier * 0.4));

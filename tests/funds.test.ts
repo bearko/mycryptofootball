@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createMatch } from '../src/game/match';
 import { SCHOOLS } from '../src/game/teams';
 const SCHOOLS_NAME = (id: number): string => SCHOOLS[id]!.name;
-import { ALLOWANCE, FAC_PRICE, LV_MUL, REST_LV, START_MONEY, donationOf, tripCost } from '../src/game/funds';
+import { ALLOWANCE, CAMP_KEYS, CAMP_SITE, FAC_PRICE, campCost, LV_MUL, REST_LV, START_MONEY, donationOf, tripCost } from '../src/game/funds';
 import {
   PRACTICE, ROSTER_SIZE, SCHEDULE, buyFacility, cardInfo, clubSheet, facLv, finishMatch, isTrip, mend, moneyOf, newSeason, opponentFor, plan,
-  setTrip, signRecruits, stageStart, startDay, tripOpen, tripSchool, type Season,
+  CAMP_ASK, campOf, campOpen, campPrice, nextYear, setCamp, train, setTrip, signRecruits, stageStart, startDay, tripOpen, tripSchool, type Season,
 } from '../src/game/season';
 
 const club = (): Season => {
@@ -93,5 +93,59 @@ describe('facilities and money', () => {
     mend(s);
     expect(facLv(s, 'game')).toBe(1);
     expect(moneyOf(s)).toBeGreaterThan(0);
+  });
+});
+
+describe('the summer camp\'s place', () => {
+  it('the further it goes, the more it costs and does; the school is free', () => {
+    expect(campCost('school', 6)).toBe(0);
+    for (let i = 1; i < CAMP_KEYS.length; i += 1) {
+      const [a, b] = [CAMP_KEYS[i - 1]!, CAMP_KEYS[i]!];
+      expect(campCost(b, 0)).toBeGreaterThan(campCost(a, 0));
+      expect(campCost(b, 4)).toBeGreaterThanOrEqual(campCost(b, 0));
+      expect(CAMP_SITE[b].xp).toBeGreaterThanOrEqual(CAMP_SITE[a].xp);
+      expect(CAMP_SITE[b].sta).toBeLessThanOrEqual(CAMP_SITE[a].sta);
+    }
+  });
+
+  it('is asked on the last practice before the camp, paid at once, and does what it says at the camp', () => {
+    const s = club();
+    expect(SCHEDULE[CAMP_ASK]!.stage).toBe('summer');
+    expect(SCHEDULE[CAMP_ASK + 1]!.stage).toBe('camp');
+    s.day = CAMP_ASK - 1;
+    expect(campOpen(s)).toBe(false);
+    s.day = CAMP_ASK;
+    s.stageAt = stageStart('summer');
+    expect(campOpen(s)).toBe(true);
+    s.money = campPrice(s, 'center') - 1;
+    expect(setCamp(s, 'center')).toBe(false);
+    s.money = 30;
+    expect(setCamp(s, 'highland')).toBe(true);
+    expect(moneyOf(s)).toBe(30 - campPrice(s, 'highland'));
+    expect(campOpen(s)).toBe(false);
+    expect(setCamp(s, 'center')).toBe(false);
+    // the camp: the place's own effect, and a whole new hand
+    startDay(s);
+    const old = s.hand.map((c) => c.uid);
+    train(s, 0);
+    expect(plan(s).stage).toBe('camp');
+    expect(campOf(s)).toBe('highland');
+    expect(s.hand.some((c) => old.includes(c.uid))).toBe(false);
+    const card = s.hand.find((c) => c.kind === 'basic')!;
+    const school = { ...s, camp: 'school' as const };
+    expect(cardInfo(s, card).xp.pow ?? cardInfo(s, card).xp.spd ?? 0).toBeGreaterThanOrEqual(cardInfo(school, card).xp.pow ?? cardInfo(school, card).xp.spd ?? 0);
+    expect(cardInfo(s, card).sta).toBeGreaterThan(cardInfo(school, card).sta);
+  });
+
+  it('a club that never decided goes to the school, and the next year asks again', () => {
+    const s = club();
+    s.day = CAMP_ASK;
+    s.stageAt = stageStart('summer');
+    startDay(s);
+    train(s, 0);
+    expect(s.camp).toBe('school');
+    s.phase = 'done';
+    nextYear(s, 7);
+    expect(s.camp).toBeUndefined();
   });
 });

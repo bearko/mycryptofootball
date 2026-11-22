@@ -13,18 +13,19 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, campOf, campOpen, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
+import { CAMP_SITE } from '../game/funds';
 import { tierOf } from '../game/prestige';
 import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
 import { calendar } from './ground/calendar';
 import type { PracticeCard } from '../game/season';
 import { makeGround, postText, postsOf } from './ground/ground';
-import { cardEffect, drillKind, practiceCard } from './ground/pcard';
-import { cutIn, eventScene, type Prize } from './ground/scenes';
+import { cardEffect, cardWhen, drillKind, practiceCard } from './ground/pcard';
+import { campScene, cutIn, eventScene, type Prize } from './ground/scenes';
 import { button, gauge, gradeChip, modalOpen, speech, sprite, statIcon } from './kit';
 import { lineupScreen } from './lineupScreen';
 import { matchScreen } from './matchScreen';
@@ -88,7 +89,10 @@ function contextLine(s: Season): Line {
       return [won ? '春の大会、優勝です！！ でも本番は秋。ここからは、カード1枚で2週間ぶん練習します！'
         : `${lastCup ? `春の大会は${ROUND_NAME[lastCup.opp]}まででした。` : '春の大会、おつかれさまでした！ '}本番は秋！ ここからは、カード1枚で2週間ぶん練習します。`, won ? 'sparkle' : 'point'];
     }
-    if (p.stage === 'camp') return ['夏合宿です！ 練習の効果は2倍、そのぶん疲れも大きい。最後の日は紅白戦！ 方針もいまだけ見直せます。', 'cheer'];
+    if (p.stage === 'camp') {
+      const site = CAMP_SITE[campOf(s)];
+      return [`${site.name}で夏合宿です！ 練習の効果は${site.xp}倍、そのぶん疲れ${site.sta < CAMP_SITE.school.sta ? 'も出ます' : 'も大きい'}。最後の日は紅白戦！ 方針もいまだけ見直せます。`, 'cheer'];
+    }
     if (p.stage === 'autumn') {
       return sizeOf(s.lineup!) === 11 && tierOf(s.springLeague ?? s.league).size !== 11
         ? [`秋は${cupOf(s)}。試合は11人制です！ 「編成」で、11人の並びを見ておきましょう。`, 'point']
@@ -466,9 +470,13 @@ export function clubScreen(): [HTMLElement, () => void] {
     });
   };
 
+  let handWhen: string | null = null;
   /** Brings the hand in line with the season: cards that stay keep their element, new ones are dealt in. */
   const drawHand = (deal: 'all' | 'new' | 'none', fresh = false): void => {
-    if (fresh) cardEls = new Map();
+    // a card says what it stands for ("2週間", "合宿"): when that changes, the whole hand is drawn again
+    const when = cardWhen(s);
+    if (fresh || when !== handWhen) cardEls = new Map();
+    handWhen = when;
     const stay = [...cardEls.values()].filter((el) => el.isConnected && !el.classList.contains('is-played'));
     stay.forEach((el) => el.classList.remove('deal'));
     const settle = flip(stay);
@@ -663,7 +671,7 @@ export function clubScreen(): [HTMLElement, () => void] {
   const play = async (uid: number): Promise<void> => {
     const i = s.hand.findIndex((c) => c.uid === uid);
     const cardEl = cardEls.get(uid);
-    if (busy || i < 0 || !cardEl || s.event || plan(s).t !== 'train' || modalOpen()) return;
+    if (busy || i < 0 || !cardEl || s.event || campOpen(s) || plan(s).t !== 'train' || modalOpen()) return;
     clearGoal();
     hot = null;
     clearTimeout(talk);
@@ -883,6 +891,19 @@ export function clubScreen(): [HTMLElement, () => void] {
     if (s.event && plan(s).t === 'train') {
       coach.say('おや、グラウンドで何かあったようです。', 'think');
       setTimeout(openEvent, first ? 650 : 350);
+      return;
+    }
+    // the last practice before the camp: where is it to be?
+    if (campOpen(s)) {
+      coach.say('監督、夏合宿の行き先を決めましょう！', 'point');
+      setTimeout(() => {
+        if (!alive || !campOpen(s)) return;
+        campScene(s, (k) => {
+          if (!alive) return;
+          drawFacBtn();
+          coach.say(k === 'school' ? '学校で合宿ですね！ 費用はかかりません。さあ、7月の1枚を！' : `${CAMP_SITE[k].name}で合宿ですね！ 楽しみです。さあ、7月の1枚を！`, 'sparkle');
+        });
+      }, first ? 650 : 350);
       return;
     }
     coach.say(...contextLine(s));

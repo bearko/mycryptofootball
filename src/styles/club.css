@@ -385,6 +385,19 @@
 @keyframes cr-stamp { from { transform: scale(3.2) rotate(20deg); opacity: 0; } to { transform: rotate(-14deg); opacity: 1; } }
 .ev-choices.is-decided .ev-choice:not(.is-picked) { animation: cr-slab-drop 0.5s ease-in forwards; pointer-events: none; }
 @keyframes cr-slab-drop { to { transform: translateY(9rem) rotate(9deg); opacity: 0; } }
+/* the manager's question: where the camp is (four places, two by two) */
+.ev-mgr { display: block; width: 9rem; animation: pg-pop-in 0.5s var(--spring) backwards; }
+.ev-mgr img { display: block; width: 100%; height: auto; }
+.ev-choices.is-camp { gap: 1rem 1.6rem; }
+.ev-choices.is-camp .ev-choice, .ev-choices.is-camp .ev-face { min-height: 6.4rem; }
+.ev-choices.is-camp .ev-face { gap: 0.3rem; padding-top: 0.6rem; padding-bottom: 0.7rem; }
+.ev-what { font-size: var(--fs-s); line-height: 1.3; }
+.ev-fx i.is-cost::before { content: '¥ '; }
+.ev-choice.is-off { cursor: not-allowed; }
+.ev-choice.is-off .ev-face { filter: grayscale(0.85) brightness(0.8); }
+.ev-choice.is-off .ev-face::before { content: '部費が足りません'; position: absolute; right: 2rem; top: 0.5rem; font-size: var(--fs-s); color: var(--chalk); background: var(--ink); padding: 0 0.6rem; }
+.ev-choice.is-deny { animation: cr-deny 0.3s; }
+@keyframes cr-deny { 25% { transform: translateX(-0.5rem); } 75% { transform: translateX(0.5rem); } }
 /* weather inside the scene */
 .ev[data-key='rain']::before { content: ''; position: fixed; inset: -20%; z-index: -1; pointer-events: none; background: repeating-linear-gradient(105deg, transparent 0 1.9rem, rgba(140, 200, 255, 0.22) 1.9rem 2rem, transparent 2rem 3.3rem); animation: cr-rain 0.5s linear infinite; }
 @keyframes cr-rain { to { transform: translate(-2rem, 7.4rem); } }

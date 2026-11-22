@@ -9,9 +9,9 @@ import {
   STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, asPlayer, cardInfo, clubSheet, costOf, finishMatch, intake, joinCount, needOf, newSeason,
   nextMatch, nextYear, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
-  clubSize, opponentFor, buyFacility, facLv, moneyOf, setTrip, tripOpen, tripPrice,
+  clubSize, opponentFor, buyFacility, facLv, moneyOf, setTrip, tripOpen, tripPrice, campOpen, campPrice, setCamp,
 } from '../src/game/season';
-import { FAC_KEYS, FAC_MAX } from '../src/game/funds';
+import { CAMP_KEYS, FAC_KEYS, FAC_MAX } from '../src/game/funds';
 
 export type Style = 'sensible' | 'careless';
 
@@ -89,11 +89,17 @@ export interface SeasonRun {
  */
 function spend(s: Season, rng: Rng, style: Style): void {
   if (style === 'careless') {
+    if (campOpen(s)) setCamp(s, 'school');
     if (rng.chance(0.2)) {
       const k = rng.pick(FAC_KEYS);
       buyFacility(s, k);
     }
     return;
+  }
+  // the camp: the best place the money reaches, with a little left over
+  if (campOpen(s)) {
+    const k = [...CAMP_KEYS].reverse().find((c) => moneyOf(s) >= campPrice(s, c) + 4) ?? 'school';
+    setCamp(s, k);
   }
   if (tripOpen(s) && moneyOf(s) >= tripPrice(s) + 4) setTrip(s, true);
   for (let guard = 0; guard < 8; guard += 1) {
