@@ -157,7 +157,7 @@ export interface PlayResult {
    * (an onside kick is good when the kicking team wins the ball back). A kickoff: who of the other team got the ball,
    * how far it was run back (0: it went into the end zone), and where the next drive starts (`spot`, in the yards of the team that has it)
    */
-  kick?: { type: KickType; good: boolean; dist: number; kicker: number; returner?: number; ret?: number; spot?: number };
+  kick?: { type: KickType; good: boolean; dist: number; kicker: number; returner?: number; ret?: number; spot?: number; wide?: boolean };
   /** this play was the try after a touchdown */
   tfp?: boolean;
   /**
@@ -476,6 +476,9 @@ export function fgChance(st: MatchState, t: 0 | 1): number {
   const d = FIELD - st.pos;
   return clamp(1.02 - 0.55 * (d / leg(k)) ** 2, 0.03, 0.98);
 }
+/** A missed kick went wide by a long way: the dice fell in the far half of the misses. */
+const missedWide = (roll: number, chance: number): boolean => roll - chance > (1 - Math.max(0, chance)) / 2;
+
 /** The chance the kick after a touchdown is good. */
 export function patChance(t: TeamSheet): number {
   const k = kickerOf(t);
@@ -1190,11 +1193,16 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
   const tot = st.totals[o];
   const lines: string[] = [];
   let good = false;
+  /** a miss by a long way (said so: "大きくそれた") */
+  let wide = false;
   let dist = FIELD - st.pos;
   let points = 0;
   let turnover: PlayResult['turnover'] = null;
   if (type === 'pat') {
-    good = rng.chance(patChance(O) - (rush ? 0.04 : 0));
+    const chance = patChance(O) - (rush ? 0.04 : 0);
+    const roll = rng.next();
+    good = roll < chance;
+    wide = !good && missedWide(roll, chance);
     if (good) {
       points = PAT_POINTS;
       st.score[o] += points;
@@ -1206,7 +1214,10 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
     tot.plays += 1;
     // (in a told story the kick is good)
     const told = !!st.script?.shift()?.kick;
-    good = rng.chance(fgChance(st, o) - (rush ? 0.06 : 0)) || told;
+    const chance = fgChance(st, o) - (rush ? 0.06 : 0);
+    const roll = rng.next();
+    good = roll < chance || told;
+    wide = !good && missedWide(roll, chance);
     if (good) {
       points = FG_POINTS;
       st.score[o] += points;
@@ -1242,7 +1253,7 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
     passer: O.lineup.off.QB, carrier: k.id, defender: D.lineup.def.DL1, offPotency: 0, defPotency: 0,
     momBefore, momAfter: [st.mom[0], st.mom[1]], momWhy: gotWhy, period, lines,
     // a punt that comes down on the field is caught by the other team's safety (he waits deep for it)
-    kick: { type, good, dist, kicker: k.id, ...(type === 'punt' && before.pos + dist < FIELD ? { returner: D.lineup.def.S } : {}) },
+    kick: { type, good, dist, kicker: k.id, ...(wide ? { wide } : {}), ...(type === 'punt' && before.pos + dist < FIELD ? { returner: D.lineup.def.S } : {}) },
     tfp: type === 'pat' || undefined, points,
   };
 }

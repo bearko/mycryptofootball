@@ -93,7 +93,7 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       if (kick) return null;
       return pick([say('とった！', `${carrier}、ナイスキャッチ！`), say('通ったぁ！', `${carrier}の手におさまった！`), say('キャッチ！', `${carrier}がつかんだ！`)], n, 4);
     case 'drop':
-      return pick([say('落ちた！', 'パス失敗！'), say('通らない！', `${defender}がじゃました！`), say('ああっと！', 'ボールは芝の上！')], n, 5);
+      return pick([say('落ちた！', 'パス失敗！'), say('通らない！', `${defender}の見事な守り！`), say('ああっと！', 'ボールは芝の上！')], n, 5);
     case 'break':
       // a ball taken away and run back: it is the defender who is off and running
       if (res.returnTd) return say('止まらない！', `${defender}がそのまま走る！`, 'def');
@@ -118,7 +118,7 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       if (kick) {
         if (kick.type === 'punt') return null;
         if (kick.good) return kick.type === 'fg' ? say('入ったぁ！！', `${names.hero(kick.kicker)}のフィールドゴール、3点！`, 'off', true) : say('決まった！', '追加点、1点！', 'off');
-        return kick.type === 'fg' ? say('外れたぁ！', `フィールドゴール失敗！ ${defName}のボール！`, 'def', true) : say('外れた！', '追加点ならず！', 'def');
+        return kick.type === 'fg' ? say('外れたぁ！', `フィールドゴール失敗！ ${defName}のボール！`, 'def', true) : say(kick.wide ? '大きくそれた！' : 'わずかにそれた！', '追加点ならず！', 'def');
       }
       if (res.tfp) return res.points ? say('押しこんだぁ！', `${TWO_POINTS}点成功！`, 'off', true) : say('止めたぁ！', `${defName}がゴールを守った！`, 'def', true);
       if (res.td || res.turnover === 'int' || res.turnover === 'fumble') return null; // already shouted

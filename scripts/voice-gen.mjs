@@ -74,7 +74,7 @@ for (const text of all) {
   const f = join(out, name);
   if (!existsSync(f)) {
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', join(raw, name),
-      '-af', 'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.02,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,volume=-3dB',
+      '-af', 'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.02,areverse,silenceremove=start_periods=1:start_threshold=-38dB:start_silence=0.03,areverse,volume=-3dB',
       '-ac', '1', '-ar', '24000', '-b:a', '40k', f]);
   }
   rows.push(`${text}\tout/${name}`);
