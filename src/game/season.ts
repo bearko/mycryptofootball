@@ -28,7 +28,7 @@ import {
   ALLOWANCE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost,
   type FacKey, type Facilities,
 } from './funds';
-import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Size, type Stat, type Stats } from './model';
+import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type DefPos, type Lineup, type OffPos, type Player, type Role, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
 export const CANDIDATES = 9;
@@ -921,6 +921,33 @@ export function presetFocus(s: Season, m: Member, preset: Preset): Stat {
 export function applyPreset(s: Season, preset: Preset): void {
   if (!policyOpen(s)) throw new Error('the training policy can only be changed at a milestone');
   for (const m of s.members) m.focus = presetFocus(s, m, preset);
+}
+
+// ---- eleven a side, the policy may be set a position at a time
+
+/** The kinds of position the policy can be set for, eleven a side (the offense's, then the defense's). */
+export const GROUP_ROLES: readonly Role[] = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S'];
+/** The abilities a kind of position uses, the one it needs most first. */
+export const roleStats = (role: Role): Stat[] => (Object.entries(ROLE_WEIGHTS[role]) as [Stat, number][]).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+/** Everybody who plays this kind of position (on offense or on defense). */
+export function groupMembers(s: Season, role: Role): Member[] {
+  const l = s.lineup;
+  if (!l) return [];
+  const ids = new Set([
+    ...offPos(l).filter((p) => roleOf(p) === role).map((p) => l.off[p]),
+    ...defPos(l).filter((p) => roleOf(p) === role).map((p) => l.def[p]),
+  ]);
+  return s.members.filter((m) => ids.has(m.id));
+}
+/** The ability everybody at this kind of position is working on (null: they are not all on the same one). */
+export function groupFocus(s: Season, role: Role): Stat | null {
+  const g = groupMembers(s, role);
+  return g.length && g.every((m) => m.focus === g[0]!.focus) ? g[0]!.focus : null;
+}
+/** Everybody at this kind of position works on this ability (a hero who plays two kinds takes the last one set). */
+export function setGroupFocus(s: Season, role: Role, k: Stat): void {
+  if (!policyOpen(s)) throw new Error('the training policy can only be changed at a milestone');
+  for (const m of groupMembers(s, role)) m.focus = k;
 }
 
 // ------------------------------------------------------------------ a practice day

@@ -71,3 +71,14 @@ button.pol-tac-btn:hover:not(.is-on) { transform: translateY(-0.15rem); }
 .pol-tac-note .is-good { background: var(--cyan); }
 .pol-tac-note .is-bad { background: #ff8a6a; }
 .pol-tac-note small { color: var(--dim); }
+
+/* eleven a side: the policy a position at a time (one tap: the next ability that position uses) */
+.pol-groups { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); }
+.pol-groups > span { white-space: nowrap; margin-right: 0.2rem; }
+.pol-group { min-height: 44px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 0.1rem 0.6rem; color: var(--chalk); background: #1c2260; border: 0.16rem solid var(--ink); box-shadow: 0.16rem 0.16rem 0 var(--ink); font: inherit; cursor: pointer; }
+.pol-group b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.1; }
+.pol-group span { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.85em; white-space: nowrap; }
+.pol-group span svg { width: 0.9rem; height: 0.9rem; }
+.pol-group .is-mixed { color: var(--dim); }
+.pol-group.is-set { border-color: var(--cyan); }
+.pol-group:hover { border-color: var(--chalk); }
