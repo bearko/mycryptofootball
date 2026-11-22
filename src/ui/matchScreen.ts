@@ -39,7 +39,7 @@ import { guideEvent } from './platform';
 import { clearGoal, teach } from './tutor';
 import { factsOf, heroCard } from './heroCard';
 
-const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足' } as const;
+const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足', fourth: '4回目だけ' } as const;
 
 /** "QB", "LB"... and "K" for the kicker. */
 const posLabel = (pos: OffPos | DefPos | 'K'): string => (pos === 'K' ? 'K' : ROLE_LABEL[roleOf(pos)]);

@@ -2,6 +2,7 @@
 // and the kinds of special plays a hero can bring.
 
 import type { Role } from './model';
+import type { Tactic } from './tactics';
 
 export type OffType = 'inside' | 'outside' | 'short' | 'long';
 export type DefType = 'stuff' | 'contain' | 'zone' | 'deep' | 'blitz';
@@ -61,8 +62,10 @@ export const MATCH: Record<OffType, Record<DefType, number>> = {
 
 // ------------------------------------------------------------------ special plays
 
-export type OffKind = 'powerRun' | 'trick' | 'sureLong' | 'sureShort' | 'flyLong' | 'pushRun' | 'peekOff';
-export type DefKind = 'steal' | 'wall' | 'roar' | 'rush' | 'peekDef';
+export type OffKind = 'powerRun' | 'trick' | 'sureLong' | 'sureShort' | 'flyLong' | 'pushRun' | 'peekOff'
+  // a team's colour (game/tactics.ts): its own plays, eleven a side
+  | 'reverse' | 'flea' | 'fakePunt' | 'drive' | 'shotgun';
+export type DefKind = 'steal' | 'wall' | 'roar' | 'rush' | 'peekDef' | 'manMark' | 'allBlitz';
 export type Kind = OffKind | DefKind;
 
 export interface KindInfo {
@@ -76,6 +79,8 @@ export interface KindInfo {
   /** short label of the effect */
   tag: string;
   text: string;
+  /** only on the last of the four downs (it is run instead of the punt) */
+  fourth?: boolean;
 }
 
 export const KIND: Record<Kind, KindInfo> = {
@@ -127,6 +132,35 @@ export const KIND: Record<Kind, KindInfo> = {
     side: 'def', cost: 2, base: 'zone', roles: null, tag: '攻撃を見る',
     text: '相手の作戦カードを見てから、好きな守備を選べる',
   },
+  // ---- a team's colour: its own plays (eleven a side). Their owner is whoever lines up for them
+  reverse: {
+    side: 'off', cost: 2, base: 'outside', roles: ['RB', 'WR'], tag: '逆を突く',
+    text: '外へ走ると見せて逆へ持ちかえる。読みに強く、抜ければ独走しやすい',
+  },
+  flea: {
+    side: 'off', cost: 2, base: 'long', roles: ['QB'], tag: 'ランに見せる',
+    text: 'ランと見せて戻したボールを奥へ投げる。ランを警戒した守備ほど大きく通る',
+  },
+  fakePunt: {
+    side: 'off', cost: 1, base: 'short', roles: null, tag: '奇襲', fourth: true,
+    text: '4回目、パントの形からパスを投げる。不意を突けばまず届く',
+  },
+  drive: {
+    side: 'off', cost: 1, base: 'inside', roles: ['RB', 'OL', 'TE'], tag: '全員で押す',
+    text: '全員でまん中を押しこむラン。必ず数ヤード進み、ゴール前で強い',
+  },
+  shotgun: {
+    side: 'off', cost: 1, base: 'short', roles: ['QB'], tag: '全員が受ける',
+    text: '後ろに下がって構え、全員が受けに走るパス。通りやすく、突撃にもつぶされにくい',
+  },
+  manMark: {
+    side: 'def', cost: 2, base: 'zone', roles: ['CB', 'S', 'LB'], tag: 'エースを消す',
+    text: '相手のエースにひとりが張りつく。エースに渡ればほとんど進ませない',
+  },
+  allBlitz: {
+    side: 'def', cost: 2, base: 'blitz', roles: ['DL', 'LB'], tag: '全員で襲う',
+    text: '全員で投げる人と走る人に襲いかかる大勝負。外へ逃げられると大きくやられる',
+  },
 };
 
 /** The match-up a defensive special gives instead of a basic call. */
@@ -135,6 +169,8 @@ export const DEF_SPECIAL_MATCH: Record<Exclude<DefKind, 'peekDef'>, Record<OffTy
   wall: { inside: -1.5, outside: -1.2, short: -0.6, long: 0.6 },
   roar: { inside: -0.4, outside: -0.4, short: -0.4, long: -0.4 },
   rush: { ...{ inside: MATCH.inside.blitz, outside: MATCH.outside.blitz, short: MATCH.short.blitz, long: MATCH.long.blitz } },
+  manMark: { inside: 0.4, outside: 0.2, short: -0.5, long: -0.5 },
+  allBlitz: { inside: -1.4, outside: 1.4, short: 0.5, long: -2.0 },
 };
 
 /** How much of a special's effect is left once the opponent has seen it n times. */
@@ -152,4 +188,7 @@ export interface SpecialCard {
   name: string;
   /** stronger once the hero trusts the coach deeply */
   boost: boolean;
+  /** a play of the team's colour (eleven a side), and how far the team has come with it (game/tactics.ts) */
+  tactic?: Tactic;
+  lv?: number;
 }

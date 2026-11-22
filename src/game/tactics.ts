@@ -2,8 +2,8 @@
 //
 // When the club first plays eleven a side it takes one of four colours (the manager suggests the one its heroes
 // suit); it may change it each spring, at the meeting. Every school that plays eleven a side has one too, and the two
-// best have a fifth, the all-round one. A colour gets stronger the more the club wins with it (its level, 1 to 5);
-// changing it starts the level again from 1.
+// best have a fifth, the all-round one. A colour gets stronger the more the club wins with it and practises it (its
+// level, 1 to 5); changing it starts the level again from 1.
 //
 //  - speed  (速攻)   breakaways and kickoffs run all the way back; it gives up big plays too. May kick onside whenever behind
 //  - iron   (鉄壁)   the other side gains less and loses the ball more (and gets it run back); its own big plays are rare
@@ -14,7 +14,8 @@
 // Each colour has a small edge on the next: iron > speed > ground > air > iron. The edge is small: the duels decide.
 // Nothing here uses the match's dice. Six a side has no colours.
 
-import type { Stats } from './model';
+import type { Kind, SpecialCard } from './cards';
+import { defPos, offPos, roleOf, type Lineup, type Player, type Role, type Stats } from './model';
 
 export type Tactic = 'speed' | 'iron' | 'ground' | 'air' | 'royal';
 /** the four the club can take */
@@ -44,11 +45,11 @@ const BEATS: Partial<Record<Tactic, Tactic>> = { iron: 'speed', speed: 'ground',
 export const edgeOf = (a: Tactic | undefined, b: Tactic | undefined): -1 | 0 | 1 =>
   !a || !b ? 0 : BEATS[a] === b ? 1 : BEATS[b] === a ? -1 : 0;
 
-/** Wins with a colour that take it to each level (level 1 to start). */
-export const LEVEL_WINS: readonly number[] = [0, 2, 5, 9, 14];
-export const TACTIC_LV_MAX = LEVEL_WINS.length;
-/** The level of a colour after this many wins with it. */
-export const tacticLevel = (wins: number): number => LEVEL_WINS.filter((w) => wins >= w).length;
+/** Points with a colour (a win with it, a tactic practice: one each) that take it to each level (level 1 to start). */
+export const LEVEL_PTS: readonly number[] = [0, 3, 7, 12, 18];
+export const TACTIC_LV_MAX = LEVEL_PTS.length;
+/** The level of a colour after this many points with it. */
+export const tacticLevel = (pts: number): number => LEVEL_PTS.filter((w) => pts >= w).length;
 /** How strongly a colour works at a level: 0.7 at level 1 to 1.1 at level 5. */
 export const tacticPower = (lv: number): number => 0.6 + 0.1 * Math.min(TACTIC_LV_MAX, Math.max(1, lv));
 
@@ -68,4 +69,55 @@ export function suggestTactic(heroes: readonly { stats: Stats }[]): Exclude<Tact
     air: (best((s) => s.pas) + mean((s) => s.cat)) / 2,
   };
   return (Object.keys(score) as Exclude<Tactic, 'royal'>[]).reduce((a, b) => (score[b] > score[a] ? b : a));
+}
+
+// ------------------------------------------------------------------ a colour's own plays
+
+/**
+ * The plays each colour brings to the hand (eleven a side), in the order they come: the first one from level 1,
+ * the others as the colour grows (`from`). They are special plays (they cost momentum, the other side learns to
+ * read them) whose strength grows with the level. Nobody owns them: the hero who lines up for them runs them.
+ */
+export const TACTIC_PLAYS: Record<Tactic, readonly { kind: Kind; name: string; from: number }[]> = {
+  speed: [{ kind: 'reverse', name: 'リバース', from: 1 }, { kind: 'flea', name: 'フリーフリッカー', from: 2 }, { kind: 'fakePunt', name: 'フェイクパント', from: 4 }],
+  iron: [{ kind: 'manMark', name: 'マンマーク', from: 1 }, { kind: 'allBlitz', name: '全員ブリッツ', from: 3 }],
+  ground: [{ kind: 'drive', name: 'パワーラン', from: 1 }, { kind: 'allBlitz', name: '全員ブリッツ', from: 4 }],
+  air: [{ kind: 'shotgun', name: 'ショットガン', from: 1 }, { kind: 'flea', name: 'フリーフリッカー', from: 3 }],
+  royal: [{ kind: 'drive', name: 'パワーラン', from: 1 }, { kind: 'manMark', name: 'マンマーク', from: 1 }],
+};
+
+/** who runs a colour's play: the hero on the field the play suits best */
+const RUNNER: Partial<Record<Kind, { roles: Role[]; by: (s: Stats) => number }>> = {
+  reverse: { roles: ['RB', 'WR'], by: (s) => s.spd },
+  flea: { roles: ['QB'], by: (s) => s.pas },
+  drive: { roles: ['RB'], by: (s) => s.blk + s.spd },
+  shotgun: { roles: ['QB'], by: (s) => s.pas },
+  manMark: { roles: ['CB', 'S', 'LB'], by: (s) => s.tkl + s.spd },
+  allBlitz: { roles: ['DL', 'LB'], by: (s) => s.tkl },
+};
+
+/** The colour's plays a team has at a level, run by the heroes of its line-up. */
+export function tacticCards(team: { players: Player[]; lineup: Lineup }, tactic: Tactic | undefined, lv: number): SpecialCard[] {
+  if (!tactic) return [];
+  const out: SpecialCard[] = [];
+  for (const play of TACTIC_PLAYS[tactic]) {
+    if (lv < play.from) continue;
+    let owner: number | undefined;
+    if (play.kind === 'fakePunt') {
+      // the kicker throws it if he lines up on offense; otherwise the QB takes the snap as the punter
+      const k = team.lineup.k;
+      owner = k != null && offPos(team.lineup).some((p) => team.lineup.off[p] === k) ? k : (team.lineup.off.QB as number | undefined);
+    }
+    else {
+      const how = RUNNER[play.kind]!;
+      const def = play.kind === 'manMark' || play.kind === 'allBlitz';
+      const ids = (def ? defPos(team.lineup).filter((p) => how.roles.includes(roleOf(p))).map((p) => team.lineup.def[p])
+        : offPos(team.lineup).filter((p) => how.roles.includes(roleOf(p))).map((p) => team.lineup.off[p])) as number[];
+      const stat = (id: number): number => how.by(team.players.find((x) => x.id === id)!.stats);
+      owner = ids.sort((a, b) => stat(b) - stat(a))[0];
+    }
+    if (owner == null) continue;
+    out.push({ key: `tac-${play.kind}`, owner, kind: play.kind, name: play.name, boost: false, tactic, lv });
+  }
+  return out;
 }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { autoPick, colourOf, createMatch, resolvePlay, simulate, type TeamSheet } from '../src/game/match';
+import { autoPick, colourOf, createMatch, resolvePlay, simulate, specialBlock, type TeamSheet } from '../src/game/match';
 import { TIERS } from '../src/game/prestige';
-import { clubSheet, clubTacticLv, finishMatch, hasTactic, nextYear, plan, setTactic, signRecruits, suggestedTactic, tacticOf, tacticOpen, type Season } from '../src/game/season';
-import { TACTICS, edgeOf, suggestTactic, tacticLevel, tacticPower, type Tactic } from '../src/game/tactics';
+import { cardInfo, clubSheet, clubTacticLv, finishMatch, hasTactic, nextYear, plan, setTactic, signRecruits, startDay, suggestedTactic, tacticOf, tacticOpen, train, type Season } from '../src/game/season';
+import { TACTICS, TACTIC_PLAYS, edgeOf, suggestTactic, tacticCards, tacticLevel, tacticPower, type Tactic } from '../src/game/tactics';
+import { KIND } from '../src/game/cards';
+import { offPos } from '../src/game/model';
 import { SCHOOLS, opponentSheet } from '../src/game/teams';
 import type { Stats } from '../src/game/model';
 import { runSeason } from './bot';
@@ -31,8 +33,8 @@ describe('the colours', () => {
     expect(edgeOf(undefined, 'iron')).toBe(0);
   });
 
-  it('grow with wins, from level 1 to 5', () => {
-    expect([0, 1, 2, 4, 5, 9, 13, 14, 40].map(tacticLevel)).toEqual([1, 1, 2, 2, 3, 4, 4, 5, 5]);
+  it('grow with points (wins and practice), from level 1 to 5', () => {
+    expect([0, 2, 3, 6, 7, 11, 12, 17, 18, 40].map(tacticLevel)).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
     expect(tacticPower(1)).toBeCloseTo(0.7);
     expect(tacticPower(5)).toBeCloseTo(1.1);
   });
@@ -135,7 +137,7 @@ describe("the club's colour", () => {
   it('may be changed at the meeting only; a new colour starts from level 1, and changing back gives the old one back', () => {
     const s = clubAt(2);
     s.tactic = 'ground';
-    s.tacticWins = 6;
+    s.tacticWins = 8;
     expect(tacticOpen(s)).toBe(true);
     setTactic(s, 'air');
     expect(s.tactic).toBe('air');
@@ -144,7 +146,7 @@ describe("the club's colour", () => {
     expect(s.tactic).toBe('air');
     setTactic(s, 'ground');
     expect(s.tactic).toBe('ground');
-    expect(s.tacticWins).toBe(6);
+    expect(s.tacticWins).toBe(8);
     expect(clubTacticLv(s)).toBe(3);
     s.meeting = false;
     expect(tacticOpen(s)).toBe(false);
@@ -163,5 +165,103 @@ describe("the club's colour", () => {
     finishMatch(s, st);
     expect(TACTICS).toContain(s.tactic);
     expect(s.tacticWins).toBe(1);
+  });
+});
+
+describe("a colour's own plays", () => {
+  const team = (): TeamSheet => opponentSheet(3, 4, 11, 9);
+
+  it('come into the hand as the colour grows, run by a hero of the line-up who can line up for them', () => {
+    for (const t of ['speed', 'iron', 'ground', 'air', 'royal'] as Tactic[]) {
+      for (let lv = 1; lv <= 5; lv += 1) {
+        const cards = tacticCards(team(), t, lv);
+        expect(cards.map((c) => c.kind)).toEqual(TACTIC_PLAYS[t].filter((p) => lv >= p.from).map((p) => p.kind));
+        for (const c of cards) {
+          expect(c.tactic).toBe(t);
+          expect(c.lv).toBe(lv);
+          const roles = KIND[c.kind].roles;
+          const lu = team().lineup;
+          const on = KIND[c.kind].side === 'off' ? offPos(lu).map((p) => lu.off[p]) : Object.values(lu.def);
+          expect(on).toContain(c.owner);
+          if (roles) expect(roles.length).toBeGreaterThan(0);
+        }
+      }
+    }
+    expect(tacticCards(team(), undefined, 3)).toEqual([]);
+  });
+
+  it('are in both teams’ hands eleven a side, and the fake punt is for the fourth down only', () => {
+    const me = team();
+    me.specials.push(...tacticCards(me, 'speed', 5));
+    const st = opened(me, opponentSheet(3, 4, 11, 8), 3);
+    st.poss = 0;
+    st.mom = [5, 5];
+    const fake = st.teams[0].specials.find((c) => c.kind === 'fakePunt')!;
+    expect(specialBlock(st, 0, fake)).toBe('fourth');
+    st.down = 4;
+    expect(specialBlock(st, 0, fake)).toBeNull();
+    const s = clubAt(2);
+    s.tactic = 'speed';
+    s.tacticWins = 18;
+    const sheet = clubSheet(s);
+    expect(sheet.specials.filter((c) => c.tactic).map((c) => c.name)).toEqual(['リバース', 'フリーフリッカー', 'フェイクパント']);
+  });
+
+  it('do what they say, on average', () => {
+    const avg = (pick: (st: ReturnType<typeof opened>) => { off: Parameters<typeof resolvePlay>[1]; def: Parameters<typeof resolvePlay>[2] }): number => {
+      let y = 0;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const st = opened(team(), opponentSheet(3, 4, 11, 8), seed);
+        st.poss = 0;
+        st.mom = [5, 5];
+        const { off, def } = pick(st);
+        const res = resolvePlay(st, off, def);
+        y += res.yards;
+      }
+      return y / 400;
+    };
+    const card = (kind: string, side: 0 | 1, t: Tactic) => tacticCards(side === 0 ? team() : opponentSheet(3, 4, 11, 8), t, 5).find((c) => c.kind === kind)!;
+    const plain = avg(() => ({ off: { type: 'outside', star: 1 }, def: { type: 'contain', star: 1 } }));
+    const rev = avg(() => ({ off: { type: 'outside', star: 1, special: card('reverse', 0, 'speed') }, def: { type: 'contain', star: 1 } }));
+    expect(rev).toBeGreaterThan(plain);
+    const longPlain = avg(() => ({ off: { type: 'long', star: 1 }, def: { type: 'stuff', star: 1 } }));
+    const flea = avg(() => ({ off: { type: 'long', star: 1, special: card('flea', 0, 'speed') }, def: { type: 'stuff', star: 1 } }));
+    expect(flea).toBeGreaterThan(longPlain);
+    const shortPlain = avg(() => ({ off: { type: 'short', star: 1 }, def: { type: 'zone', star: 1 } }));
+    const marked = avg(() => ({ off: { type: 'short', star: 1 }, def: { type: 'zone', star: 1, special: card('manMark', 1, 'iron') } }));
+    expect(marked).toBeLessThan(shortPlain);
+  });
+});
+
+describe('the tactic practice', () => {
+  it('comes into the hand eleven a side only, and takes the colour a step further', () => {
+    const six = clubAt(1);
+    for (let d = 0; d < 20; d += 1) expect(six.hand.some((c) => c.kind === 'tactic')).toBe(false);
+    const s = clubAt(2);
+    expect(hasTactic(s)).toBe(true);
+    let seen = false;
+    for (let tries = 0; tries < 60 && !seen; tries += 1) {
+      if (plan(s).t !== 'train') {
+        s.day += 1;
+        startDay(s);
+        continue;
+      }
+      const at = s.hand.findIndex((c) => c.kind === 'tactic');
+      if (at < 0) {
+        s.event = null;
+        train(s, s.hand.findIndex((c) => c.kind !== 'tactic'));
+        continue;
+      }
+      seen = true;
+      const info = cardInfo(s, s.hand[at]!);
+      expect(info.name).toBe('戦術練習');
+      const before = s.tactic ? s.tacticWins ?? 0 : 0;
+      s.event = null;
+      const report = train(s, at);
+      expect(s.tactic).toBe(tacticOf(s));
+      expect(s.tacticWins).toBe(before + 1);
+      expect(report.tacticUp === undefined || report.tacticUp === clubTacticLv(s)).toBe(true);
+    }
+    expect(seen).toBe(true);
   });
 });

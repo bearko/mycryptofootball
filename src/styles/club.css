@@ -220,6 +220,7 @@
 .fx-sta.is-loss b { color: #ff8a66; }
 .fx-sta.is-gain b { color: var(--lime); }
 .fx-heart b { color: var(--pink); }
+.fx-tac b { color: var(--yellow); }
 .fx-text { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #3a3520; }
 .fx-go { flex: none; margin-left: auto; font-family: var(--display); padding: 0 0.6rem; line-height: 1.5; color: var(--yellow); background: var(--ink); animation: pg-blink 0.9s steps(2) infinite; }
 @keyframes pg-blink { 50% { opacity: 0.55; } }
@@ -260,6 +261,12 @@
 .pgc.is-special .card-in { --frame: var(--yellow); --band: var(--yellow); --ink2: var(--ink); color: var(--chalk); background: radial-gradient(circle at 50% 40%, rgba(255, 225, 74, 0.5), transparent 60%), linear-gradient(160deg, #3a1d7a, #0e0b33 65%); box-shadow: 0 0 0 0.14rem var(--ink), 0.3rem 0.3rem 0 var(--ink), 0 0 1rem rgba(255, 225, 74, 0.55); }
 .pgc.is-special .pgc-art, .pgc.is-special .pgc-name { position: relative; }
 .pgc.is-special .pgc-who { --band: var(--ink); --ink2: var(--yellow); }
+/* the tactic practice: the club's colour, its name big, its level under it */
+.pgc.is-tactic .card-in { --frame: var(--ink); --band: var(--ink); --ink2: var(--tc); color: var(--ink); background: repeating-linear-gradient(-60deg, transparent 0 0.9rem, rgba(255, 255, 255, 0.16) 0.9rem 1.8rem), linear-gradient(170deg, color-mix(in srgb, var(--tc) 55%, white), var(--tc)); }
+.pgc-art.is-tactic { align-content: center; gap: 0.3rem; }
+.pgc-colour { font-family: var(--display); font-weight: 400; font-size: 1.9rem; line-height: 1; letter-spacing: -0.06em; white-space: nowrap; color: var(--chalk); -webkit-text-stroke: 0.22rem var(--ink); paint-order: stroke fill; transform: skewX(-8deg); }
+.pgc-lv { font-size: var(--fs-xs); line-height: 1; letter-spacing: 0.05em; color: rgba(6, 8, 26, 0.35); }
+.pgc-lv em { font-style: normal; color: var(--ink); }
 /* the day off: green */
 .pgc.is-rest .card-in { --frame: #0a5c33; --bg1: #dcffe2; --bg2: #a5eeb4; --band: #0f7a44; }
 /* better drills shine a little */

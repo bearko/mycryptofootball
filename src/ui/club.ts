@@ -8,7 +8,7 @@
 import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
 import { commit, prefs, save, storeMatch } from '../core/save';
-import { TACTIC, edgeOf, type Tactic } from '../game/tactics';
+import { TACTIC, TACTIC_PLAYS, edgeOf, type Tactic } from '../game/tactics';
 import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
@@ -627,6 +627,14 @@ export function clubScreen(): [HTMLElement, () => void] {
     }
     if (!alive) return;
     for (const c of report.changes) payoff(c.id);
+    if (report.tacticUp) {
+      // the colour took a step: say so, and name the play it brings, if any
+      const t = tacticOf(s)!;
+      const fresh = TACTIC_PLAYS[t].filter((p) => p.from === report.tacticUp).map((p) => `「${p.name}」`);
+      sfx.learn();
+      burst(spot.x, spot.y, { count: 22, color: [TACTIC[t].color, '#fffbe8', '#ffe14a'], shape: ['star', 'rect'] });
+      coach.say(`${TACTIC[t].name}の練度が${report.tacticUp}に上がりました！${fresh.length ? ` 試合で${fresh.join('と')}が使えます。` : ' 作戦のキレが増します。'}`, 'cheer');
+    }
     veil.remove();
     skipNow = null;
 

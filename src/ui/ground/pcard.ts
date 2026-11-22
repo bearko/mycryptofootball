@@ -1,13 +1,15 @@
 // Practice cards: a picture and a name, nothing else. What a card does is shown when it is considered
 // (the effect bar over the hand, and the numbers over the heroes' heads).
 // The frame and the background say what kind of card it is: paper for the ordinary drills, red for one-on-one,
-// dark foil with a gold frame for a hero's special practice, green for the day off.
+// dark foil with a gold frame for a hero's special practice, green for the day off, the club's colour for the
+// tactic practice.
 
 import catalog from '../../generated/catalog.json';
 import { h } from '../../core/dom';
 import { hero, recruit, talentOf } from '../../game/heroes';
 import { STAT_LABEL } from '../../game/model';
-import { XPS, cardInfo, member, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
+import { XPS, cardInfo, clubTacticLv, member, tacticOf, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
+import { LEVEL_PTS, TACTIC, TACTIC_LV_MAX } from '../../game/tactics';
 import { tilt } from '../fx';
 import { stars } from '../kit';
 import { DRILL_STAT, shortName, xpChip } from './bits';
@@ -22,7 +24,7 @@ const artOf = (key: PracticeKey | 'rest', star: number): string => {
 
 /** The drill the heroes perform for a card (the day off has none). */
 export const drillKind = (card: PracticeCard): DrillKind | null =>
-  (card.kind === 'basic' ? card.key : card.kind === 'rest' ? null : card.kind);
+  (card.kind === 'basic' ? card.key : card.kind === 'rest' ? null : card.kind === 'tactic' ? 'game' : card.kind);
 
 /** One card of the hand. `index` only numbers the key hint; the caller wires the pointer. */
 export function practiceCard(s: Season, card: PracticeCard, index: number): HTMLButtonElement {
@@ -43,6 +45,14 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
     inner.append(
       h('span.pgc-art', h('img.px', { src: artOf('rest', 1), alt: '', draggable: false })),
       h('span.pgc-name', info.name));
+  } else if (card.kind === 'tactic') {
+    const t = tacticOf(s) ?? 'speed';
+    const lv = clubTacticLv(s);
+    cls = 'is-tactic';
+    label = `${info.name}（${TACTIC[t].name}・練度${lv}）：${info.text}`;
+    inner.append(
+      h('span.pgc-art.is-tactic', h('b.pgc-colour', TACTIC[t].name), h('span.pgc-lv', h('em', '★'.repeat(lv)), '☆'.repeat(TACTIC_LV_MAX - lv))),
+      h('span.pgc-name', info.name));
   } else if (card.kind === 'solo') {
     cls = `is-solo t-${member(s, card.hero).focus}`;
     label = `マンツーマン（${hero(card.hero).name}）：${info.text}`;
@@ -58,7 +68,8 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
       h('span.pgc-name', `「${info.name}」`));
   }
   inner.append(h('span.card-glare'));
-  const btn: HTMLButtonElement = h('button.card.pgc', { class: cls, type: 'button', 'aria-label': label, data: { uid: String(card.uid) }, style: { '--i': '0' } }, inner, key);
+  const tc = card.kind === 'tactic' ? { '--tc': TACTIC[tacticOf(s) ?? 'speed'].color } : {};
+  const btn: HTMLButtonElement = h('button.card.pgc', { class: cls, type: 'button', 'aria-label': label, data: { uid: String(card.uid) }, style: { '--i': '0', ...tc } }, inner, key);
   tilt(btn, 9);
   return btn;
 }
@@ -84,6 +95,19 @@ export function cardEffect(s: Season, card: PracticeCard): { title: HTMLElement;
   }
   if (card.kind === 'rest') {
     return { title: h('b.fx-name', info.name), text: info.text, chips: [who('全員'), staChip(info.sta)] };
+  }
+  if (card.kind === 'tactic') {
+    const t = TACTIC[tacticOf(s) ?? 'speed'].name;
+    const pts = s.tactic ? s.tacticWins ?? 0 : 0;
+    const lv = clubTacticLv(s);
+    const next = LEVEL_PTS[lv];
+    // how far to the next level: "練度 2 → 3" when this practice gets there, else the points left
+    const step = next === undefined ? null : pts + 1 >= next ? h('span.fx-tac', h('u', '練度'), h('b', `${lv}→${lv + 1}`))
+      : h('span.fx-tac', h('u', `練度${lv + 1}まで`), h('b', `あと${next - pts}`));
+    return {
+      title: h('b.fx-name', info.name), text: `${t}の型をみがく`,
+      chips: [who('全員'), ...(step ? [step] : []), ...xp, staChip(info.sta), heart(info.trust, '')],
+    };
   }
   const name = shortName(card.hero);
   if (card.kind === 'solo') {

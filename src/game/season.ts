@@ -17,7 +17,7 @@ import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
-import { suggestTactic, tacticLevel, type Tactic } from './tactics';
+import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, drawSchools, type School } from './teams';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
@@ -215,6 +215,11 @@ export const DRILL_NAME: Record<Stat, string> = {
   spd: '鬼ごっこ', pas: '的当て', cat: '空中キャッチ', blk: '押しくらべ', tkl: '一騎打ち', iq: '兵法講義',
 };
 const DRILL_TOTAL = 31;
+/** the tactic practice: a little experience, and a step for the colour */
+const TACTIC_XP: Partial<XpBag> = { int: 5, tec: 3 };
+const TACTIC_COST = 8;
+/** how often a practice day offers it (one at a time) */
+const TACTIC_CHANCE = 0.22;
 const SOLO_TOTAL = 38;
 const SOLO_TRUST = 10;
 
@@ -226,7 +231,9 @@ export type PracticeCard =
   /** a trusted hero runs their own special drill for the whole team */
   | { uid: number; kind: 'special'; hero: number }
   /** a day off: no experience, stamina comes back. Always in the hand */
-  | { uid: number; kind: 'rest' };
+  | { uid: number; kind: 'rest' }
+  /** eleven a side: everyone works on the club's colour, which takes it a step further (its level) */
+  | { uid: number; kind: 'tactic' };
 
 export interface CardInfo {
   name: string;
@@ -261,6 +268,10 @@ export function cardInfo(s: Season, card: PracticeCard): CardInfo {
   }
   if (card.kind === 'rest') {
     return { name: '休養', text: '練習は休み。全員の体力が戻る', xp: {}, trust: 0, heroTrust: 0, hero: null, star: 0, sta: REST_STA, others: 0 };
+  }
+  if (card.kind === 'tactic') {
+    const t = TACTIC[tacticOf(s) ?? 'speed'].name;
+    return { name: '戦術練習', text: `${t}の型を全員で合わせる。練度が上がる`, xp: { ...TACTIC_XP }, trust: 1, heroTrust: 0, hero: null, star: 0, sta: -TACTIC_COST, others: 0 };
   }
   const m = member(s, card.hero);
   const name = hero(card.hero).name;
@@ -347,7 +358,8 @@ export interface Season {
   left?: number[];
   /**
    * the club's colour eleven a side (game/tactics.ts), once chosen or once played with (until then the manager's
-   * suggestion stands: tacticOf), and the matches won with it (its level: tacticLevel)
+   * suggestion stands: tacticOf), and its points: one for each match won with it and each tactic practice (its
+   * level: tacticLevel)
    */
   tactic?: Tactic;
   tacticWins?: number;
@@ -663,6 +675,10 @@ function drawCard(s: Season, rng: Rng): PracticeCard {
   if (trusted.length && !s.hand.some((c) => c.kind === 'special') && rng.chance(Math.min(0.3, 0.07 * trusted.length))) {
     return { uid, kind: 'special', hero: rng.pick(trusted).id };
   }
+  // eleven a side: a practice of the club's colour, until it is as good as it gets
+  if (hasTactic(s) && !s.hand.some((c) => c.kind === 'tactic') && clubTacticLv(s) < TACTIC_LV_MAX && rng.chance(TACTIC_CHANCE)) {
+    return { uid, kind: 'tactic' };
+  }
   // a chance to work with one hero alone
   if (s.hand.filter((c) => c.kind === 'solo').length < 2 && rng.chance(0.24)) {
     const free = s.members.filter((m) => !inHand('solo', m.id));
@@ -749,6 +765,8 @@ export interface DayReport {
   card: PracticeCard;
   info: CardInfo;
   changes: Change[];
+  /** the tactic practice took the colour to this level */
+  tacticUp?: number;
 }
 
 /** Plays one practice card from the hand: experience, abilities, trust; then the calendar moves on a day. */
@@ -773,12 +791,23 @@ export function train(s: Season, index: number): DayReport {
       c.trust += addTrust(m, base + info.trust + (mine ? info.heroTrust : 0));
     }
   });
+  // the colour takes a step (and becomes the club's, if the suggestion still stood)
+  let tacticUp: number | undefined;
+  if (card.kind === 'tactic' && hasTactic(s)) {
+    const was = clubTacticLv(s);
+    if (!s.tactic) {
+      s.tactic = tacticOf(s);
+      s.tacticWins = 0;
+    }
+    s.tacticWins = (s.tacticWins ?? 0) + 1;
+    if (clubTacticLv(s) > was) tacticUp = clubTacticLv(s);
+  }
   s.hand.splice(index, 1);
   s.meeting = false;
   s.tacticWas = undefined;
   s.day += 1;
   startDay(s);
-  return { card, info, changes };
+  return { card, info, changes, tacticUp };
 }
 
 /** What playing a card would do, without doing it (for showing who gains what). */
@@ -906,7 +935,7 @@ export function clubSheet(s: Season): TeamSheet {
     const top = Object.entries(s.usage).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]);
     for (const [key] of top.slice(0, p.opp - 1)) scouted[key] = Math.min(READ_MAX, 1);
   }
-  return {
+  const sheet: TeamSheet = {
     name: TEAM_NAME,
     short: TEAM_SHORT,
     color: TEAM_COLOR,
@@ -924,6 +953,9 @@ export function clubSheet(s: Season): TeamSheet {
     scouted,
     ...(hasTactic(s) ? { tactic: tacticOf(s), tacticLv: clubTacticLv(s) } : {}),
   };
+  // eleven a side, the colour's own plays
+  if (sheet.tactic) sheet.specials.push(...tacticCards(sheet, sheet.tactic, sheet.tacticLv ?? 1));
+  return sheet;
 }
 
 /** Which of the club's special plays the coming opponent has studied. */

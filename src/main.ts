@@ -20,7 +20,8 @@ import { save } from './core/save';
 import { RECRUITS } from './game/heroes';
 import { TOP_TIER } from './game/prestige';
 import { drawSchools } from './game/teams';
-import { ROSTER_SIZE, SCHEDULE, joinCount, newSeason, nextYear, signRecruits, startDay } from './game/season';
+import { ROSTER_SIZE, SCHEDULE, hasTactic, joinCount, newSeason, nextYear, signRecruits, startDay, tacticOf } from './game/season';
+import { LEVEL_PTS, TACTICS, type Tactic } from './game/tactics';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
 import { wireHover } from './ui/kit';
@@ -90,6 +91,11 @@ function jump(to: string): void {
     });
   }
   if (debug.trust !== null) for (const m of s.members) m.trust = debug.trust;
+  if (hasTactic(s) && (debug.tactic || debug.tlv !== null)) {
+    if (debug.tactic && (TACTICS as readonly string[]).includes(debug.tactic)) s.tactic = debug.tactic as Tactic;
+    s.tactic ??= tacticOf(s);
+    s.tacticWins = LEVEL_PTS[Math.max(1, Math.min(LEVEL_PTS.length, debug.tlv ?? 1)) - 1];
+  }
   const firstMatch = SCHEDULE.findIndex((w) => w.t === 'match');
   s.day = debug.day ?? (to === 'match' ? firstMatch : 0);
   s.hand = [];

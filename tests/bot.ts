@@ -32,6 +32,9 @@ function pickRecruits(s: Season, rng: Rng, style: Style): number[] {
   return picked.slice(0, n);
 }
 
+/** what a careful coach thinks a step of the colour is worth, against a day's drill */
+const TACTIC_PRACTICE_VALUE = 120;
+
 /** How much a practice card is worth to the club today. */
 function value(s: Season, card: PracticeCard): number {
   const info = cardInfo(s, card);
@@ -52,6 +55,8 @@ function value(s: Season, card: PracticeCard): number {
     const trust = info.trust + (mine ? info.heroTrust : 0);
     v += weight * trust * (m.trust < TRUST_LEARN ? 1.5 : 0.3);
   }
+  // the tactic practice: a step for the club's colour (worth about a good drill)
+  if (card.kind === 'tactic') v += TACTIC_PRACTICE_VALUE;
   return v;
 }
 
