@@ -17,6 +17,7 @@ import { FOUNDERS, RECRUITS, hero, recruit, specialOf, talentOf } from './heroes
 import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
+import { suggestTactic, tacticLevel, type Tactic } from './tactics';
 import { applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, drawSchools, type School } from './teams';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
@@ -344,6 +345,14 @@ export interface Season {
   alumni: Record<number, { n: number; year: number }>;
   /** who left when the last year ended (for the spring's first words) */
   left?: number[];
+  /**
+   * the club's colour eleven a side (game/tactics.ts), once chosen or once played with (until then the manager's
+   * suggestion stands: tacticOf), and the matches won with it (its level: tacticLevel)
+   */
+  tactic?: Tactic;
+  tacticWins?: number;
+  /** the colour as it stood when this meeting began: changing back to it before the meeting ends costs nothing */
+  tacticWas?: { t: Tactic; wins: number };
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -462,6 +471,7 @@ export function nextYear(s: Season, seed: number): void {
   s.seed = seed;
   s.year += 1;
   s.league = s.tier;
+  s.tacticWas = undefined;
   s.day = 0;
   s.results = [];
   s.usage = {};
@@ -584,6 +594,29 @@ export function nextMatch(s: Season): DayPlan | null {
 
 /** True at a milestone (the season's start, the day after the practice match): the policy may be changed. */
 export const policyOpen = (s: Season): boolean => s.phase === 'club' && s.meeting;
+
+// ------------------------------------------------------------------ the club's colour (eleven a side)
+
+/** Does the club play eleven a side this year (and so have a colour)? */
+export const hasTactic = (s: Season): boolean => clubSize(s) === 11;
+/** The colour the manager suggests for the club's heroes. */
+export const suggestedTactic = (s: Season): Tactic => suggestTactic(s.members);
+/** The club's colour: the one chosen (or played with), else the manager's suggestion. undefined six a side. */
+export const tacticOf = (s: Season): Tactic | undefined => (hasTactic(s) ? s.tactic ?? suggestedTactic(s) : undefined);
+/** How far the club has come with its colour (1..5). */
+export const clubTacticLv = (s: Season): number => tacticLevel(s.tactic ? s.tacticWins ?? 0 : 0);
+/** The colour may be changed at the spring's meetings only (the same milestones as the training policy). */
+export const tacticOpen = (s: Season): boolean => hasTactic(s) && policyOpen(s);
+
+/** Changes the club's colour (at a meeting): a new colour starts again from level 1. */
+export function setTactic(s: Season, t: Tactic): void {
+  if (!tacticOpen(s) || t === 'royal') return;
+  const now = tacticOf(s)!;
+  if (t === now && s.tactic) return;
+  s.tacticWas ??= { t: now, wins: s.tactic ? s.tacticWins ?? 0 : 0 };
+  s.tactic = t;
+  s.tacticWins = t === s.tacticWas.t ? s.tacticWas.wins : 0;
+}
 
 export function setFocus(s: Season, id: number, k: Stat): void {
   if (!policyOpen(s)) throw new Error('the training policy can only be changed at a milestone');
@@ -742,6 +775,7 @@ export function train(s: Season, index: number): DayReport {
   });
   s.hand.splice(index, 1);
   s.meeting = false;
+  s.tacticWas = undefined;
   s.day += 1;
   startDay(s);
   return { card, info, changes };
@@ -888,6 +922,7 @@ export function clubSheet(s: Season): TeamSheet {
     runBias: 0.5,
     smart: 0.7,
     scouted,
+    ...(hasTactic(s) ? { tactic: tacticOf(s), tacticLv: clubTacticLv(s) } : {}),
   };
 }
 
@@ -902,6 +937,14 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   s.results.push({ day: s.day, opp: p.opp, us: st.score[0], them: st.score[1], win });
   // who did what goes into the season's numbers
   bookMatch((s.box ??= {}), st.box?.[0]);
+  // eleven a side the club now plays with its colour: it is the club's, and a win takes it further
+  if (hasTactic(s)) {
+    if (!s.tactic) {
+      s.tactic = tacticOf(s);
+      s.tacticWins = 0;
+    }
+    if (win) s.tacticWins = (s.tacticWins ?? 0) + 1;
+  }
   for (const [key, n] of Object.entries(st.totals[0].specials)) s.usage[key] = (s.usage[key] ?? 0) + n;
   const on = starters(s.lineup!);
   const changes = withMilestones(s, (ch) => {

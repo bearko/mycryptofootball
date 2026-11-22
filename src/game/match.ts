@@ -21,6 +21,7 @@ import {
   DEF_SPECIAL_MATCH, DEF_TYPES, KICK_INFO, KIND, MATCH, OFF_TYPES, READ_MAX, READ_POTENCY, isKick, isKickoff, isRun,
   type DefKind, type DefType, type KickType, type OffKind, type OffType, type SpecialCard,
 } from './cards';
+import { edgeOf, tacticPower, type Tactic } from './tactics';
 import { defPos, fit, kickFit, offPos, roleOf, sizeOf, type DefPos, type Lineup, type OffPos, type Player, type Role } from './model';
 import { tally, type Box } from './boxscore';
 
@@ -59,6 +60,9 @@ export interface TeamSheet {
   smart: number;
   /** specials the opponent has studied before the game: key -> starting read level */
   scouted?: Record<string, number>;
+  /** its colour eleven a side (game/tactics.ts) and how far it has come with it (1..5) */
+  tactic?: Tactic;
+  tacticLv?: number;
 }
 
 export interface Pick {
@@ -158,6 +162,8 @@ export interface PlayResult {
   returnTd?: boolean;
   /** the runner (or the receiver after the catch) got past everybody: a breakaway (eleven a side) */
   breakaway?: boolean;
+  /** what the offense's colour did to the clock: 'stop' (an incomplete pass, late) cost no play, 'run' cost two */
+  clock?: 'stop' | 'run';
   /** points scored on this play */
   points: number;
   /** who read whom: the card match-up alone */
@@ -182,6 +188,30 @@ export interface PlayResult {
 export const isEleven = (st: { teams: [TeamSheet, TeamSheet] }): boolean => sizeOf(st.teams[0].lineup) === 11;
 /** How many plays a quarter has in this match. */
 export const playsPerQ = (st: { teams: [TeamSheet, TeamSheet] }): number => (isEleven(st) ? PLAYS_PER_Q_11 : PLAYS_PER_Q);
+
+/** A team's colour in this match (eleven a side only; a told story has none) and how strongly it works (0 without). */
+export function colourOf(st: { teams: [TeamSheet, TeamSheet]; script?: unknown }, t: 0 | 1): { t?: Tactic; k: number } {
+  const team = st.teams[t];
+  if (!team.tactic || st.script || !isEleven(st)) return { k: 0 };
+  return { t: team.tactic, k: tacticPower(team.tacticLv ?? 1) };
+}
+
+/** What the two colours add to the quality of a play (see game/tactics.ts). */
+export function colourQ(oc: { t?: Tactic; k: number }, dc: { t?: Tactic; k: number }, type: OffType): number {
+  const run = isRun(type);
+  let v = 0;
+  if (oc.t === 'ground' && run) v += 0.35 * oc.k;
+  if (oc.t === 'air' && !run) v += 0.4 * oc.k;
+  if (oc.t === 'speed') v += 0.15 * oc.k;
+  if (oc.t === 'iron') v -= 0.15;
+  if (oc.t === 'royal') v += 0.12 * oc.k;
+  if (dc.t === 'iron') v -= 0.3 * dc.k;
+  if (dc.t === 'ground') v += run ? -0.35 * dc.k : type === 'long' ? 0.4 : 0.15;
+  if (dc.t === 'air' && run) v += 0.1;
+  if (dc.t === 'speed') v += 0.1;
+  if (dc.t === 'royal') v -= 0.12 * dc.k;
+  return v + 0.1 * edgeOf(oc.t, dc.t);
+}
 
 const emptyTotals = (): TeamTotals => ({ plays: 0, yards: 0, td: 0, firstDowns: 0, turnovers: 0, specials: {} });
 
@@ -430,7 +460,9 @@ export function patChance(t: TeamSheet): number {
  * that is when winning the ball back is worth the risk (and the only time the coach is asked).
  */
 export const canOnside = (st: MatchState, t: 0 | 1): boolean =>
-  !!st.ko && st.poss === t && !st.script && !st.sudden && st.quarter >= QUARTERS && st.score[t] < st.score[1 - t];
+  !!st.ko && st.poss === t && !st.script && !st.sudden && st.score[t] < st.score[1 - t]
+  // (a team built for speed may try it whenever it is behind)
+  && (st.quarter >= QUARTERS || colourOf(st, t).t === 'speed');
 /** The chance an onside kick is won back by the team that kicks it. */
 export function onsideChance(t: TeamSheet): number {
   const k = kickerOf(t);
@@ -512,7 +544,7 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
   if (onOffense) {
     const type = pick.type as OffType;
     const kind = sp?.kind as OffKind | undefined;
-    const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE;
+    const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE + colourQ(colourOf(st, t), colourOf(st, (1 - t) as 0 | 1), type);
     const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3 : 0;
     let sum = 0;
     let hit = 0;
@@ -539,7 +571,7 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
   let hit = 0;
   for (const type of OFF_TYPES) {
     const share = (isRun(type) ? opp.runBias : 1 - opp.runBias) / 2;
-    const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE;
+    const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE + colourQ(colourOf(st, (1 - t) as 0 | 1), colourOf(st, t), type);
     let m = kind && kind !== 'peekDef' ? DEF_SPECIAL_MATCH[kind][type] : MATCH[type][call];
     if (kind === 'roar') m -= 1.6 * pot;
     if (kind === 'rush' && type !== 'outside') m -= 0.9 * pot;
@@ -715,10 +747,23 @@ function offWeights(st: MatchState, t: 0 | 1): (p: Pick) => number {
   const behind = st.score[t] < st.score[1 - t];
   const late = st.quarter >= QUARTERS;
   const goal = FIELD - st.pos;
+  // eleven a side, a team plays to its colour, and to what the other side's colour gives away
+  const mine = colourOf(st, t).t;
+  const theirs = colourOf(st, (1 - t) as 0 | 1).t;
+  const lean: Partial<Record<Tactic, Record<OffType, number>>> = {
+    ground: { inside: 1.5, outside: 1.4, short: 0.9, long: 0.8 },
+    air: { inside: 0.7, outside: 0.8, short: 1.4, long: 1.6 },
+  };
+  const exploit: Partial<Record<Tactic, Record<OffType, number>>> = {
+    ground: { inside: 0.8, outside: 0.8, short: 1.0, long: 1.5 },
+    air: { inside: 1.3, outside: 1.3, short: 0.9, long: 0.9 },
+  };
   return (p) => {
     const type = p.type as OffType;
     let w = isRun(type) ? team.runBias : 1 - team.runBias;
     w *= { inside: 1.0, outside: 0.9, short: 1.1, long: 0.7 }[type];
+    if (mine) w *= lean[mine]?.[type] ?? 1;
+    if (theirs) w *= exploit[theirs]?.[type] ?? 1;
     if (st.toGo <= 2) w *= { inside: 2.2, outside: 1.0, short: 1.0, long: 0.5 }[type];
     if (st.down >= 3 && st.toGo >= 7) w *= { inside: 0.4, outside: 0.7, short: 1.6, long: 1.6 }[type];
     if (goal < 15) w *= type === 'long' ? 0.3 : 1;
@@ -884,6 +929,8 @@ const RETURN_TD = 0.035;
 const PICK_SIX = 0.12;
 /** Eleven a side, the base chance that a good gain turns into a breakaway. */
 const BREAKAWAY = 0.05;
+/** A team that throws stops the clock with an incomplete pass in the last plays of the match. */
+const AIR_LATE = 4;
 
 /** Team `to` gets the ball next: the other team kicks off to it (the kick is the next thing played). */
 function kickoff(st: MatchState, to: 0 | 1): void {
@@ -963,7 +1010,7 @@ function resolveKickoff(st: MatchState, offPick: Pick, defPick: Pick): PlayResul
       st.pos = 12;
       dist = FIELD - before.pos;
       lines.push(`${k.name}のキックオフはエンドゾーンへ。${D.short}は自陣${st.pos}ヤードから`);
-    } else if (isEleven(st) && !st.script && !st.sudden && rng.chance(clamp(RETURN_TD + (back.stats.spd - cover) / 500, 0.015, 0.09))) {
+    } else if (isEleven(st) && !st.script && !st.sudden && rng.chance(clamp(RETURN_TD + (back.stats.spd - cover) / 500 + (colourOf(st, d).t === 'speed' ? 0.03 * colourOf(st, d).k : 0), 0.015, 0.12))) {
       // eleven a side the returner may find a crease and take it all the way back
       ret = FIELD - land;
       returnTd = true;
@@ -1177,6 +1224,10 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   if (dk === 'roar') q -= 1.6 * dp;
   if (dk === 'rush' && type !== 'outside') q -= 0.9 * dp;
   if (dk === 'wall' && type !== 'long') q -= 0.8 * dp;
+  // eleven a side, the two colours
+  const oc = colourOf(st, o);
+  const dc = colourOf(st, d);
+  q += colourQ(oc, dc, type);
 
   const noInt = ok === 'sureLong' || ok === 'sureShort';
   const blitz = defPick.type === 'blitz' && dk !== 'steal' && dk !== 'wall' && dk !== 'roar';
@@ -1200,7 +1251,8 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     if (q < -2.4 && rng.chance(0.12)) outcome = 'fumble';
   } else if (type === 'short') {
     const sure = ok === 'sureShort' && rng.chance(Math.min(1, op));
-    if (!sure && !noInt && q < -2.3 && rng.chance(0.45)) outcome = 'int';
+    // (a team that throws throws fewer of them away)
+    if (!sure && !noInt && q < -2.3 && rng.chance(oc.t === 'air' ? 0.25 : 0.45)) outcome = 'int';
     else if (!sure && blitz && q < -1.6) {
       outcome = 'sack';
       yards = -rng.int(4, 7);
@@ -1214,11 +1266,12 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     if (blitz && q < 0 && !sackSafe) {
       outcome = 'sack';
       yards = -rng.int(5, 8);
-    } else if (!noInt && q < -1.5 && rng.chance(0.5)) outcome = 'int';
+    } else if (!noInt && q < -1.5 && rng.chance(oc.t === 'air' ? 0.3 : 0.5)) outcome = 'int';
     else if (q < 1.0) outcome = 'incomplete';
     else {
       yards = clamp(Math.round(17 + 6 * (q - 1)), 15, 40);
       if (ok === 'flyLong') yards += Math.round(8 * op);
+      if (oc.t === 'air') yards += Math.round(4 * oc.k);
     }
   }
 
@@ -1239,7 +1292,14 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   if (outcome === 'gain' && yards >= 4 && !tryPlay && isEleven(st) && !st.script) {
     const runner = byId(O, carrier);
     const chaser = byId(D, defender);
-    if (rng.chance(clamp(BREAKAWAY + 0.05 * Math.max(0, q) + (runner.stats.spd - chaser.stats.spd) / 500, 0.02, 0.3))) {
+    let p = BREAKAWAY + 0.05 * Math.max(0, q) + (runner.stats.spd - chaser.stats.spd) / 500;
+    // (a wall stops the ordinary breakaway; a team built for speed breaks away all the same)
+    if (oc.t === 'iron') p *= 0.5;
+    if (dc.t === 'iron') p *= 0.65;
+    if (oc.t === 'speed') p += 0.12 * oc.k;
+    if (oc.t === 'royal') p += 0.02;
+    if (dc.t === 'speed') p += 0.06;
+    if (rng.chance(clamp(p, 0.01, 0.4))) {
       breakaway = true;
       yards += rng.int(12, 36);
     }
@@ -1321,7 +1381,8 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     mom(o, -1);
     // eleven a side: the one who took it away may run it all the way back
     const taker = byId(D, defender);
-    if (isEleven(st) && !st.sudden && !st.script && rng.chance(clamp(PICK_SIX + (taker.stats.spd - byId(O, carrier).stats.spd) / 400, 0.05, 0.25))) {
+    const six = PICK_SIX + (taker.stats.spd - byId(O, carrier).stats.spd) / 400 + (dc.t === 'iron' ? 0.1 * dc.k : 0);
+    if (isEleven(st) && !st.sudden && !st.script && rng.chance(clamp(six, 0.05, 0.32))) {
       returnTd = true;
       points = TD_POINTS;
       st.score[d] += points;
@@ -1384,16 +1445,28 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
 
   // ---- the clock (counted in plays)
   let period: PlayResult['period'] = null;
-  if (tryNext) {
+  let clock: PlayResult['clock'];
+  // a team that throws: late in the match an incomplete pass stops the clock
+  if (!tryNext && oc.t === 'air' && st.quarter >= QUARTERS && before.left <= AIR_LATE && outcome === 'incomplete' && !st.sudden) {
+    clock = 'stop';
+    lines.push('パス失敗で時計が止まる');
+  }
+  if (tryNext || clock === 'stop') {
     st.n += 1;
     deal(st);
   } else period = tick(st);
+  // a team that runs, ahead in the second half: a run keeps the clock going (two plays off it)
+  if (!period && !st.over && !tryNext && oc.t === 'ground' && isRun(type) && !turnover && !st.sudden && st.quarter > QUARTERS / 2 && st.score[o] > st.score[d] && st.left >= 2) {
+    st.left -= 1;
+    clock = 'run';
+    lines.push('ランで時計を進める');
+  }
 
   return {
     n: st.n, off: o, offPick, defPick, before, outcome, yards, td, firstDown, turnover, edge,
     passer, carrier, defender, offPotency: op, defPotency: dp,
     momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines, points, tfp: tryPlay || undefined,
-    ...(returnTd ? { returnTd } : {}), ...(breakaway ? { breakaway } : {}),
+    ...(returnTd ? { returnTd } : {}), ...(breakaway ? { breakaway } : {}), ...(clock ? { clock } : {}),
   };
 }
 

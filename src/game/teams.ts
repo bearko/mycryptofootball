@@ -2,6 +2,7 @@
 // How strong a school is on the day depends on the round it is met in (and on the tournament: the higher the
 // club's standing, the stronger everybody); which schools are met changes from year to year.
 
+import { TACTIC_LV_MAX, type Tactic } from './tactics';
 import type { Rng } from '../core/rng';
 import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
@@ -23,6 +24,8 @@ export interface School {
   color: string;
   /** one line for the scouting report */
   style: string;
+  /** its colour eleven a side (game/tactics.ts). The schools that play only six a side have none */
+  tactic?: Tactic;
   runBias: number;
   /** how much better than other schools it reads the club's plays (added to the round's) */
   smart?: number;
@@ -104,7 +107,7 @@ export const SCHOOLS: readonly School[] = [
     ],
   },
   {
-    name: '玄武学院', short: '玄武学', color: '#b08cff', style: 'ロングパスで一気に攻めてくる',
+    name: '玄武学院', tactic: 'speed', short: '玄武学', color: '#b08cff', style: 'ロングパスで一気に攻めてくる',
     runBias: 0.36,
     players: [
       { id: 3019, off: 'QB', def: 'S', ace: 'sureLong' },
@@ -124,7 +127,7 @@ export const SCHOOLS: readonly School[] = [
     ],
   },
   {
-    name: '青龍大付属', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
+    name: '青龍大付属', tactic: 'royal', short: '青龍大', color: '#58b0ff', style: '攻めも守りも一芸ぞろいの王者',
     runBias: 0.5,
     players: [
       { id: 5001, off: 'QB', def: 'S', ace: 'sureLong' },
@@ -149,35 +152,35 @@ export const SCHOOLS: readonly School[] = [
     ...squad([2023, 2005, 2049, 2004, 2048, 2022], [[0, 'sureShort'], [2, 'flyLong'], [3, 'steal'], [1, 'trick'], [4, 'wall']]),
   },
   {
-    name: '天馬学舎', short: '天馬学', color: '#7fe0c0', style: '読みのするどい頭脳派。同じ手は二度通じない', runBias: 0.45, smart: 0.2,
+    name: '天馬学舎', tactic: 'air', short: '天馬学', color: '#7fe0c0', style: '読みのするどい頭脳派。同じ手は二度通じない', runBias: 0.45, smart: 0.2,
     ...squad([2034, 2041, 2047, 1006, 2044, 2015, 2008, 2033, 2010, 2039, 2036], [[2, 'steal'], [0, 'sureShort'], [4, 'wall'], [1, 'trick'], [3, 'flyLong']]),
   },
   {
-    name: '荒波水産', short: '荒波水', color: '#3fd0d8', style: '荒っぽい突撃でQBに迫り、ボールを奪いにくる', runBias: 0.55,
+    name: '荒波水産', tactic: 'iron', short: '荒波水', color: '#3fd0d8', style: '荒っぽい突撃でQBに迫り、ボールを奪いにくる', runBias: 0.55,
     ...squad([4036, 4052, 3029, 3032, 3037, 3042, 4008, 3031, 3036, 4020, 2017], [[4, 'rush'], [2, 'steal'], [1, 'powerRun'], [5, 'roar'], [0, 'sureShort']]),
   },
   {
-    name: '雷鳴館', short: '雷鳴館', color: '#ff6a3c', style: 'ランで押しきる武闘派。壁も厚い', runBias: 0.7,
+    name: '雷鳴館', tactic: 'ground', short: '雷鳴館', color: '#ff6a3c', style: 'ランで押しきる武闘派。壁も厚い', runBias: 0.7,
     ...squad([3014, 4031, 4022, 1002, 4032, 3051, 2046, 2014, 3012, 4029, 4005], [[1, 'powerRun'], [4, 'pushRun'], [5, 'wall'], [2, 'trick'], [0, 'sureShort']]),
   },
   {
-    name: '聖剣学院', short: '聖剣学', color: '#9fd6ff', style: '守りが堅い。ロングパス一発で仕留めにくる', runBias: 0.4,
+    name: '聖剣学院', tactic: 'iron', short: '聖剣学', color: '#9fd6ff', style: '守りが堅い。ロングパス一発で仕留めにくる', runBias: 0.4,
     ...squad([5023, 4045, 5007, 3002, 3034, 5029, 4038, 4057, 3050, 2002, 3039], [[4, 'wall'], [0, 'sureLong'], [2, 'flyLong'], [5, 'roar'], [1, 'rush']]),
   },
   {
-    name: '銀河理科大付属', short: '銀河理', color: '#8f7bff', style: '計算されたパス攻撃。読みもするどい', runBias: 0.3, smart: 0.15,
+    name: '銀河理科大付属', tactic: 'air', short: '銀河理', color: '#8f7bff', style: '計算されたパス攻撃。読みもするどい', runBias: 0.3, smart: 0.15,
     ...squad([5010, 3003, 3043, 5027, 4041, 4007, 4017, 4028, 4044, 5005, 3008], [[0, 'sureLong'], [2, 'flyLong'], [3, 'steal'], [4, 'wall'], [1, 'trick']]),
   },
   {
-    name: '覇王学園', short: '覇王学', color: '#e04848', style: '力でねじふせる。走っても守っても重い', runBias: 0.62,
+    name: '覇王学園', tactic: 'ground', short: '覇王学', color: '#e04848', style: '力でねじふせる。走っても守っても重い', runBias: 0.62,
     ...squad([4026, 5014, 5016, 5030, 5018, 3015, 3007, 3046, 4014, 2031, 4019], [[4, 'roar'], [1, 'powerRun'], [5, 'pushRun'], [0, 'sureShort'], [2, 'steal']]),
   },
   {
-    name: '蒼天大付属', short: '蒼天大', color: '#3f8cff', style: '走ってよし投げてよし。すきのない強豪', runBias: 0.5,
+    name: '蒼天大付属', tactic: 'speed', short: '蒼天大', color: '#3f8cff', style: '走ってよし投げてよし。すきのない強豪', runBias: 0.5,
     ...squad([5004, 3047, 2040, 5022, 4047, 5031, 4033, 3040, 4051, 5020, 3027], [[1, 'trick'], [4, 'rush'], [0, 'sureLong'], [5, 'wall'], [2, 'flyLong']]),
   },
   {
-    name: '麒麟学院', short: '麒麟学', color: '#f0a030', style: '全国の王者。攻めも守りも一芸ぞろい', runBias: 0.48, smart: 0.1,
+    name: '麒麟学院', tactic: 'royal', short: '麒麟学', color: '#f0a030', style: '全国の王者。攻めも守りも一芸ぞろい', runBias: 0.48, smart: 0.1,
     ...squad([5008, 5024, 5011, 5021, 5012, 4003, 4030, 4013, 4054, 4056, 3016], [[0, 'sureLong'], [2, 'steal'], [4, 'roar'], [1, 'powerRun'], [5, 'rush']]),
   },
 ];
@@ -251,8 +254,12 @@ export function opponentSheet(round: number, league = 0, size: Size = tierOf(lea
     specials: all.filter((p) => aces.includes(p.id)).map((p) => specialOf(p.id, p.ace!)),
     runBias: team.runBias,
     smart: Math.min(0.95, ROUNDS[round]!.smart + (team.smart ?? 0)),
+    ...(size === 11 && team.tactic ? { tactic: team.tactic, tacticLv: schoolTacticLv(league, round) } : {}),
   };
 }
+
+/** How far a school has come with its colour: the higher the league and the later the round, the further. */
+export const schoolTacticLv = (league: number, round: number): number => Math.min(TACTIC_LV_MAX, Math.max(1, league - 1 + (round >= 3 ? 1 : 0)));
 
 /** The aces of a school in a round, for the scouting report. */
 export function aces(school: number, round: number, size: Size = 6): { id: number; name: string; play: string; tag: string }[] {

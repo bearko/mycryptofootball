@@ -48,3 +48,26 @@ button.pol-stat:active { transform: translate(0.12rem, 0.12rem); box-shadow: 0.0
 .pol-legend { flex: none; display: flex; gap: 1rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--dim); white-space: nowrap; }
 .pol-legend i { margin-right: 0.3rem; }
 .pol-foot > .btn { margin-left: auto; }
+
+/* eleven a side, the club's colour */
+.pol-tac { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; gap: 0.3rem 1rem; align-items: center; margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; background: rgba(6, 8, 26, 0.45); border-left: 0.3rem solid var(--yellow); }
+.pol-tac-head { grid-row: 1 / 3; display: grid; gap: 0.15rem; justify-items: start; }
+.pol-tac-head b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); color: var(--yellow); white-space: nowrap; }
+.pol-tac-head small { font-size: var(--fs-xs); color: var(--dim); white-space: nowrap; }
+.pol-tac-lv { font-size: var(--fs-xs); white-space: nowrap; color: var(--dim); letter-spacing: 0.05em; }
+.pol-tac-lv em { font-style: normal; color: var(--yellow); }
+.pol-tac-btns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
+.pol-tac-btn { position: relative; min-height: max(44px, 3.8rem); display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.2rem 0.4rem; font: inherit; color: var(--chalk); background: #0d1136; border: 0.18rem solid var(--ink); border-bottom: 0.3rem solid var(--tc); cursor: pointer; transition: transform 0.14s var(--spring), background 0.14s; min-width: 0; }
+div.pol-tac-btn { cursor: default; opacity: 0.55; }
+.pol-tac-btn b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); white-space: nowrap; }
+.pol-tac-btn small { font-size: var(--fs-xs); color: var(--dim); white-space: nowrap; }
+.pol-tac-btn .pol-rec { position: absolute; top: -0.7rem; right: 0.3rem; }
+.pol-tac-btn.is-on { background: color-mix(in srgb, var(--tc) 30%, #0d1136); border-color: var(--tc); box-shadow: 0 0 0.8rem color-mix(in srgb, var(--tc) 55%, transparent); opacity: 1; }
+.pol-tac-btn.is-on small { color: var(--chalk); }
+button.pol-tac-btn:hover:not(.is-on) { transform: translateY(-0.15rem); }
+.pol-tac-btn:focus-visible { outline: 0.2rem solid var(--yellow); outline-offset: 0.15rem; }
+.pol-tac-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem 0.5rem; font-size: var(--fs-xs); line-height: 1.35; }
+.pol-tac-note span { padding: 0 0.4rem; border-radius: 0.25rem; color: var(--ink); }
+.pol-tac-note .is-good { background: var(--cyan); }
+.pol-tac-note .is-bad { background: #ff8a6a; }
+.pol-tac-note small { color: var(--dim); }

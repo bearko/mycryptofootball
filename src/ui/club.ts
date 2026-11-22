@@ -8,11 +8,12 @@
 import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
 import { commit, prefs, save, storeMatch } from '../core/save';
+import { TACTIC, edgeOf, type Tactic } from '../game/tactics';
 import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, graduating, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf,
+  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, graduating, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { aces } from '../game/teams';
@@ -441,6 +442,7 @@ export function clubScreen(): [HTMLElement, () => void] {
         h('span.vs-kind', labelOf(s, p)),
         h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
         h('p.vs-style', opp.style),
+        sizeOf(s.lineup!) === 11 && opp.tactic ? colourLine(opp.tactic) : null,
         h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? '負けたら今年はここまで' : '負けても大会へ進める')),
       h('ul.vs-aces', { class: stars.length > 3 ? 'is-many' : '' },
         h('li.vs-cap', '要注意のエース'),
@@ -468,6 +470,14 @@ export function clubScreen(): [HTMLElement, () => void] {
       },
     }, h('b', label), tag ? h('i', tag) : null));
     return h('div.vs-calls', { role: 'group', 'aria-label': '試合で指示するプレー' }, h('span', '指示'), btns);
+  };
+  /** Eleven a side: the two colours and which has the edge. */
+  const colourLine = (theirs: Tactic): HTMLElement => {
+    const mine = tacticOf(s)!;
+    const e = edgeOf(mine, theirs);
+    const chip = (t: Tactic, who: string): HTMLElement => h('span.tac-chip', { style: { '--tc': TACTIC[t].color } }, h('small', who), TACTIC[t].name);
+    return h('p.vs-colour', chip(mine, 'うち'), h('i', 'vs'), chip(theirs, '相手'),
+      h('em', { class: e > 0 ? 'is-up' : e < 0 ? 'is-down' : '' }, e > 0 ? '相性 有利' : e < 0 ? '相性 不利' : '相性 五分'));
   };
   let vs: HTMLElement | null = null;
 
