@@ -182,7 +182,11 @@
 .hand-side i { font-style: normal; font-size: var(--fs-xs); letter-spacing: 0.2em; animation: march 0.8s steps(4) infinite; }
 .hand-side.def i { animation: throb 0.8s ease-in-out infinite; }
 @keyframes march { from { transform: translateX(-0.5rem); opacity: 0.3; } to { transform: translateX(0.5rem); opacity: 1; } }
-.hand-cards { flex: 0 1 auto; min-width: 0; display: flex; gap: 0.6rem; overflow-x: auto; overflow-y: visible; padding: 1.4rem 0.5rem 0; margin-top: -1.4rem; scrollbar-width: none; }
+/* (a box that scrolls sideways clips at the top too: the room above is for a card that is looked at, which rises,
+   and the round stamp on its corner; the room on the right is for the stamp of the last card. The room itself
+   lets taps through to the field.) */
+.hand-cards { flex: 0 1 auto; min-width: 0; display: flex; gap: 0.6rem; overflow-x: auto; overflow-y: visible; padding: 2.8rem 1.1rem 0 0.5rem; margin-top: -2.8rem; scrollbar-width: none; pointer-events: none; }
+.hand-cards > * { pointer-events: auto; }
 .hand-cards::-webkit-scrollbar { display: none; }
 .hand-cards .card { height: 12.2rem; width: 9.4rem; }
 /* a special play that cannot be called right now folds down to its spine */
