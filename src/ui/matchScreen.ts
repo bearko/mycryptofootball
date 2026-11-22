@@ -15,6 +15,7 @@ import {
   DEF_INFO, DEF_TYPES, KICK_INFO, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isKick, isRun, type DefType, type OffType, type SpecialCard,
 } from '../game/cards';
 import { callFor, type Beat, type Call, type CallNames } from '../game/calls';
+import { fullNames, hush, prefetchVoice, speak, warmVoice } from '../core/voice/voice';
 import { hero } from '../game/heroes';
 import {
   FG_POINTS, FIELD, MOM_MAX, PAT_POINTS, QUARTERS, TALKS, TALK_KEYS, TWO_POINTS, at, autoPick, autoTalk, bestAgainst, createMatch,
@@ -117,8 +118,13 @@ export function matchScreen(): [HTMLElement, () => void] {
   // the play-by-play: shouted lines stack up on the right while a play runs
   const casterEl = h('aside.caster', { 'aria-live': 'off' });
   const names: CallNames = { teams: [home.short, away.short], hero: (id) => hero(id).name };
+  /** the play being shown runs itself (called for the coach): only its big moments are spoken */
+  let quickPlay = false;
+  /** a call as it is spoken: head and tail, and the schools by their full names */
+  const lineOf = (c: Call): string => fullNames(c.tail ? `${c.head} ${c.tail}` : c.head, [home, away]);
   const shout = (c: Call | null, off: 0 | 1): void => {
     if (!c) return;
+    if (!debug.bot && (!quickPlay || c.hot)) speak(lineOf(c), { hot: c.hot });
     for (const old of casterEl.children) old.classList.add('old');
     while (casterEl.children.length > 2) casterEl.firstElementChild!.remove();
     const mine = c.side === 'none' ? '' : (c.side === 'off') === (off === 0) ? 'mine' : 'theirs';
@@ -132,6 +138,15 @@ export function matchScreen(): [HTMLElement, () => void] {
   const BIG_PLAY = 15;
   const booth = speech('announcer');
   booth.el.classList.add('booth');
+  // the booth speaks too, when the voice is free (between plays)
+  {
+    const say = booth.say;
+    booth.say = (line, p) => {
+      if (!debug.bot && !quickPlay) speak(fullNames(line, [home, away]), { quiet: true });
+      return say(line, p);
+    };
+  }
+  warmVoice();
   const stage = h('div.stage');
   const hand = h('footer.hand');
   const clutch = h('div.clutch-frame', { 'aria-hidden': 'true' }, h('span', '勝負どころ'), h('span', '勝負どころ'));
@@ -730,9 +745,13 @@ export function matchScreen(): [HTMLElement, () => void] {
   // ------------------------------------------------------------------ showing a play
   const playOut = async (off: Pick, def: Pick, quick = false): Promise<void> => {
     closePeek();
+    quickPlay = quick;
     flowBar.classList.toggle('on', quick);
     const before = snap();
     const res: PlayResult = resolvePlay(st, off, def);
+    // what will be said about it is known now: its pieces are made ready while the cards are shown
+    prefetchVoice((['snap', 'handoff', 'throw', 'catch', 'drop', 'break', 'steal', 'touchdown', 'kick', 'end'] as Beat[])
+      .map((b) => callFor(b, res, names)).filter((c): c is Call => !!c).map(lineOf));
     storeMatch(st);
     const mineOff = res.off === 0;
     /** a touchdown by either side: the offense's, or the other team's on a return (a kickoff, a ball taken away) */
@@ -1051,6 +1070,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     closePeek();
     alive = false;
     busy = true;
+    quickPlay = false;
     flowBar.classList.remove('on');
     hand.classList.remove('in');
     insets(false);
@@ -1117,6 +1137,7 @@ export function matchScreen(): [HTMLElement, () => void] {
 
   return [root, () => {
     alive = false;
+    hush();
     skip?.();
     cancelAnimationFrame(raf);
     window.removeEventListener('keydown', onKey);
