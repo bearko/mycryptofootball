@@ -36,6 +36,11 @@ export interface School {
   more: OppPlayer[];
   /** its aces, the most dangerous first: the later the round, the more of them have their special plays ready */
   aces: number[];
+  /**
+   * the corporate champion: not a school, and in no tournament. It is met only in the summit (season.ts), by a club
+   * at the top that wins the nation's tournament. Its players are legends who once played for the great schools
+   */
+  pro?: boolean;
 }
 
 /**
@@ -184,7 +189,14 @@ export const SCHOOLS: readonly School[] = [
     name: '麒麟学院', tactic: 'royal', short: '麒麟学', color: '#f0a030', style: '全国の王者。攻めも守りも一芸ぞろい', runBias: 0.48, smart: 0.1,
     ...squad([5008, 5024, 5011, 5021, 5012, 4003, 4030, 4013, 4054, 4056, 3016], [[0, 'sureLong'], [2, 'steal'], [4, 'roar'], [1, 'powerRun'], [5, 'rush']]),
   },
+  // ---- the corporate champion, met only in the summit
+  {
+    name: '鳳凰電機', short: '鳳凰電', color: '#ff3d6e', tactic: 'royal', style: '社会人の王者。名門の主将だった英雄がそろう', runBias: 0.5, smart: 0.2, pro: true,
+    ...squad([5001, 5017, 5004, 5031, 5025, 5018, 5003, 5023, 5029, 5006, 5007], [[0, 'sureLong'], [1, 'powerRun'], [2, 'flyLong'], [3, 'steal'], [4, 'roar']]),
+  },
 ];
+/** the corporate champion's place in SCHOOLS */
+export const PRO_SCHOOL = SCHOOLS.findIndex((t) => t.pro);
 
 /**
  * The schools of each tournament (district, prefecture, region, nation), the weakest first.

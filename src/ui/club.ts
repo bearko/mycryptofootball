@@ -13,7 +13,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
@@ -69,6 +69,7 @@ function contextLine(s: Season): Line {
     const worn = s.members.filter((m) => tired(m) && isStarter(s.lineup!, m.id));
     if (worn.length) return [`${worn.slice(0, 2).map((m) => shortName(m.id)).join('と')}${worn.length > 2 ? 'たち' : ''}がバテ気味です…。試合では少し動きが落ちます。`, 'think'];
     if (isFinal(p)) return ['ついに秋の決勝です！ ここまで来たら、あとは思いきりぶつかるだけ！', 'cheer'];
+    if (p.summit) return ['頂上決戦です！ 相手は社会人の王者、鳳凰電機。勝てば日本一の頂点です、監督！', 'cheer'];
     if (p.cup && p.stage === 'spring') return p.round === 3
       ? ['春の決勝です！ 秋の本番の前に、いちばん上を取ってしまいましょう！', 'cheer']
       : [`今日は春の${shortLabel(p)}。負けたら春の大会はここまで…！ いざ、試合へ！`, 'cheer'];
@@ -93,6 +94,7 @@ function contextLine(s: Season): Line {
     }
   }
   if (p.scrim) return ['合宿の最後は紅白戦！ 2週間の成果を見せてもらいましょう。', 'cheer'];
+  if (p.summit && s.day === SUMMIT_DAY) return ['全国制覇、おめでとうございます！！ 最後に、社会人の王者・鳳凰電機との頂上決戦が待っています。4週間で仕上げましょう！', 'sparkle'];
   if (policyOpen(s) && s.day > 0) return ['練習試合、おつかれさまでした！ いまだけ「方針」を見直せます。カードを出すと締め切りです。', 'point'];
   if (last && last.day === s.day - 1) {
     return last.win
@@ -584,7 +586,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     const p = plan(s);
     const match = p.t === 'match';
     root.classList.toggle('is-matchday', match);
-    root.classList.toggle('is-final', match && isFinal(p));
+    root.classList.toggle('is-final', match && (isFinal(p) || !!p.summit));
     if (match) {
       if (!vs) {
         vs = vsBanner(p);

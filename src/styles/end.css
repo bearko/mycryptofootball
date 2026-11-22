@@ -46,3 +46,13 @@
 /* the heroes in their last year: a ribbon says so */
 .end-grad { position: absolute; right: 0; bottom: 1.3rem; z-index: 2; font-style: normal; font-family: var(--display); font-size: 0.8rem; line-height: 1.4; padding: 0 0.5rem; color: var(--ink); background: var(--pink); transform: rotate(-6deg); box-shadow: 0.12rem 0.12rem 0 var(--ink); }
 .end-team.is-many .end-grad { bottom: 0; right: -0.1rem; font-size: 0.62rem; padding: 0 0.3rem; }
+
+/* the summit won: the game is beaten */
+.end-tags { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.end-clear { display: inline-block; font-family: var(--display); font-weight: 400; font-size: 1.8rem; line-height: 1.2; color: var(--ink); background: linear-gradient(90deg, #ffe14a, #fff6c0, #ffe14a); background-size: 200% 100%; padding: 0.1rem 1.6rem; clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); box-shadow: 0 0 2rem rgba(255, 225, 74, 0.6); animation: end-clear-in 0.6s 0.3s var(--spring) backwards, end-clear-shine 2.4s linear infinite; }
+@keyframes end-clear-in { from { transform: scale(2.4) rotate(-6deg); opacity: 0; } }
+@keyframes end-clear-shine { to { background-position: -200% 0; } }
+/* (five results and a badge: the heading gives a little room) */
+.end.is-cleared h1 { font-size: 4.6rem; margin: 0.1rem 0; }
+.end.champion.is-cleared .end-team.is-many .end-hero .portrait { width: 3.4rem; }
+.end.champion .end-team.is-many .end-hero .portrait { width: 3.6rem; }

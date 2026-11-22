@@ -124,12 +124,14 @@ function jump(to: string): void {
   if (s.phase === 'recruit') show(recruitScreen());
   else if (to === 'lineup') show(lineupScreen(() => open(clubScreen())));
   else if (to === 'match' && SCHEDULE[s.day]!.t === 'match') show(...matchScreen());
-  else if (to === 'end' || to === 'champion') {
+  else if (to === 'end' || to === 'champion' || to === 'clear') {
     s.phase = 'done';
-    s.champion = to === 'champion';
-    // a year played to its end: lost the spring's semi-final, then all the way to the autumn's final
-    const won = (d: DayPlan): boolean => (d.stage === 'spring' ? d.round < 2 : d.round < 3 || to === 'champion');
-    s.results = SCHEDULE.filter((d) => d.t === 'match' && !(d.stage === 'spring' && d.round === 3))
+    s.champion = to !== 'end';
+    // the summit won as well: the game is beaten
+    if (to === 'clear') s.summit = 'won';
+    // a year played to its end: lost the spring's semi-final, then all the way to the autumn's final (and the summit)
+    const won = (d: DayPlan): boolean => (d.stage === 'spring' ? d.round < 2 : d.round < 3 || to !== 'end');
+    s.results = SCHEDULE.filter((d) => d.t === 'match' && !(d.stage === 'spring' && d.round === 3) && (!d.summit || to === 'clear'))
       .map((d) => ({ day: d.n, m: d.m, opp: d.round, us: won(d) ? 21 : 7, them: won(d) ? 14 : 17, win: won(d) }));
     show(...endScreen());
   } else open(clubScreen());

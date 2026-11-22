@@ -309,13 +309,16 @@ describe('season', () => {
     expect(camp.map((d) => d.scrim)).toEqual([...Array(13).fill(false), true]);
     // the autumn: a practice match, then the three rounds, each after a week of daily practice
     const autumn = SCHEDULE.filter((d) => d.stage === 'autumn');
-    expect(autumn.filter((d) => d.t === 'match').map((d) => d.round)).toEqual([0, 1, 2, 3]);
+    expect(autumn.filter((d) => d.t === 'match' && !d.summit).map((d) => d.round)).toEqual([0, 1, 2, 3]);
+    // and, for a club at the top that wins it all, the summit
+    expect(autumn.filter((d) => d.summit).map((d) => d.t)).toEqual(['train', 'match']);
     for (const m of autumn.filter((d) => d.cup)) expect(SCHEDULE.slice(m.n - 6, m.n).every((d) => d.days === 1)).toBe(true);
-    expect(dateText(SCHEDULE[SCHEDULE.length - 1]!)).toBe('10月31日（日）');
+    expect(dateText(SCHEDULE.filter((d) => !d.summit).pop()!)).toBe('10月31日（日）');
+    expect(dateText(SCHEDULE[SCHEDULE.length - 1]!)).toBe('11月28日（日）');
     // the dates run on without a gap
     let days = 0;
     for (const d of SCHEDULE) days += d.days;
-    expect(days).toBe(30 * 7);
+    expect(days).toBe(34 * 7);
     expect(SCHEDULE.map((d) => d.m).filter((m) => m >= 0)).toEqual([...Array(MATCH_COUNT).keys()]);
   });
 
