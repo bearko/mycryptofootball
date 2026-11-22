@@ -7,6 +7,7 @@ import type { Rng } from '../core/rng';
 import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
 import { bestKicker } from './lineup';
+import { suggestAces } from './duel';
 import type { TeamSheet } from './match';
 import { DEF_POS_OF, OFF_POS_OF, ROLE_WEIGHTS, STATS, STAT_MAX, roleOf, type DefPos, type Lineup, type OffPos, type Size, type Stats } from './model';
 import { CUPS, tierOf } from './prestige';
@@ -274,6 +275,8 @@ export function opponentSheet(round: number, league = 0, size: Size = tierOf(lea
   };
   // eleven a side, the colour's own plays
   if (sheet.tactic) sheet.specials.push(...tacticCards(sheet, sheet.tactic, sheet.tacticLv ?? 1));
+  // eleven a side, its aces (game/duel.ts): those with their special plays ready come first
+  if (size === 11) sheet.aces = suggestAces(sheet);
   return sheet;
 }
 
