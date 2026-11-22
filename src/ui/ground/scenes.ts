@@ -1,14 +1,15 @@
-// Moments that take the stage for a second or two: the club event (two answers, one tap)
-// and the cut-in when a special play or a special drill is won. Neither waits for an OK.
+// Moments that take the stage for a second or two: the club event (two answers, one tap), the manager's question
+// of where the summer camp is to be (one tap), and the cut-in when a special play or a special drill is won. Neither waits for an OK.
 
 import { sfx, vibrate } from '../../core/audio';
 import { h } from '../../core/dom';
 import { commit } from '../../core/save';
 import { hero, recruit, specialOf, talentOf } from '../../game/heroes';
-import { DRILL_NAME, answerEvent, boosted, eventDef, member, type Change, type Season } from '../../game/season';
+import { CAMP_KEYS, CAMP_SITE, type CampKey } from '../../game/funds';
+import { DRILL_NAME, answerEvent, campPrice, moneyOf, setCamp, boosted, eventDef, member, type Change, type Season } from '../../game/season';
 import { playCard } from '../cardView';
 import { burst, center, flash, glitter, kinetic, motion, ring, shake, typewriter } from '../fx';
-import { TALENT_COLOR, cheerAt, closeModal, modal, portrait } from '../kit';
+import { TALENT_COLOR, charPose, cheerAt, closeModal, modal, portrait } from '../kit';
 import { ICON, icon } from './bits';
 import { practiceCard } from './pcard';
 
@@ -68,6 +69,78 @@ export function eventScene(s: Season, after: (changes: Change[], label: string) 
     h('div.ev-head', icon(EVENT_ICON[e.key] ?? EVENT_ICON.idea!, 'ev-icon'), h('span.label.hot', 'きょうのできごと'), h('h2', kinetic(def.title))),
     h('div.ev-body', { class: `cast${Math.min(cast.length, 3)}` },
       h('div.ev-cast', cast.map((id, i) => portrait(id, { cls: i % 2 ? 'is-turned' : '', color: i % 2 ? '#37e3ff' : '#ffe14a', delay: i * 0.23 }))),
+      paper),
+    choices);
+  modal(scene, { sticky: true, cls: 'scene', quiet: true });
+  sfx.event();
+  const typing = typewriter(line, text, { cps: 30, onTick: () => sfx.typeTick() });
+  paper.addEventListener('click', () => typing.skip());
+}
+
+const CAMP_ICON = '<path d="M3 20h18M5 20l7-14 7 14M12 6v14M9 20l3-5 3 5"/>';
+
+/** What a camp at a place does, as the chips under its name. */
+export function campNotes(s: Season, k: CampKey): { text: string; bad: boolean }[] {
+  const site = CAMP_SITE[k];
+  const price = campPrice(s, k);
+  return [
+    { text: price ? `部費 ${price}万円` : '費用なし', bad: price > 0 },
+    { text: `練習の効果 ${site.xp}倍`, bad: false },
+    ...(site.sta < CAMP_SITE.school.sta ? [{ text: '疲れにくい', bad: false }] : []),
+  ];
+}
+
+/**
+ * The manager asks where the summer camp is to be: the places side by side, what each costs and does. One tap
+ * decides (a place the money does not reach does not take the tap); the scene stamps it and closes itself.
+ */
+export function campScene(s: Season, after: (k: CampKey) => void): void {
+  const line = h('p.ev-text');
+  const paper = h('div.ev-paper.paper.tape', line);
+  let picked = false;
+  const choices = h('div.ev-choices.is-camp', CAMP_KEYS.map((k, i) => {
+    const site = CAMP_SITE[k];
+    const short = moneyOf(s) < campPrice(s, k);
+    const slab: HTMLButtonElement = h('button.ev-choice', {
+      type: 'button', class: `${i % 2 ? 'is-b' : ''} ${short ? 'is-off' : ''}`, style: { '--i': String(i) },
+      'aria-label': `${site.name}：${campNotes(s, k).map((n) => n.text).join('、')}${short ? '（部費が足りません）' : ''}`,
+      onclick: (ev: MouseEvent) => {
+        if (picked) return;
+        if (short || !setCamp(s, k)) {
+          sfx.deny();
+          slab.classList.remove('is-deny');
+          void slab.offsetWidth;
+          slab.classList.add('is-deny');
+          return;
+        }
+        picked = true;
+        typing.skip();
+        const at = ev.clientX || ev.clientY ? { x: ev.clientX, y: ev.clientY } : center(slab);
+        sfx.stamp();
+        vibrate([18, 30, 26]);
+        ring(at.x, at.y, '#ff5a2e', 1.8);
+        burst(at.x, at.y, { count: 16, color: ['#ff5a2e', '#ffe14a', '#fffbe8'], shape: ['star', 'rect'] });
+        slab.classList.add('is-picked');
+        choices.classList.add('is-decided');
+        commit();
+        setTimeout(() => {
+          closeModal();
+          after(k);
+        }, motion() ? 520 : 200);
+      },
+    },
+    h('span.ev-face',
+      h('b', site.name),
+      h('small.ev-what', site.what),
+      h('span.ev-fx', campNotes(s, k).map((n) => h('i', { class: n.bad ? 'is-minus is-cost' : '' }, n.text)))),
+    h('i.ev-stamp', '決定'));
+    return slab;
+  }));
+  const text = `7月がおわると、いよいよ夏合宿です！ どこで合宿しますか？ 部費はいま${moneyOf(s)}万円です。`;
+  const scene = h('div.ev.is-camp',
+    h('div.ev-head', icon(CAMP_ICON, 'ev-icon'), h('span.label.hot', 'マネージャーから'), h('h2', kinetic('夏合宿の行き先'))),
+    h('div.ev-body.cast1',
+      h('div.ev-cast', h('span.ev-mgr', h('img', { src: charPose('manager', 'point'), alt: '', draggable: false }))),
       paper),
     choices);
   modal(scene, { sticky: true, cls: 'scene', quiet: true });
