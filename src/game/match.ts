@@ -1207,7 +1207,7 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
       points = PAT_POINTS;
       st.score[o] += points;
       lines.push(`${k.name}のキック、成功！ ${O.short}に${points}点`);
-    } else lines.push(`${k.name}のキックは外れた…`);
+    } else lines.push(`${k.name}のキックは外れた！`);
     st.tfp = false;
     kickoff(st, d);
   } else if (type === 'fg') {
@@ -1226,7 +1226,7 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
       kickoff(st, d);
     } else {
       turnover = 'miss';
-      lines.push(`${k.name}のフィールドゴールは外れた…。${D.short}の攻撃に`);
+      lines.push(`${k.name}のフィールドゴールは外れた！ ${D.short}の攻撃に`);
       mom(d, 1, 'キックを防いだ');
       st.poss = d;
       st.pos = clamp(FIELD - before.pos, 8, FIELD - 1);
@@ -1571,7 +1571,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     if (outcome === 'incomplete') lines.push(`${pn}のパスは通らず。${dn}がはじいた`);
     else if (outcome === 'sack') lines.push(`${dn}が${pn}をつかまえた！ ${-yards}ヤード後退`);
     else if (outcome === 'loss') lines.push(`${dn}が${cn}を押し戻した。${-yards}ヤード後退`);
-    else if (outcome === 'nogain') lines.push(`${dn}が${cn}を止めた。前進できず`);
+    else if (outcome === 'nogain') lines.push(`${dn}が${cn}を止めた！ 前進できず！`);
     else if (breakaway) lines.push(`${cn}が抜けだした！ 独走${td ? '' : `、${yards}ヤード前進`}`);
     else if (isRun(type)) lines.push(`${cn}が${type === 'inside' ? '中央を突く' : '外を回る'}！ ${yards}ヤード前進`);
     else lines.push(`${pn}から${cn}へ${type === 'long' ? 'ロング' : ''}パス成功！ ${yards}ヤード前進`);

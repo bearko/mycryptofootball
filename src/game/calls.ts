@@ -123,7 +123,7 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       if (res.tfp) return res.points ? say('押しこんだぁ！', `${TWO_POINTS}点成功！`, 'off', true) : say('止めたぁ！', `${defName}がゴールを守った！`, 'def', true);
       if (res.td || res.turnover === 'int' || res.turnover === 'fumble') return null; // already shouted
       if (res.outcome === 'sack') return pick([say('サァァック！！', `${defender}が${passer}をしとめた！`, 'def', true), say('サックだ！！', `${defender}、${passer}を投げさせない！`, 'def', true)], n, 10);
-      if (res.turnover === 'downs') return say('止めたぁ！！', `4回目も届かない！ ${defName}のボール！`, 'def', true);
+      if (res.turnover === 'downs') return say('止めたぁ！！', '4回目の攻撃も届かず！ 攻守交代です！', 'def', true);
       if (res.outcome === 'incomplete') return null; // said when the ball came down
       if (res.firstDown) {
         return res.yards >= 15
@@ -132,7 +132,7 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       }
       if (res.yards <= 0) return pick([say('つぶしたぁ！', `${defender}が${carrier}を進ませない！`, 'def'), say('進めない！', `${defender}のナイスタックル！`, 'def')], n, 12);
       if (!run && res.yards <= 2) return say('すぐ止めた！', `${defender}、${res.yards}ヤードしか許さない`, 'def');
-      return pick([say(`${res.yards}ヤード！`, `${defender}がようやく止めた`, 'off'), say('止めた！', `${carrier}、${res.yards}ヤード前進`), say(`${res.yards}ヤード前進！`, `${defender}のタックル`)], n, 12);
+      return pick([say(`${res.yards}ヤード！`, `${defender}が止めた！`, 'off'), say('止めた！', `${carrier}、${res.yards}ヤード前進`), say(`${res.yards}ヤード前進！`, `${defender}のタックル`)], n, 12);
     }
   }
 }
