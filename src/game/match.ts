@@ -177,6 +177,8 @@ export interface PlayResult {
   defPotency: number;
   momBefore: [number, number];
   momAfter: [number, number];
+  /** why each side gained momentum on this play, in a word ('' when it gained none) */
+  momWhy: [string, string];
   /** what happened to the clock after this play */
   period: null | 'quarter' | 'half' | 'final' | 'sudden';
   lines: string[];
@@ -988,8 +990,15 @@ function resolveKickoff(st: MatchState, offPick: Pick, defPick: Pick): PlayResul
   const rng = st.rng;
   const before = { pos: st.pos, down: st.down, toGo: st.toGo, quarter: st.quarter, left: st.left };
   const momBefore: [number, number] = [st.mom[0], st.mom[1]];
-  const mom = (t: 0 | 1, v: number): void => {
+  // (the biggest gain names the reason)
+  const gotWhy: [string, string] = ['', ''];
+  const gotBy: [number, number] = [0, 0];
+  const mom = (t: 0 | 1, v: number, w = ''): void => {
     st.mom[t] = clamp(st.mom[t] + v, 0, MOM_MAX);
+    if (v > 0 && w && v > gotBy[t]) {
+      gotWhy[t] = w;
+      gotBy[t] = v;
+    }
   };
   const lines: string[] = [];
   let good = true;
@@ -1005,13 +1014,13 @@ function resolveKickoff(st: MatchState, offPick: Pick, defPick: Pick): PlayResul
     if (good) {
       st.pos = spot;
       lines.push(`オンサイドキック、成功！ ${O.short}がボールを取り返した`);
-      mom(o, 2);
+      mom(o, 2, 'オンサイド成功');
       mom(d, -1);
     } else {
       st.poss = d;
       st.pos = FIELD - spot;
       lines.push(`オンサイドキックは${D.short}が押さえた。ゴールまで${spot}ヤードから攻撃`);
-      mom(d, 1);
+      mom(d, 1, 'オンサイドを防いだ');
     }
     // the two who go for the ball: a corner of the kicking team, a lineman of the other
     tackler = at(O, 'CB1').id;
@@ -1049,7 +1058,7 @@ function resolveKickoff(st: MatchState, offPick: Pick, defPick: Pick): PlayResul
   if (returnTd) {
     st.score[d] += TD_POINTS;
     st.totals[d].td += 1;
-    mom(d, 2);
+    mom(d, 2, 'リターンTD');
     mom(o, -1);
     tryFor(st);
   } else {
@@ -1062,7 +1071,7 @@ function resolveKickoff(st: MatchState, offPick: Pick, defPick: Pick): PlayResul
   return {
     n: st.n, off: o, offPick, defPick, before, outcome: 'kick', yards: 0, td: false, firstDown: false, turnover: null, edge: 'even',
     passer: O.lineup.off.QB, carrier: k.id, defender: tackler, offPotency: 0, defPotency: 0,
-    momBefore, momAfter: [st.mom[0], st.mom[1]], period: null, lines,
+    momBefore, momAfter: [st.mom[0], st.mom[1]], momWhy: gotWhy, period: null, lines,
     kick: { type, good, dist, kicker: k.id, returner, ret, spot: returnTd ? FIELD : st.pos },
     points: returnTd ? TD_POINTS : 0, ...(returnTd ? { returnTd } : {}),
   };
@@ -1119,8 +1128,15 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
   const rng = st.rng;
   const before = { pos: st.pos, down: st.down, toGo: st.toGo, quarter: st.quarter, left: st.left };
   const momBefore: [number, number] = [st.mom[0], st.mom[1]];
-  const mom = (t: 0 | 1, v: number): void => {
+  // (the biggest gain names the reason)
+  const gotWhy: [string, string] = ['', ''];
+  const gotBy: [number, number] = [0, 0];
+  const mom = (t: 0 | 1, v: number, w = ''): void => {
     st.mom[t] = clamp(st.mom[t] + v, 0, MOM_MAX);
+    if (v > 0 && w && v > gotBy[t]) {
+      gotWhy[t] = w;
+      gotBy[t] = v;
+    }
   };
   const rush = defPick.type === 'blitz' && !defPick.special;
   const tot = st.totals[o];
@@ -1147,12 +1163,12 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
       points = FG_POINTS;
       st.score[o] += points;
       lines.push(`${k.name}の${dist}ヤードのフィールドゴール、成功！ ${O.short}に${points}点`);
-      mom(o, 1);
+      mom(o, 1, 'フィールドゴール');
       kickoff(st, d);
     } else {
       turnover = 'miss';
       lines.push(`${k.name}のフィールドゴールは外れた…。${D.short}の攻撃に`);
-      mom(d, 1);
+      mom(d, 1, 'キックを防いだ');
       st.poss = d;
       st.pos = clamp(FIELD - before.pos, 8, FIELD - 1);
       st.down = 1;
@@ -1176,7 +1192,7 @@ function resolveKick(st: MatchState, offPick: Pick, defPick: Pick): PlayResult {
   return {
     n: st.n, off: o, offPick, defPick, before, outcome: 'kick', yards: type === 'punt' ? dist : 0, td: false, firstDown: false, turnover, edge: 'even',
     passer: O.lineup.off.QB, carrier: k.id, defender: D.lineup.def.DL1, offPotency: 0, defPotency: 0,
-    momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines,
+    momBefore, momAfter: [st.mom[0], st.mom[1]], momWhy: gotWhy, period, lines,
     // a punt that comes down on the field is caught by the other team's safety (he waits deep for it)
     kick: { type, good, dist, kicker: k.id, ...(type === 'punt' && before.pos + dist < FIELD ? { returner: D.lineup.def.S } : {}) },
     tfp: type === 'pat' || undefined, points,
@@ -1375,8 +1391,15 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   const tot = st.totals[o];
   tot.plays += 1;
   st.calls[o].push(type);
-  const mom = (t: 0 | 1, v: number): void => {
+  // (the biggest gain names the reason)
+  const gotWhy: [string, string] = ['', ''];
+  const gotBy: [number, number] = [0, 0];
+  const mom = (t: 0 | 1, v: number, w = ''): void => {
     st.mom[t] = clamp(st.mom[t] + v, 0, MOM_MAX);
+    if (v > 0 && w && v > gotBy[t]) {
+      gotWhy[t] = w;
+      gotBy[t] = v;
+    }
   };
 
   let points = 0;
@@ -1399,10 +1422,10 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
       points = TWO_POINTS;
       st.score[o] += points;
       lines.push(`2点ねらい、成功！ ${O.short}に${points}点`);
-      mom(o, 1);
+      mom(o, 1, '2点成功');
     } else {
       lines.push(outcome === 'int' || outcome === 'fumble' ? `${dn}が止めた！ 2点ねらいは失敗` : '2点ねらいは失敗');
-      mom(d, 1);
+      mom(d, 1, '2点を防いだ');
       if (outcome === 'gain') outcome = 'nogain';
     }
     td = false;
@@ -1415,7 +1438,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     lines.push(outcome === 'int' ? `${dn}がパスを奪い取った！ 攻守交代` : `${cn}がボールをこぼした！ ${dn}が押さえて攻守交代`);
     yards = 0;
     handOver(clamp(before.pos + depth, 1, FIELD - 1));
-    mom(d, 2);
+    mom(d, 2, 'ボールを奪った');
     mom(o, -1);
     // eleven a side: the one who took it away may run it all the way back
     const taker = byId(D, defender);
@@ -1426,7 +1449,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
       st.score[d] += points;
       st.totals[d].td += 1;
       lines.push(`${dn}がそのまま走りきった！ リターン・タッチダウン！ ${D.short}に${points}点`);
-      mom(d, 1);
+      mom(d, 1, 'リターンTD');
       tryNext = true;
       tryFor(st);
     }
@@ -1440,14 +1463,14 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     else lines.push(`${pn}から${cn}へ${type === 'long' ? 'ロング' : ''}パス成功！ ${yards}ヤード前進`);
 
     tot.yards += yards;
-    if (yards < 0) mom(d, 1);
+    if (yards < 0) mom(d, 1, '押し戻した');
     if (roared) mom(o, -1);
     if (td) {
       points = TD_POINTS;
       st.score[o] += points;
       tot.td += 1;
       lines.push(`タッチダウン！ ${O.short}に${points}点`);
-      mom(o, 2);
+      mom(o, 2, 'タッチダウン');
       mom(d, -1);
       if (told) {
         // the story ends on this touchdown: no try, the match is over
@@ -1460,7 +1483,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
         tryFor(st);
       }
     } else {
-      if (yards >= 15) mom(o, 1);
+      if (yards >= 15) mom(o, 1, 'ビッグゲイン');
       st.pos += yards;
       st.toGo -= yards;
       if (st.toGo <= 0) {
@@ -1469,12 +1492,12 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
         st.down = 1;
         st.toGo = Math.min(10, FIELD - st.pos);
         lines.push('ファーストダウン！ 攻撃権を更新');
-        mom(o, 1);
+        mom(o, 1, 'ファーストダウン');
       } else if (st.down >= 4) {
         turnover = 'downs';
         lines.push('4回で10ヤード進めず。攻守交代');
         handOver(st.pos);
-        mom(d, 2);
+        mom(d, 2, '守りきった');
       } else {
         st.down += 1;
       }
@@ -1503,7 +1526,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   return {
     n: st.n, off: o, offPick, defPick, before, outcome, yards, td, firstDown, turnover, edge,
     passer, carrier, defender, offPotency: op, defPotency: dp,
-    momBefore, momAfter: [st.mom[0], st.mom[1]], period, lines, points, tfp: tryPlay || undefined,
+    momBefore, momAfter: [st.mom[0], st.mom[1]], momWhy: gotWhy, period, lines, points, tfp: tryPlay || undefined,
     ...(returnTd ? { returnTd } : {}), ...(breakaway ? { breakaway } : {}), ...(clock ? { clock } : {}),
   };
 }
