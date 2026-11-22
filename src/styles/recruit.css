@@ -229,3 +229,9 @@
 .rc-stage.is-many .rc-ask, .rc-stage.is-many .rc-stamp { transform: scale(0.75); }
 .rc-slots.is-many .rc-slot { height: 3.4rem; }
 .rc-slots.is-many .rc-slot svg { width: 2.2rem; height: 2.15rem; margin-left: -1.1rem; }
+
+/* heroes this one has a bond with (game/bonds.ts) */
+.rc-bond { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; font-size: var(--fs-xs); line-height: 1.4; }
+.rc-bond span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rc-bond i { font-style: normal; color: var(--chalk); background: #d0457a; padding: 0 0.35rem; }
+.rc-bond em { font-style: normal; color: #d0457a; }
