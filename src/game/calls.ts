@@ -53,7 +53,9 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
       case 'catch': return onside ? say('押さえた！', `${defName}のボール！`, 'def') : kick.ret ? pick([say('とった！', `${back}が走りだす！`), say('キャッチ！', `${back}、どこまで戻せるか！`)], n, 4) : say('エンドゾーンでとった！', `${back}、ここは走らない`);
       case 'steal': return say('取り返したぁ！！', `${offName}のボールだ！`, 'off', true);
       case 'break': return say('抜けたぁ！', `${back}が止まらない！`);
+      case 'touchdown': return pick([say('リターンタッチダウン！！', `${back}が走りきったぁ！`, 'def', true), say('かえしたぁぁ！！', `${back}、キックオフからタッチダウン！`, 'def', true)], n, 8);
       case 'end':
+        if (res.returnTd) return null; // already shouted
         if (onside) return kick.good ? null : say('失敗！', `${defName}、ゴールの近くから攻撃！`, 'def', true);
         return kick.ret ? say(`${kick.ret}ヤードのリターン！`, `${defender}が止めた。自陣${kick.spot ?? 0}ヤードから`) : say('タッチバック！', `${defName}は自陣${kick.spot ?? 0}ヤードから`);
       default: return null;
@@ -93,12 +95,15 @@ export function callFor(beat: Beat, res: PlayResult, names: CallNames, route?: s
     case 'drop':
       return pick([say('落ちた！', 'パス失敗！'), say('通らない！', `${defender}がじゃました！`), say('ああっと！', 'ボールは芝の上！')], n, 5);
     case 'break':
+      // a ball taken away and run back: it is the defender who is off and running
+      if (res.returnTd) return say('止まらない！', `${defender}がそのまま走る！`, 'def');
       return pick([say('抜けたぁ！', `${carrier}が止まらない！`), say('まだ走る！', `${carrier}、まだ走る！`), say('独走だ！', `だれも${carrier}に追いつけない！`)], n, 6);
     case 'steal': {
       if (res.turnover === 'int') return pick([say('インターセプトォ！！', `${defender}が読んでいた！`, 'def', true), say('とったのは守備！', `${defender}のインターセプトだ！`, 'def', true)], n, 7);
       return pick([say('ファンブル！！', `こぼれた！ ${defender}がおさえた！`, 'def', true), say('ボールが出た！', `${defName}が奪いとった！`, 'def', true)], n, 7);
     }
     case 'touchdown':
+      if (res.returnTd) return pick([say('リターンタッチダウン！！', `${defender}が走りきったぁ！`, 'def', true), say('かえしたぁぁ！！', `${defName}、守備がタッチダウン！`, 'def', true)], n, 8);
       return pick([
         say('タッチダウーーン！！', `${carrier}が決めたぁ！`, 'off', true),
         say('決めたぁぁ！！', `${offName}、タッチダウン！`, 'off', true),

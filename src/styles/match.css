@@ -38,6 +38,9 @@
 .plays { display: inline-flex; gap: 0.2rem; }
 .plays i { width: 0.55rem; height: 1.1rem; background: #23285c; transform: skewX(-18deg); }
 .plays i.on { background: var(--cyan); box-shadow: 0 0 0.4rem var(--cyan); }
+/* eleven a side: ten plays a quarter in the same room */
+.plays.is-long { gap: 0.14rem; }
+.plays.is-long i { width: 0.4rem; }
 .bug-down { display: flex; align-items: baseline; gap: 0.5rem; font-size: var(--fs-xs); white-space: nowrap; justify-self: end; }
 .bug-down b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); color: var(--yellow); line-height: 1.1; }
 .downs { display: inline-flex; gap: 0.2rem; align-self: center; }
@@ -344,3 +347,17 @@
 .hcard-blocks dd { font-family: var(--display); font-size: var(--fs-s); line-height: 1.1; white-space: nowrap; }
 .hcard-none { color: #9aa3cc; }
 html.calm .hcard { animation: none; }
+
+/* ---------- eleven a side, the plays that are called for the coach (only the big moments are his) ---------- */
+.flowbar { position: absolute; right: max(0.8rem, env(safe-area-inset-right)); bottom: 3rem; z-index: 7; display: flex; align-items: center; gap: 0.8rem; opacity: 0; transform: translateY(1rem); transition: opacity 0.25s, transform 0.25s var(--spring); pointer-events: none; }
+.flowbar.on { opacity: 1; transform: none; pointer-events: auto; }
+.flow-tag { display: flex; align-items: center; gap: 0.5rem; font-family: var(--display); font-size: var(--fs-xs); color: var(--cyan); padding: 0.2rem 0.8rem; background: rgba(6, 8, 26, 0.78); border-radius: 0.4rem; white-space: nowrap; }
+.flow-tag i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 0.5rem var(--cyan); animation: throb 0.9s ease-in-out infinite; }
+.flow-to { min-height: max(44px, 3.8rem); display: grid; justify-items: center; align-content: center; gap: 0.05rem; padding: 0.2rem 1.4rem; font: inherit; color: var(--ink); background: var(--yellow); border: 0; border-radius: 0.5rem; box-shadow: 0 0.3rem 0 #a8801c, 0 0 1rem rgba(255, 225, 74, 0.35); cursor: pointer; }
+.flow-to b { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.2; white-space: nowrap; }
+.flow-left { font-size: var(--fs-xs); line-height: 1; letter-spacing: 0.15em; }
+.flow-to.is-set { color: var(--chalk); background: #c43514; box-shadow: 0 0.3rem 0 #6e1c09; }
+.flow-to:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+.flow-to:focus-visible { outline: 0.2rem solid var(--chalk); outline-offset: 0.15rem; }
+.flowcall b { display: flex; align-items: center; gap: 1rem; font-size: var(--fs-l); }
+.flowcall b i { font-style: normal; color: var(--yellow); }

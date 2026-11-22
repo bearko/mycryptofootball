@@ -62,8 +62,13 @@ describe('the box score', () => {
           // the kicks
           const kicks = plays.filter((p) => p.off === t && p.kick);
           expect(sum(box, 'fga')).toBe(kicks.filter((p) => p.kick!.type === 'fg').length);
-          expect(sum(box, 'fgm') * 3 + sum(box, 'xpm')).toBe(kicks.reduce((a, p) => a + p.points, 0));
+          expect(sum(box, 'fgm') * 3 + sum(box, 'xpm')).toBe(kicks.filter((p) => !p.returnTd).reduce((a, p) => a + p.points, 0));
           expect(sum(box, 'ko')).toBe(kicks.filter((p) => p.kick!.type === 'kickoff' || p.kick!.type === 'onside').length);
+          // the touchdowns run back: a kickoff run all the way back, a ball taken away and run back (eleven a side)
+          expect(sum(box, 'rtn')).toBe(plays.filter((p) => p.off === (1 - t) && p.returnTd).length);
+          // every point is somebody's: touchdowns, kicks and tries for two
+          const tries = plays.filter((p) => p.off === t && p.tfp && !p.kick).reduce((a, p) => a + p.points, 0);
+          expect((sum(box, 'rtd') + sum(box, 'ptd') + sum(box, 'rtn')) * 6 + sum(box, 'fgm') * 3 + sum(box, 'xpm') + tries).toBe(st.score[t]);
           // nobody has a number that is not whole, and only the yards can be below zero
           for (const l of Object.values(box)) {
             for (const [k, v] of Object.entries(l)) {

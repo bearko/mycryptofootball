@@ -61,6 +61,8 @@ export interface Line {
   // kickoffs run back, and their yards
   kr?: number;
   kry?: number;
+  /** touchdowns on a return: a kickoff run all the way back, a ball taken away and run back (eleven a side) */
+  rtn?: number;
 }
 export type LineKey = keyof Line;
 /** fields that keep the best one, not the sum */
@@ -118,6 +120,7 @@ export function tally(st: MatchState, res: PlayResult): void {
       if (k.type === 'kickoff' && k.returner != null && (k.ret ?? 0) > 0) {
         bump(box[d], k.returner, 'kr');
         bump(box[d], k.returner, 'kry', k.ret);
+        if (res.returnTd) bump(box[d], k.returner, 'rtn');
       }
     }
     return;
@@ -144,6 +147,7 @@ export function tally(st: MatchState, res: PlayResult): void {
     if (res.outcome === 'fumble') {
       bump(ob, res.carrier, 'fum');
       bump(db, res.defender, 'ff');
+      if (res.returnTd) bump(db, res.defender, 'rtn');
     } else if (moved && !res.td) {
       bump(db, res.defender, 'tk');
       if (y < 0) bump(db, res.defender, 'tfl');
@@ -165,6 +169,7 @@ export function tally(st: MatchState, res: PlayResult): void {
     bump(ob, res.passer, 'pi');
     bump(db, res.defender, 'int');
     bump(db, res.defender, 'pd');
+    if (res.returnTd) bump(db, res.defender, 'rtn');
   } else if (moved) {
     bump(ob, res.passer, 'cmp');
     bump(ob, res.passer, 'py', y);

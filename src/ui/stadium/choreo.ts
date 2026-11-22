@@ -70,6 +70,8 @@ export interface PlaySpec {
   down?: number;
   /** the try after a touchdown */
   tfp?: boolean;
+  /** a ball taken away (an interception, a fumble) is run all the way back by the defender who took it */
+  ret6?: boolean;
   carrier: number;
   defender: number;
   offStar: number | null;
@@ -199,7 +201,8 @@ export function specOf(res: PlayResult): PlaySpec {
     return {
       n: res.n, off: (1 - res.off) as 0 | 1, type: 'long', call: undefined,
       kick: { type: res.kick.type, good: res.kick.good, dist: res.kick.dist, kicker: res.kick.kicker, ret: res.kick.ret },
-      outcome: res.outcome, yards: 0, td: false, los: FIELD - res.before.pos, toGo: 10,
+      // (run all the way back: the receiving team's touchdown)
+      outcome: res.outcome, yards: 0, td: !!res.returnTd, los: FIELD - res.before.pos, toGo: 10,
       carrier: res.kick.returner ?? res.carrier, defender: res.defender, offStar: null, defStar: null,
     };
   }
@@ -217,6 +220,7 @@ export function specOf(res: PlayResult): PlaySpec {
     toGo: res.before.toGo,
     down: res.before.down,
     tfp: !!res.tfp,
+    ...(res.returnTd ? { ret6: true } : {}),
     carrier: res.carrier,
     defender: res.defender,
     offStar: res.offPick.special ? res.offPick.special.owner : null,
@@ -437,6 +441,7 @@ function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team:
   cues.push({ t: tK, c: 'kick' });
   let tCatch: number;
   let tEnd: number;
+  let tTD = -1;
   let endT: number;
   let endU: number;
   let endV: number;
@@ -493,7 +498,43 @@ function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team:
     const blockers = takers.filter((p) => p !== back);
     endU = landU + ret;
     endV = clamp(lv - side * 1.6 + (sp.n % 2 ? 1.2 : -1.2), 3, 21);
-    if (ret > 0) {
+    if (ret > 0 && sp.td) {
+      // ---- run all the way back: through the first wave, past the kicker, into the end zone
+      endU = FIELD + 2.8;
+      const run = clamp((endU - landU) * PACE * 0.95, 1.8, 3.6);
+      tEnd = tLand + 0.2 + run;
+      const tMid = tLand + 0.2 + run * 0.4;
+      const midU = lerp(landU, endU, 0.4);
+      const cut = sp.n % 2 ? 1 : -1;
+      go(back, tLand + 0.2, landU + 0.3, lv);
+      go(back, tMid, midU, lerp(lv, endV, 0.5) + cut * 2.2);
+      go(back, tEnd, endU, endV);
+      tTD = tMid + (tEnd - tMid) * ((FIELD + 0.4 - midU) / (endU - midU));
+      const tackler = row.find((p) => p.id === sp.defender) ?? row[0]!;
+      // the kicking team meets him in the middle, and nobody gets a hand on him
+      go(tackler, tMid - 0.05, midU + 1.6, lerp(lv, endV, 0.5) + cut * 0.4, true);
+      cues.push({ t: tMid - 0.12, c: 'dive', who: ref(tackler), dir: -1 });
+      go(tackler, tMid + 0.5, midU + 0.4, lerp(lv, endV, 0.5) - cut * 0.6);
+      // (eleven heroes chasing one is no heap: they stay spread across the field, falling further behind)
+      row.filter((p) => p !== tackler).forEach((p, i) => {
+        go(p, tMid, Math.max(midU + 2.5 + (i % 4) * 2.6, lerp(U(p), midU, 0.5)), lerp(V(p), endV, 0.2));
+        go(p, tEnd, endU - 13 - (i % 4) * 3 - Math.floor(i / 4) * 2.5, lerp(V(p), endV, 0.3));
+      });
+      // the kicker is the last man: he squares up to him, dives, and comes up short
+      const tLast = tMid + (tTD - tMid) * 0.55;
+      go(kp, tLast, lerp(midU, FIELD, 0.55) - 0.6, lerp(lerp(lv, endV, 0.5) + cut * 2.2, endV, 0.55) - cut * 1.4, true);
+      cues.push({ t: tLast - 0.14, c: 'dive', who: ref(kp), dir: -1 });
+      blockers.forEach((p, i) => {
+        go(p, tLand, Math.max(U(p) - 3, landU + 2), V(p));
+        go(p, tMid, midU - 1 - (i % 5) * 2, lerp(V(p), endV, 0.2) + (i % 2 ? 1.6 : -1.6));
+        go(p, tEnd, endU - 9 - (i % 5) * 3, lerp(V(p), endV, 0.25) + (i % 2 ? 1.6 : -1.6));
+      });
+      cues.push({ t: lerp(tLand, tMid, 0.7), c: 'clash', at: [[X(midU - 1), endV - 2.5], [X(midU), endV + 2.5]] });
+      cues.push({ t: tMid + 0.05, c: 'break' });
+      cues.push({ t: tTD, c: 'td', who: ref(back) });
+      cues.push({ t: tEnd + 0.1, c: 'celebrate', team: o });
+      endT = Math.max(tTD + 1.5, tEnd + 0.9);
+    } else if (ret > 0) {
       const run = clamp(ret * PACE * 1.15, 0.4, 2.4);
       tEnd = tLand + 0.2 + run;
       go(back, tLand + 0.2, landU + 0.3, lv);
@@ -524,7 +565,7 @@ function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team:
       blockers.forEach((p) => go(p, tEnd, Math.max(U(p) - 2.5, 6), V(p)));
       endT = tEnd + 0.5;
     }
-    go(kp, tEnd, los - 7, 12.3);
+    if (!sp.td) go(kp, tEnd, los - 7, 12.3);
     tCatch = tLand;
     spotU = landU;
     spotV = lv;
@@ -533,7 +574,7 @@ function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team:
   cues.push({ t: endT, c: 'end' });
   cues.sort((p, q) => p.t - q.t);
   return {
-    spec: sp, dir, losX: X(los), dur: endT + (fast ? 0.08 : 0.5), snap: s, tHand: -1, tThrow: tK, tCatch, tEnd, tTD: -1, plans, ball, cues, star,
+    spec: sp, dir, losX: X(los), dur: endT + (fast ? 0.08 : 0.5), snap: s, tHand: -1, tThrow: tK, tCatch, tEnd, tTD, plans, ball, cues, star,
     pass: true, long: true, endX: X(endU), endZ: endV, spotX: X(clamp(spotU, 0, FIELD)), spotZ: spotV, design: [],
   };
 }
@@ -673,6 +714,26 @@ export function buildScript(
   const needT = (u: number, v: number): number => {
     const from = called.def[defender.pos as DefPos] ?? [los + 5, 12];
     return s + 0.18 + Math.hypot(from[0] - u, from[1] - v) / 15;
+  };
+  /**
+   * The defender who has taken the ball away runs it all the way back the other way, from (u0, v0) at t0: the offense
+   * turns and chases, and the quarterback, the last one with a chance, dives and comes up short.
+   */
+  const runBack = (u0: number, v0: number, t0: number): { tEnd: number; tTD: number; endT: number; v: number } => {
+    const goalU = -2.8;
+    const v = clamp(v0 + (v0 < 12 ? 3 : -3), 3, WIDTH - 3);
+    const run = clamp((u0 - goalU) * PACE * 0.95, 1.2, 3.6);
+    const t1 = t0 + run;
+    go(defender, t0, u0 - 0.6, v0);
+    go(defender, t0 + run * 0.5, lerp(u0, goalU, 0.5), lerp(v0, v, 0.6));
+    go(defender, t1, goalU, v);
+    const tGoal = t0 + run * ((u0 - 0.4) / (u0 - goalU));
+    go(qb, tGoal - 0.1, 2.4, v + (v < 12 ? 1.5 : -1.5), true);
+    cues.push({ t: tGoal - 0.22, c: 'dive', who: ref(qb), dir: -1 });
+    cues.push({ t: t0 + run * 0.3, c: 'break' });
+    cues.push({ t: tGoal, c: 'td', who: ref(defender) });
+    cues.push({ t: t1 + 0.1, c: 'celebrate', team: d });
+    return { tEnd: t1, tTD: tGoal, endT: Math.max(tGoal + 1.5, t1 + 0.9), v };
   };
 
   if (sp.kick) {
@@ -842,11 +903,21 @@ export function buildScript(
         ball.push({ t0: tEnd + 0.5, t1: 99, kind: 'held', team: d, id: defender.id });
         cues.push({ t: tEnd + 0.42, c: 'dive', who: ref(defender), dir: 1 });
         cues.push({ t: tEnd + 0.5, c: 'steal', who: ref(defender) });
-        cues.push({ t: tEnd + 1.05, c: 'celebrate', team: d });
         star = ref(defender);
-        endT = tEnd + 1.25;
-        endU = lu;
-        endV = lv;
+        if (sp.ret6) {
+          // scooped up on the run, and taken all the way back the other way
+          const back6 = runBack(lu - 0.2, lv, tEnd + 0.7);
+          tEnd = back6.tEnd;
+          tTD = back6.tTD;
+          endT = back6.endT;
+          endU = -2.8;
+          endV = back6.v;
+        } else {
+          cues.push({ t: tEnd + 1.05, c: 'celebrate', team: d });
+          endT = tEnd + 1.25;
+          endU = lu;
+          endV = lv;
+        }
       } else {
         go(rb, tEnd + 0.32, stopU, lz);
         go(defender, tEnd + 0.32, stopU + 0.9, lz + 0.2);
@@ -1031,6 +1102,23 @@ export function buildScript(
         endU = stopU;
         endV = V(recv);
         star = ref(recv);
+      } else if (int && sp.ret6) {
+        // ---- picked off and run all the way back the other way
+        go(defender, s + (tCatch - s) * 0.6, los + depth * 0.6 + 2.4, lerp(V(defender), rv, 0.6));
+        go(defender, tCatch, spotU - 0.7, rv);
+        ball.push({ t0: tThrow, t1: tCatch, kind: 'air', from: [handX, 2.1, 12], to: [X(spotU - 0.7), 2.7, rv], h: arc, spiral: true });
+        ball.push({ t0: tCatch, t1: 99, kind: 'held', team: d, id: defender.id });
+        cues.push({ t: tCatch - 0.22, c: 'jump', who: ref(defender), h: 1.2, dur: 0.46 });
+        cues.push({ t: tCatch, c: 'steal', who: ref(defender) });
+        go(recv, tCatch + 0.2, spotU + 0.5, rv - inward * 0.4);
+        const back6 = runBack(spotU - 0.7, rv, tCatch + 0.15);
+        go(recv, back6.tEnd, 5, lerp(rv, back6.v, 0.7));
+        tEnd = back6.tEnd;
+        tTD = back6.tTD;
+        endT = back6.endT;
+        endU = -2.8;
+        endV = back6.v;
+        star = ref(defender);
       } else if (int) {
         const backU = spotU - 2.2;
         go(defender, s + (tCatch - s) * 0.6, los + depth * 0.6 + 2.4, lerp(V(defender), rv, 0.6));

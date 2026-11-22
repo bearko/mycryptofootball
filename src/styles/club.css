@@ -288,7 +288,16 @@
 .ace-text i { font-style: normal; font-size: var(--fs-xs); line-height: 1.4; color: var(--chalk); background: #c43514; padding: 0 0.6rem; clip-path: polygon(0.3rem 0, 100% 0, calc(100% - 0.3rem) 100%, 0 100%); white-space: nowrap; }
 .pg-vs .ace-face { width: 2.6rem; height: 2.6rem; }
 .pg-vs .ace-text b { color: var(--chalk); }
-.vs-go { display: flex; align-items: center; }
+.vs-go { display: flex; align-items: center; gap: 1rem; }
+/* eleven a side: which plays the coach calls (the big moments only, or all of them) */
+.vs-calls { display: grid; gap: 0.35rem; justify-items: stretch; }
+.vs-calls > span { font-size: var(--fs-xs); line-height: 1.2; color: var(--dim); text-align: center; }
+.vs-call { min-height: max(44px, 3.6rem); min-width: 9.6rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0 0.9rem; font: inherit; font-size: var(--fs-s); color: var(--dim); background: rgba(255, 255, 255, 0.06); border: 0.16rem solid rgba(255, 255, 255, 0.22); border-radius: 0.5rem; cursor: pointer; }
+.vs-call b { font-weight: 400; white-space: nowrap; }
+.vs-call i { font-style: normal; font-size: 0.8em; line-height: 1.4; padding: 0 0.4rem; color: var(--ink); background: var(--yellow); border-radius: 0.25rem; white-space: nowrap; }
+.vs-call[aria-pressed='true'] { color: var(--ink); background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 0.8rem rgba(55, 227, 255, 0.45); }
+.vs-call[aria-pressed='true'] i { background: var(--ink); color: var(--yellow); }
+.vs-call:focus-visible { outline: 0.2rem solid var(--yellow); outline-offset: 0.15rem; }
 .vs-go .btn.big .btn-face { min-height: 6.4rem; padding: 0 3.4rem; font-size: var(--fs-xl); }
 .vs-warn { position: absolute; right: max(1rem, env(safe-area-inset-right)); bottom: calc(100% + 0.3rem); max-width: 47%; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.7rem; padding: 0.3rem 1.8rem 0.3rem 1.4rem; font-size: var(--fs-s); line-height: 1.35; color: var(--chalk); background: var(--orange); clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); animation: pg-warn-in 0.5s 0.5s var(--spring) backwards, pg-warn 1s 1s steps(2) infinite; }
 .vs-warn b { font-family: var(--display); font-weight: 400; color: var(--yellow); white-space: nowrap; }
