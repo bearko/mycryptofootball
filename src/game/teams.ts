@@ -207,8 +207,23 @@ export function drawSchools(league: number, rng: Rng): number[] {
   const picked = rng.shuffle(pool.map((_, i) => i)).slice(0, 4).sort((a, b) => a - b);
   return picked.map((i) => pool[i]!);
 }
-/** The schools of a club's very first year: always the same four. */
+/** The schools of a club's very first spring: always the same four. */
 export const FIRST_DRAW: readonly number[] = [0, 1, 2, 3];
+
+/**
+ * The schools of a year's matches, in the calendar's order (season.ts SCHEDULE): the spring's four (the practice
+ * match and the three rounds), the June practice match, then the autumn's four (the August practice match and the
+ * three rounds; drawn again when autumn begins, from the tournament the club then plays in: autumnDraw).
+ */
+export function drawYear(league: number, rng: Rng, spring: readonly number[] = drawSchools(league, rng)): number[] {
+  const pool = CUP_SCHOOLS[cupIndex(league)]!;
+  // the June practice match: a school the club did not meet in spring, if there is one
+  const rest = pool.filter((x) => !spring.includes(x));
+  const june = rng.pick(rest.length ? rest : pool);
+  return [...spring, june, ...drawSchools(league, rng)];
+}
+/** The autumn's four (the August practice match and the three rounds) from the tournament of this standing. */
+export const autumnDraw = (league: number, rng: Rng): number[] => drawSchools(league, rng);
 
 /** The aces whose special plays are ready in this round (six a side only those who play). */
 function activeAces(team: School, round: number, size: Size): number[] {
@@ -217,6 +232,7 @@ function activeAces(team: School, round: number, size: Size): number[] {
 }
 
 function oppStats(round: number, p: OppPlayer, level: number, ace: boolean): Stats {
+  // (level: the tournament's, and what the time of year adds)
   const r = ROUNDS[round]!;
   const st = {} as Stats;
   for (const k of STATS) {
@@ -233,7 +249,7 @@ function oppStats(round: number, p: OppPlayer, level: number, ace: boolean): Sta
  * `size`: how many a side (by default what that tournament plays). `school`: which school (by default the one a
  * club meets in that round in its first year).
  */
-export function opponentSheet(round: number, league = 0, size: Size = tierOf(league).size, school: number = FIRST_DRAW[round]!): TeamSheet {
+export function opponentSheet(round: number, league = 0, size: Size = tierOf(league).size, school: number = FIRST_DRAW[round]!, lift = 0): TeamSheet {
   const team = SCHOOLS[school]!;
   const all = size === 11 ? [...team.players, ...team.more] : team.players;
   const aces = activeAces(team, round, size);
@@ -242,7 +258,7 @@ export function opponentSheet(round: number, league = 0, size: Size = tierOf(lea
     lineup.off[p.off] = p.id;
     lineup.def[p.def] = p.id;
   }
-  const players = all.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(round, p, tierOf(league).level, aces.includes(p.id)) }));
+  const players = all.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(round, p, tierOf(league).level + lift, aces.includes(p.id)) }));
   // every school has somebody who can kick: its best foot
   lineup.k = bestKicker(players, lineup);
   const sheet: TeamSheet = {

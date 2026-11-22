@@ -1,20 +1,28 @@
-// The month's review: how every hero's abilities have changed since the month began, with the rank each one stands at.
-// It opens by itself on the first day of a new month (looking back on the month just ended), and from the practice
-// ground at any time (the month so far).
+// The review: how every hero's abilities have changed since this part of the year began (the spring, the summer, the
+// camp, the autumn), with the rank each one stands at. It opens by itself on the first day of the next part (looking
+// back on the one just over), and from the practice ground at any time (so far).
 
 import { sfx } from '../core/audio';
 import { h } from '../core/dom';
 import { hero } from '../game/heroes';
 import { RANKS, STATS, STAT_LABEL, rank } from '../game/model';
-import { SCHEDULE, growth, type Season } from '../game/season';
+import { SCHEDULE, STAGE_NAME, growth, spanText, type Season } from '../game/season';
 import { TALENT_COLOR, button, closeModal, modal, portrait, rankChip, statIcon } from './kit';
 import { talentOf } from '../game/heroes';
 
 const day = (n: number): string => `${SCHEDULE[n]!.month}月${SCHEDULE[n]!.date}日`;
+/** the last date a calendar slot covers ("5月16日" for the fortnight from May 3) */
+function until(n: number): string {
+  const d = SCHEDULE[n]!;
+  if (d.days <= 1) return day(n);
+  const end = spanText(d).split('〜')[1]!;
+  return end.includes('月') ? end : `${d.month}月${end}`;
+}
 
 export function reviewModal(s: Season, opts: { closed: boolean; onClose?: () => void }): void {
   const g = growth(s, opts.closed);
-  const title = opts.closed ? `${SCHEDULE[g.to]!.month}月の成長` : '今月の成長';
+  const stage = STAGE_NAME[SCHEDULE[g.to]!.stage];
+  const title = opts.closed ? `${stage}${stage === '夏合宿' ? '' : 'の期間'}の成長` : 'この期間の成長';
   const ups = g.rows.reduce((n, r) => n + r.ups.length, 0);
   const head = h('div.rv-row.rv-head',
     h('span'),
@@ -35,12 +43,12 @@ export function reviewModal(s: Season, opts: { closed: boolean; onClose?: () => 
   });
   modal(h('div.review',
     h('div.rv-top',
-      h('p.rv-when', `${day(g.from)}〜${day(g.to)}`),
+      h('p.rv-when', `${day(g.from)}〜${until(g.to)}`),
       h('p.rv-total', 'チーム全体で ', h('b', g.total > 0 ? `+${g.total}` : String(g.total)), ups ? h('span', `ランクアップ ${ups}`) : null)),
     h('div.rv-table', head, ...rows),
     h('div.modal-actions',
       h('p.rv-legend', ...RANKS.map((r, i) => h('span', h('i.rank', { class: `r-${r.name}` }, r.name), i < RANKS.length - 1 ? `${r.min}〜${RANKS[i + 1]!.min - 1}` : `${r.min}〜`))),
-      button(opts.closed ? '今月もがんばろう' : 'とじる', () => {
+      button(opts.closed ? 'つぎもがんばろう' : 'とじる', () => {
       closeModal();
       opts.onClose?.();
     }, opts.closed ? { cls: 'go' } : { sound: 'back' }))), { cls: 'wide rv-panel', title, sticky: opts.closed, quiet: true });

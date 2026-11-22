@@ -18,8 +18,8 @@ import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
-import { applyResult, tierOf, type FameChange } from './prestige';
-import { FIRST_DRAW, SCHOOLS, drawSchools, type School } from './teams';
+import { FAME_WEIGHT, applyResult, tierOf, type FameChange } from './prestige';
+import { FIRST_DRAW, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
@@ -46,41 +46,142 @@ export const TEAM_SHORT = 'マイクリ';
 export const TEAM_COLOR = '#ffd84a';
 
 // ------------------------------------------------------------------ the calendar
+//
+// A year has two tournaments, spring and autumn, and the summer between them to grow in:
+//
+//   spring (4/5–5/2)   every day: a practice match, then the spring tournament, a round a week (a warm-up for autumn)
+//   summer (5/3–7/25)  a fortnight at a time (one practice card does for two weeks); new heroes may join in May;
+//                      a practice match at the end of June
+//   camp   (7/26–8/8)  the summer camp, every day: hard practice that sticks twice as well; the scrimmage on the last day
+//   autumn (8/9–10/31) a practice match at the end of August, then the autumn tournament (the one that counts):
+//                      a fortnight at a time between its rounds, every day in the week before each round
+//
+// Lose in spring and the club goes on to the summer; lose in autumn and the year is over.
+
+export type Stage = 'spring' | 'summer' | 'camp' | 'autumn';
+export const STAGE_NAME: Record<Stage, string> = { spring: '春', summer: '初夏', camp: '夏合宿', autumn: '秋' };
 
 export interface DayPlan {
-  /** 0-based day of the season */
+  /** index into SCHEDULE */
   n: number;
   month: number;
   date: number;
   /** 0 = Monday ... 6 = Sunday */
   dow: number;
   t: 'train' | 'match';
-  /** matches only */
+  stage: Stage;
+  /** practice: the days it stands for (1: a day; 14: a fortnight, between the tournaments) */
+  days: number;
+  /** practice: the camp's last day, the scrimmage (the only card) */
+  scrim: boolean;
+  /** matches: which of the year's matches this is (an index into Season.draw); -1 on practice days */
+  m: number;
+  /** matches: how strong the school is (an index into teams.ts ROUNDS) */
   opp: number;
+  /** matches: 0 a practice match, 1–3 the rounds of a tournament (what a result is worth) */
+  round: number;
+  /** matches: what the schools have on top, by the time of year (the club has grown by autumn, and so have they) */
+  lift: number;
+  /** '練習試合', '春の地区大会 1回戦' (the tournament's name follows the club's standing: labelOf); practice: '練習', '5月前半' */
   label: string;
   cup: boolean;
 }
 export const DOW = ['月', '火', '水', '木', '金', '土', '日'] as const;
-const MATCHES = [
-  { label: '練習試合', cup: false },
-  { label: '地区大会 1回戦', cup: true },
-  { label: '地区大会 準決勝', cup: true },
-  { label: '地区大会 決勝', cup: true },
-];
 
-/** Four weeks from Monday, April 5: practice Monday to Saturday, a match every Sunday. */
-export const SCHEDULE: readonly DayPlan[] = Array.from({ length: MATCHES.length * 7 }, (_, n) => {
-  const day = 5 + n;
-  const month = day > 30 ? 5 : 4;
-  const dow = n % 7;
-  const week = Math.floor(n / 7);
-  const match = dow === 6;
-  return {
-    n, month, date: day > 30 ? day - 30 : day, dow, t: match ? 'match' as const : 'train' as const,
-    opp: match ? week : -1, label: match ? MATCHES[week]!.label : '練習', cup: match ? MATCHES[week]!.cup : false,
+/** what the schools have on top in summer and autumn (spring: nothing) */
+export const LIFT: Record<Stage, number> = { spring: 0, summer: 4, camp: 4, autumn: 15 };
+/** and a little more for the autumn's first round */
+const AUTUMN_FIRST = 4;
+export const ROUND_NAME: readonly string[] = ['練習試合', '1回戦', '準決勝', '決勝'];
+const MONTH_LEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function buildSchedule(): DayPlan[] {
+  const out: DayPlan[] = [];
+  // days since Monday, April 5
+  let off = 0;
+  let matches = 0;
+  const dateAt = (o: number): { month: number; date: number } => {
+    let month = 4;
+    let date = 5 + o;
+    while (date > MONTH_LEN[month - 1]!) {
+      date -= MONTH_LEN[month - 1]!;
+      month += 1;
+    }
+    return { month, date };
   };
-});
+  const slot = (stage: Stage, rest: Partial<DayPlan>): void => {
+    out.push({
+      n: out.length, ...dateAt(off), dow: off % 7, t: 'train', stage, days: 1, scrim: false, m: -1, opp: 0, round: 0, lift: LIFT[stage],
+      label: '練習', cup: false, ...rest,
+    });
+  };
+  const match = (stage: Stage, round: number, opp = round): void => {
+    const cup = round > 0;
+    // the autumn's first round: the schools that get that far have had a summer too
+    const lift = LIFT[stage] + (stage === 'autumn' && round === 1 ? AUTUMN_FIRST : 0);
+    slot(stage, { t: 'match', m: matches, opp, round, cup, lift, label: cup ? `${stage === 'spring' ? '春' : '秋'}の地区大会 ${ROUND_NAME[round]}` : '練習試合' });
+    matches += 1;
+    off += 1;
+  };
+  /** Monday to Saturday, a day at a time; then the Sunday's match */
+  const week = (stage: Stage, round: number, opp = round): void => {
+    for (let d = 0; d < 6; d += 1) {
+      slot(stage, {});
+      off += 1;
+    }
+    match(stage, round, opp);
+  };
+  /** some weeks a fortnight at a time (the last one may be cut short by a Sunday match) */
+  const span = (stage: Stage, weeks: number, label: string, then?: { round: number; opp: number }): void => {
+    const days = weeks * 7 - (then ? 1 : 0);
+    slot(stage, { days, label });
+    off += days;
+    if (then) match(stage, then.round, then.opp);
+  };
+  // spring
+  week('spring', 0);
+  for (const r of [1, 2, 3]) week('spring', r);
+  // summer
+  span('summer', 2, '5月前半');
+  span('summer', 2, '5月後半');
+  span('summer', 2, '6月前半');
+  span('summer', 2, '6月後半', { round: 0, opp: 1 });
+  span('summer', 4, '7月');
+  // the camp: thirteen days, then the scrimmage
+  for (let d = 0; d < 13; d += 1) {
+    slot('camp', { label: '合宿' });
+    off += 1;
+  }
+  slot('camp', { label: '紅白戦', scrim: true });
+  off += 1;
+  // autumn
+  span('autumn', 3, '8月後半', { round: 0, opp: 0 });
+  span('autumn', 2, '9月前半');
+  week('autumn', 1);
+  span('autumn', 2, '9月後半');
+  week('autumn', 2);
+  span('autumn', 2, '10月前半');
+  week('autumn', 3);
+  return out;
+}
+
+export const SCHEDULE: readonly DayPlan[] = buildSchedule();
+/** how many matches a year has (if the club goes all the way) */
+export const MATCH_COUNT = SCHEDULE.filter((d) => d.t === 'match').length;
+/** the first day of each part of the year */
+export const stageStart = (stage: Stage): number => SCHEDULE.findIndex((d) => d.stage === stage);
 export const dateText = (d: DayPlan): string => `${d.month}月${d.date}日（${DOW[d.dow]}）`;
+/** "5月3日〜16日" for a fortnight, the date for a day */
+export const spanText = (d: DayPlan): string => {
+  if (d.days <= 1) return dateText(d);
+  const last = SCHEDULE[d.n + 1];
+  const end = last ? { month: last.month, date: last.date - 1 } : { month: d.month, date: d.date + d.days - 1 };
+  if (end.date < 1) {
+    end.month -= 1;
+    end.date = MONTH_LEN[end.month - 1]!;
+  }
+  return `${d.month}月${d.date}日〜${end.month === d.month ? '' : `${end.month}月`}${end.date}日`;
+};
 
 // ------------------------------------------------------------------ experience
 
@@ -233,7 +334,9 @@ export type PracticeCard =
   /** a day off: no experience, stamina comes back. Always in the hand */
   | { uid: number; kind: 'rest' }
   /** eleven a side: everyone works on the club's colour, which takes it a step further (its level) */
-  | { uid: number; kind: 'tactic' };
+  | { uid: number; kind: 'tactic' }
+  /** the camp's last day: the scrimmage, the only card */
+  | { uid: number; kind: 'scrim' };
 
 export interface CardInfo {
   name: string;
@@ -259,7 +362,53 @@ function xpFor(k: Stat, total: number): Partial<XpBag> {
   return out;
 }
 
+// ---- between the tournaments, and at the camp
+
+/** a fortnight of practice: each week of it does as much as this many days (the rest of the week is lessons and rest) */
+export const WEEK_XP = 1.6;
+/** stamina a week between the tournaments gives back on top of the card (Sundays, evenings) */
+export const WEEK_REST = 18;
+/** the camp: practice sticks twice as well, and wears the heroes out half as much again */
+export const CAMP_XP = 2;
+export const CAMP_STA = 1.5;
+/** the camp's own names for the ordinary drills */
+export const CAMP_NAME: Record<PracticeKey, string> = {
+  dash: '砂浜ダッシュ', pass: '千本パス', catch: '千本キャッチ', hit: '丸太押し', tackle: 'どろんこタックル', study: '夜の作戦会議', game: '合宿ミニゲーム',
+};
+const SCRIM: CardInfo = {
+  name: '紅白戦', text: '合宿のしめくくり。部を2つに分けて本気の試合。信頼が大きく上がる',
+  xp: { pow: 9, spd: 9, tec: 9, int: 9 }, trust: 5, heroTrust: 0, hero: null, star: 0, sta: -10, others: 0,
+};
+
+/** how many weeks a practice day stands for (0 for an ordinary day) */
+export const weeksOf = (d: DayPlan): number => (d.t === 'train' && d.days > 1 ? d.days / 7 : 0);
+
+/** What a card does today: as it is on an ordinary day, for a fortnight between the tournaments, or at the camp. */
 export function cardInfo(s: Season, card: PracticeCard): CardInfo {
+  const p = plan(s);
+  if (card.kind === 'scrim') return { ...SCRIM, xp: { ...SCRIM.xp } };
+  const info = dayInfo(s, card);
+  const scale = (mul: number): void => {
+    for (const k of Object.keys(info.xp) as Xp[]) info.xp[k] = Math.round(info.xp[k]! * mul * 10) / 10;
+  };
+  const weeks = weeksOf(p);
+  if (weeks) {
+    scale(WEEK_XP * weeks);
+    // trust grows with the time spent together; stamina comes back over the weeks
+    info.trust = Math.round(info.trust * Math.min(2, weeks));
+    info.heroTrust = Math.round(info.heroTrust * Math.min(2, weeks));
+    info.sta = card.kind === 'rest' ? STA_MAX : Math.round(info.sta + WEEK_REST * weeks);
+    if (card.kind === 'solo') info.others = Math.round(WEEK_REST * weeks);
+  } else if (p.stage === 'camp') {
+    scale(CAMP_XP);
+    if (info.sta < 0) info.sta = Math.round(info.sta * CAMP_STA);
+    if (card.kind === 'basic') info.name = CAMP_NAME[card.key];
+  }
+  return info;
+}
+
+/** What a card does on an ordinary day. */
+function dayInfo(s: Season, card: Exclude<PracticeCard, { kind: 'scrim' }>): CardInfo {
   if (card.kind === 'basic') {
     const p = PRACTICE[card.key];
     const xp: Partial<XpBag> = {};
@@ -292,6 +441,9 @@ export function cardInfo(s: Season, card: PracticeCard): CardInfo {
 
 export interface MatchRecord {
   day: number;
+  /** which of the year's matches (an index into Season.draw) */
+  m: number;
+  /** 0 a practice match, 1–3 a round of a tournament */
   opp: number;
   us: number;
   them: number;
@@ -321,8 +473,12 @@ export interface Season {
   uid: number;
   /** a milestone: the training policy may be changed until the next practice card is played */
   meeting: boolean;
-  /** the schools met this year: the practice match, then the three rounds (indices into SCHOOLS) */
+  /** the schools of this year's matches, in the calendar's order (indices into SCHOOLS; teams.ts drawYear) */
   draw: number[];
+  /** the day the part of the year the club is in began (the spring, the summer...): it is entered once */
+  stageAt?: number;
+  /** the standing the year began with, once the autumn has its own (`league`) */
+  springLeague?: number;
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
   /** this season's numbers of every hero who played (boxscore.ts; emptied when a new year begins) */
@@ -348,7 +504,10 @@ export interface Season {
   /** the club's standing: an index into TIERS, and the gauge (0..FAME_MAX) */
   tier: number;
   fame: number;
-  /** the standing the year began with: it decides the tournament and how strong the other schools are, all year */
+  /**
+   * the standing the year began with (and, from the autumn on, the one the autumn began with): it decides the
+   * tournament and how strong the other schools are
+   */
   league: number;
   /** a new month has begun: the review of the last one is shown before the day's practice */
   review?: boolean;
@@ -379,10 +538,11 @@ export function newSeason(seed: number): Season {
     if (talents.size === STATS.length) break;
   }
   candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
+  const draw = drawYear(0, rng, FIRST_DRAW);
   return {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
-    year: 1, tier: 0, fame: 0, league: 0, draw: [...FIRST_DRAW], alumni: {},
+    year: 1, tier: 0, fame: 0, league: 0, draw, alumni: {}, stageAt: 0,
   };
 }
 
@@ -455,11 +615,41 @@ export function signRecruits(s: Season, ids: number[]): void {
   if (first) s.lineup = null;
   fitLineup(s);
   s.phase = 'club';
-  s.day = 0;
   s.meeting = true;
-  markMonth(s);
+  if (s.day > 0) {
+    // the May briefing: the year goes on (the newcomers' growth counts from now)
+    s.base ??= {};
+    for (const m of joined) s.base[m.id] = { ...m.stats };
+  } else markMonth(s);
   keep(s, rng);
   startDay(s);
+}
+
+/** Is this the briefing in May (the year goes on), rather than the one that begins a year? */
+export const midYear = (s: Season): boolean => s.phase === 'recruit' && s.day > 0;
+
+/** Who comes to a briefing when `room` heroes may join: a few more than that, from every ability in turn. */
+function candidatesFor(s: Season, rng: Rng, room: number, extra: (n: number) => number): number[] {
+  const have = new Set(s.members.map((m) => m.id));
+  // who may come: nobody who is in the club, and nobody whose namesake left only last spring
+  // (unless there would not be enough heroes otherwise)
+  const all = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
+  const rested = all.filter((id) => !s.alumni?.[id] || s.year - s.alumni[id]!.year >= 2);
+  const pool = rng.shuffle(rested.length >= room + extra(room) ? rested : all);
+  if (room <= 0 || !pool.length) return [];
+  const by = new Map<Stat, number[]>();
+  for (const id of pool) {
+    const t = talentOf(recruit(id).stats).best;
+    by.set(t, [...(by.get(t) ?? []), id]);
+  }
+  const turns = rng.shuffle([...by.keys()]);
+  const want = Math.min(pool.length, room + extra(room));
+  const picked: number[] = [];
+  for (let k = 0; picked.length < want; k += 1) {
+    const next = by.get(turns[k % turns.length]!)!.shift();
+    if (next !== undefined) picked.push(next);
+  }
+  return picked.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
 }
 
 /**
@@ -494,54 +684,43 @@ export function nextYear(s: Season, seed: number): void {
   s.hand = [];
   s.review = false;
   for (const m of s.members) m.sta = STA_MAX;
+  s.stageAt = 0;
   const room = tierOf(s.tier).roster - s.members.length;
-  const have = new Set(s.members.map((m) => m.id));
-  // who may come to the briefing: nobody who is in the club, and nobody whose namesake left only last spring
-  // (unless there would not be enough heroes otherwise)
-  const all = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
-  const rested = all.filter((id) => !s.alumni[id] || s.year - s.alumni[id]!.year >= 2);
-  const shown = (n: number): number => n + Math.min(3, Math.max(1, Math.round(n / 2)));
-  const pool = rng.shuffle(rested.length >= shown(room) ? rested : all);
-  if (room > 0 && pool.length) {
-    // a few more come to the briefing than there is room for, so there is a choice to make;
-    // and they come from every ability in turn, so a club can fill whatever its graduates left open
-    const by = new Map<Stat, number[]>();
-    for (const id of pool) {
-      const t = talentOf(recruit(id).stats).best;
-      by.set(t, [...(by.get(t) ?? []), id]);
-    }
-    const turns = rng.shuffle([...by.keys()]);
-    const want = Math.min(pool.length, shown(room));
-    const picked: number[] = [];
-    for (let k = 0; picked.length < want; k += 1) {
-      const next = by.get(turns[k % turns.length]!)!.shift();
-      if (next !== undefined) picked.push(next);
-    }
-    s.candidates = picked;
-    s.candidates.sort((a, b) => RECRUITS.findIndex((r) => r.id === a) - RECRUITS.findIndex((r) => r.id === b));
+  // a few more come to the briefing than there is room for, so there is a choice to make;
+  // and they come from every ability in turn, so a club can fill whatever its graduates left open
+  s.candidates = candidatesFor(s, rng, room, (n) => Math.min(3, Math.max(1, Math.round(n / 2))));
+  s.draw = drawYear(s.league, rng);
+  if (s.candidates.length) {
     s.phase = 'recruit';
-    s.draw = drawSchools(s.league, rng);
     keep(s, rng);
     return;
   }
-  s.candidates = [];
   s.phase = 'club';
   s.meeting = true;
   fitLineup(s);
   markMonth(s);
-  s.draw = drawSchools(s.league, rng);
   keep(s, rng);
   startDay(s);
 }
 
-/** The school the club meets in a round this year (0: the practice match, 1–3: the rounds of the tournament). */
-export const schoolId = (s: Season, round: number): number => s.draw?.[round] ?? FIRST_DRAW[round]!;
-export const schoolAt = (s: Season, round: number): School => SCHOOLS[schoolId(s, round)]!;
+/** The school of one of the year's matches (`m`: DayPlan.m, MatchRecord.m). */
+export const schoolId = (s: Season, m: number): number => s.draw?.[m] ?? FIRST_DRAW[m] ?? 0;
+export const schoolAt = (s: Season, m: number): School => SCHOOLS[schoolId(s, m)]!;
+/** The school a match day brings, as the match engine sees it. */
+export const opponentFor = (s: Season, d: DayPlan = plan(s)): TeamSheet =>
+  opponentSheet(d.opp, s.league, clubSize(s), schoolId(s, d.m), liftOf(d, s.league));
+/**
+ * What the schools have on top at this time of year in a tournament of this standing. A young club grows a lot over
+ * its first summer, a club near the top far less: the higher the tournament, the less the schools gain by autumn.
+ */
+export const liftOf = (d: DayPlan, league: number): number => Math.round(d.lift * Math.max(0.25, 1 - league / 8));
 
-/** The name of a day's match in this club's tournament ("県大会 準決勝"), and the same without the tournament. */
+/** The name of a day's match in this club's tournament ("春の県大会 準決勝"), and the round alone ("準決勝"). */
 export const cupOf = (s: Season): string => tierOf(s.league).cup;
 export const labelOf = (s: Season, d: DayPlan): string => (d.cup ? d.label.replace('地区大会', cupOf(s)) : d.label);
-export const roundOf = (d: DayPlan): string => d.label.replace('地区大会 ', '');
+export const roundOf = (d: DayPlan): string => (d.cup ? d.label.replace(/^.*地区大会 /, '') : d.label);
+/** The final of the year: the autumn's. */
+export const isFinal = (d: DayPlan): boolean => d.cup && d.round === 3 && d.stage === 'autumn';
 /** How many practice cards are dealt each day at the club's standing. */
 export const handSize = (s: Season): number => tierOf(s.tier).hand;
 
@@ -595,6 +774,13 @@ export const member = (s: Season, id: number): Member => s.members.find((m) => m
 export const learned = (m: Member): boolean => m.trust >= TRUST_LEARN;
 export const boosted = (m: Member): boolean => m.trust >= TRUST_BOOST;
 export const plan = (s: Season): DayPlan => SCHEDULE[Math.min(s.day, SCHEDULE.length - 1)]!;
+
+/** How many days from today to a day on the calendar (a fortnight between the tournaments counts as fourteen). */
+export function daysTo(s: Season, d: DayPlan): number {
+  let n = 0;
+  for (let i = Math.min(s.day, SCHEDULE.length - 1); i < d.n; i += 1) n += SCHEDULE[i]!.days;
+  return n;
+}
 
 /** The next match on the calendar from today on (null after the last one). */
 export function nextMatch(s: Season): DayPlan | null {
@@ -689,19 +875,59 @@ function drawCard(s: Season, rng: Rng): PracticeCard {
   return { uid, kind: 'basic', key: rng.pick(keys.length ? keys : PRACTICE_KEYS), star: star(rng) };
 }
 
-/** Days on which something happens in the club before practice. */
-const EVENT_DAYS = [2, 9, 16, 23];
+/** Days on which something happens in the club before practice: four in spring, one in each part of the year after. */
+const EVENT_DAYS: readonly number[] = [
+  2, 9, 16, 23,
+  stageStart('summer') + 1,
+  stageStart('camp') + 3,
+  SCHEDULE.findIndex((d) => d.stage === 'autumn' && d.days === 1 && d.t === 'train') + 2,
+];
+
+/**
+ * The first day of a part of the year (once): look back at the last part, and hold a meeting on the training policy.
+ * May: the briefing, when the club has room for new heroes. Autumn: the tournament follows the standing the club
+ * has reached, and its schools are drawn.
+ */
+function enterStage(s: Season, rng: Rng): void {
+  const p = plan(s);
+  if (s.day === 0 || s.stageAt === s.day || SCHEDULE[s.day - 1]!.stage === p.stage) return;
+  s.stageAt = s.day;
+  s.review = true;
+  s.meeting = true;
+  s.tacticWas = undefined;
+  if (p.stage === 'summer') {
+    const room = tierOf(s.tier).roster - s.members.length;
+    s.candidates = candidatesFor(s, rng, room, (n) => Math.min(2, Math.max(1, Math.round(n / 3))));
+    if (s.candidates.length) s.phase = 'recruit';
+  }
+  if (p.stage === 'autumn') {
+    s.springLeague = s.league;
+    s.league = s.tier;
+    s.draw = [...s.draw.slice(0, stageMatches('autumn')), ...autumnDraw(s.league, rng)];
+    fitLineup(s);
+  }
+}
+/** the index into Season.draw of the first match of a part of the year */
+const stageMatches = (stage: Stage): number => SCHEDULE.find((d) => d.stage === stage && d.t === 'match')!.m;
 
 /** Sets up the day: tops the hand up, maybe an event. */
 export function startDay(s: Season): void {
   s.event = null;
-  // the first day of a new month: look back at the last one before anything else
-  if (s.phase === 'club' && s.day > 0 && s.day < SCHEDULE.length && SCHEDULE[s.day]!.month !== SCHEDULE[s.day - 1]!.month) s.review = true;
-  if (s.phase !== 'club' || plan(s).t !== 'train') return;
   const rng = rngOf(s);
+  if (s.phase === 'club' && s.day < SCHEDULE.length) enterStage(s, rng);
+  if (s.phase !== 'club' || plan(s).t !== 'train') {
+    keep(s, rng);
+    return;
+  }
+  if (plan(s).scrim) {
+    // the camp's last day: the scrimmage is all there is (a new hand is dealt tomorrow)
+    if (!s.hand.some((c) => c.kind === 'scrim')) s.hand = [{ uid: s.uid++, kind: 'scrim' }];
+    keep(s, rng);
+    return;
+  }
   // the rest card is always there, at the end of the hand
   const rest = s.hand.find((c) => c.kind === 'rest') ?? { uid: s.uid++, kind: 'rest' as const };
-  s.hand = s.hand.filter((c) => c.kind !== 'rest');
+  s.hand = s.hand.filter((c) => c.kind !== 'rest' && c.kind !== 'scrim');
   while (s.hand.length < handSize(s)) s.hand.push(drawCard(s, rng));
   s.hand.push(rest);
   if (EVENT_DAYS.includes(s.day)) {
@@ -786,8 +1012,10 @@ export function train(s: Season, index: number): DayReport {
       const got = convert(m, s.lineup);
       for (const [k, v] of Object.entries(got)) c.stats[k as Stat] = (c.stats[k as Stat] ?? 0) + (v as number);
       c.sta += addSta(m, takesPart ? info.sta : info.others);
-      // being on the ground together builds a little trust, every other day (a day off is a day off)
-      const base = card.kind === 'rest' ? 0 : s.day % 2;
+      // being on the ground together builds a little trust, every other day, a point a week between the tournaments
+      // (a day off is a day off)
+      const weeks = weeksOf(plan(s));
+      const base = card.kind === 'rest' ? 0 : weeks ? Math.round(weeks) : s.day % 2;
       c.trust += addTrust(m, base + info.trust + (mine ? info.heroTrust : 0));
     }
   });
@@ -961,12 +1189,18 @@ export function clubSheet(s: Season): TeamSheet {
 /** Which of the club's special plays the coming opponent has studied. */
 export const scoutedKeys = (s: Season): string[] => Object.keys(clubSheet(s).scouted ?? {});
 
-/** Books a finished match (the club is team 0) and moves the calendar on. */
-export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean; fame: FameChange } {
+/** Has the club been knocked out of the spring tournament (or played it to its end)? */
+export const springOver = (s: Season): boolean => s.day >= stageStart('summer');
+
+/**
+ * Books a finished match (the club is team 0) and moves the calendar on. A defeat in the spring tournament takes the
+ * club on to the summer (`out`); in the autumn one, it ends the year (`ended`).
+ */
+export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean; out: boolean; fame: FameChange } {
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
-  s.results.push({ day: s.day, opp: p.opp, us: st.score[0], them: st.score[1], win });
+  s.results.push({ day: s.day, m: p.m, opp: p.round, us: st.score[0], them: st.score[1], win });
   // who did what goes into the season's numbers
   bookMatch((s.box ??= {}), st.box?.[0]);
   // eleven a side the club now plays with its colour: it is the club's, and a win takes it further
@@ -987,23 +1221,25 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     }
   }).filter((c) => c.trust !== 0 || c.sta !== 0);
   // the club's standing: the gauge moves with every result
-  const fame = applyResult({ tier: s.tier, fame: s.fame }, p.opp, win);
+  const fame = applyResult({ tier: s.tier, fame: s.fame }, p.round, win, FAME_WEIGHT[p.stage]);
   s.tier = fame.after.tier;
   s.fame = fame.after.fame;
   let ended = false;
-  if (p.cup && !win) ended = true;
+  // knocked out: in spring the club goes on to the summer, in autumn the year is over
+  const out = p.cup && !win && p.stage === 'spring';
+  if (p.cup && !win && p.stage !== 'spring') ended = true;
   if (s.day >= SCHEDULE.length - 1) {
     ended = true;
     s.champion = win && p.cup;
   }
   if (ended) s.phase = 'done';
   else {
-    // the practice match is the milestone before the tournament: the policy may be reviewed
+    // a practice match is a milestone: the policy may be reviewed
     if (!p.cup) s.meeting = true;
-    s.day += 1;
+    s.day = out ? stageStart('summer') : s.day + 1;
     startDay(s);
   }
-  return { changes, win, ended, fame };
+  return { changes, win, ended, out, fame };
 }
 
 /** Brings a season saved by an earlier version up to date (stamina and the rest card came later). */
@@ -1025,8 +1261,13 @@ export function mend(s: Season): Season {
       m.grade = s.year <= 2 ? (founders ? s.year : 1) : Math.max(1, GRADES - Math.floor((i * GRADES) / n));
     });
   }
-  // the yearly draw came later: a district club keeps the four schools it knew, the others get a draw of their tournament
-  if (!Array.isArray(s.draw) || s.draw.length !== 4) s.draw = tierOf(s.league).cup === tierOf(0).cup ? [...FIRST_DRAW] : drawSchools(s.league, new Rng(s.seed));
+  // the yearly draw came later: a district club keeps the four schools it knew, the others get a draw of their
+  // tournament; the year's summer and autumn came later still (their schools are drawn on to the spring's)
+  if (!Array.isArray(s.draw) || s.draw.length < 4) s.draw = tierOf(s.league).cup === tierOf(0).cup ? [...FIRST_DRAW] : drawYear(s.league, new Rng(s.seed)).slice(0, 4);
+  if (s.draw.length < MATCH_COUNT) s.draw = drawYear(s.league, new Rng(s.seed ^ 0x5ca1), s.draw.slice(0, 4));
+  for (const r of s.results) if (typeof r.m !== 'number') r.m = SCHEDULE[r.day]?.m ?? r.opp;
+  // a year that began before the summer existed is in its spring
+  s.stageAt ??= s.day < stageStart('summer') ? 0 : s.day;
   // eleven a side came later: a club that plays in the prefecture or above gets a line-up of eleven
   if (s.phase !== 'recruit') fitLineup(s);
   // kickers came later still: the club's best foot gets the job

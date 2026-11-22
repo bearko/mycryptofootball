@@ -24,8 +24,7 @@ import {
   usePeek, type Hint, type MatchState, type Pick, type PlayResult, type Voice,
 } from '../game/match';
 import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
-import { opponentSheet } from '../game/teams';
-import { SCHEDULE, clubSheet, finishMatch, labelOf, plan, schoolId } from '../game/season';
+import { clubSheet, finishMatch, labelOf, opponentFor, plan } from '../game/season';
 import { cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
@@ -61,11 +60,12 @@ export function matchScreen(): [HTMLElement, () => void] {
   const s = save().season!;
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
-  const isFinal = s.day === SCHEDULE.length - 1;
+  // the spring's final and the autumn's (the one that counts)
+  const isFinal = p.cup && p.round === 3;
   playBgm(isFinal ? 'final' : 'match');
   crowd.start();
 
-  const sheets = (): [typeof home, typeof away] => [clubSheet(s), opponentSheet(p.opp, s.league, sizeOf(s.lineup!), schoolId(s, p.opp))];
+  const sheets = (): [typeof home, typeof away] => [clubSheet(s), opponentFor(s, p)];
   // a new coach's very first match is a told story (the manager's lessons: game/tutorial.ts)
   const told = s.results.length === 0 && lessonDue(s, 'm1');
   const st: MatchState = loadMatch() ?? (told ? createStory(...sheets(), newSeed()) : createMatch(...sheets(), newSeed()));
@@ -1077,7 +1077,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     crowd.tension(false);
     root.classList.remove('clutch');
     const totals = st.totals;
-    const { changes, win, ended, fame } = finishMatch(s, st);
+    const { changes, win, ended, out, fame } = finishMatch(s, st);
+    // the spring tournament is over (lost, or won to the end): the summer comes next
+    const springEnd = p.cup && p.stage === 'spring' && (out || p.round === 3);
     storeMatch(null);
     if (ended) {
       save().seasons += 1;
@@ -1108,7 +1110,8 @@ export function matchScreen(): [HTMLElement, () => void] {
     };
     modal(h('div.fulltime', { class: win ? 'win' : 'lose' },
       h('div.fulltime-top',
-        h('div.fulltime-head', h('b', kinetic(win ? '勝利！' : '敗北…'))),
+        h('div.fulltime-head', h('b', kinetic(win ? '勝利！' : '敗北…')),
+          springEnd ? h('span.fulltime-note', win ? '春の大会 優勝！ 本番は秋' : '春の大会はここまで。本番は秋！') : null),
         h('div.period-score', h('span', { style: { color: home.color } }, home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short))),
       h('div.fulltime-mid',
         h('table',

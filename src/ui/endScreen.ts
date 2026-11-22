@@ -5,10 +5,8 @@ import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero, talentOf } from '../game/heroes';
-import { sizeOf } from '../game/model';
-import { opponentSheet } from '../game/teams';
 import { tierOf } from '../game/prestige';
-import { SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, nextYear, roundOf, schoolAt, schoolId, type Season } from '../game/season';
+import { ROUND_NAME, SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, nextYear, opponentFor, roundOf, schoolAt, type Season } from '../game/season';
 import { fameBar, tierPlate } from './standing';
 import { confetti, kinetic } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, portrait, speech, ticker } from './kit';
@@ -32,6 +30,14 @@ export function endScreen(): [HTMLElement, () => void] {
   const last = s.results[s.results.length - 1];
   const where = last ? roundOf(SCHEDULE[last.day]!) : '';
   const cup = cupOf(s);
+  /** the standing the year began with (the autumn may have had its own) */
+  const began = s.springLeague ?? s.league;
+  // the spring tournament in a line: how far the club went
+  const spring = s.results.filter((r) => SCHEDULE[r.day]?.stage === 'spring' && r.opp > 0);
+  const springLast = spring[spring.length - 1];
+  const springText = !springLast ? '' : springLast.win && springLast.opp === 3 ? '優勝' : `${ROUND_NAME[springLast.opp]}${springLast.win ? '' : 'で敗退'}`;
+  // the autumn's matches, one by one
+  const autumn = s.results.filter((r) => SCHEDULE[r.day]?.stage === 'autumn' && r.opp > 0);
   const tier = tierOf(s.tier);
   /** the heroes in their last year: they leave before the next one begins */
   const leaving = graduating(s);
@@ -49,7 +55,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const canvas = h('canvas.stadium');
   const sheet = champion ? sheetOf(s) : null;
   if (sheet) {
-    stadium = new Stadium(canvas, [sheet, opponentSheet(3, s.league, sizeOf(sheet.lineup), schoolId(s, 3))]);
+    stadium = new Stadium(canvas, [sheet, opponentFor(s, SCHEDULE[SCHEDULE.length - 1]!)]);
     stadium.setMotion(save().prefs.motion);
     stadium.attract();
     stadium.setExcitement(1);
@@ -76,19 +82,22 @@ export function endScreen(): [HTMLElement, () => void] {
       h('h1', kinetic(champion ? `${cup} 優勝！` : `${where}で敗退`)),
       h('p.end-sub', champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : leaving.length ? `あと一歩。3年生の${leaving.length}人は、これで卒業。思いは後輩がつぐ。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
       h('div.end-standing', h('span', `${s.year}年目をおえて`), tierPlate(s.tier), fameBar(s.fame),
-        h('i', s.tier !== s.league ? (s.tier > s.league ? `${tierOf(s.league).name}から昇格！` : `${tierOf(s.league).name}から降格…`) : ''),
+        h('i', s.tier !== began ? (s.tier > began ? `${tierOf(began).name}から昇格！` : `${tierOf(began).name}から降格…`) : ''),
         h('em', [
           leaving.length ? `3年生 ${leaving.length}人が卒業` : '',
           room > 0 ? `来年の春、新しい部員を${room}人までむかえられる` : s.tier !== s.league ? `来年は${tier.cup}に出場` : '',
           tier.size !== tierOf(s.league).size ? `来年の試合は${tier.size}人制` : '',
         ].filter(Boolean).join('。'))),
-      h('ol.end-results', s.results.map((r, i) => {
-        const w = SCHEDULE[r.day]!;
-        return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i) } },
-          h('span', roundOf(w)),
-          h('b.led', `${r.us}-${r.them}`),
-          h('span', `${r.win ? '○' : '●'} ${schoolAt(s, r.opp).name}`));
-      })),
+      h('ol.end-results',
+        springText ? h('li.is-spring', { class: springLast!.win ? 'win' : 'lose', style: { '--i': '0' } },
+          h('span', '春の大会'), h('b', springText), h('span', `${tierOf(began).cup}`)) : null,
+        (autumn.length ? autumn : s.results.slice(-1)).map((r, i) => {
+          const w = SCHEDULE[r.day]!;
+          return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i + 1) } },
+            h('span', `${w.stage === 'autumn' ? '秋の' : ''}${roundOf(w)}`),
+            h('b.led', `${r.us}-${r.them}`),
+            h('span', `${r.win ? '○' : '●'} ${schoolAt(s, r.m).name}`));
+        })),
       team,
       h('div.end-actions',
         button(`${s.year + 1}年目へ`, again, { cls: 'big go' }),

@@ -10,7 +10,7 @@ import { KIND } from '../game/cards';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { STATS, STAT_LABEL, type Stat, type Stats } from '../game/model';
 import { tierOf } from '../game/prestige';
-import { founding as isFounding, genOf, joinCount, needsCaptain, signRecruits } from '../game/season';
+import { founding as isFounding, genOf, joinCount, midYear, needsCaptain, signRecruits } from '../game/season';
 import { playCard, specialText } from './cardView';
 import { burst, center, confetti, flash, flip, glitter, kick, kinetic, motion, pop, ring, shake, typewriter, type Typing } from './fx';
 import { TALENT_COLOR, backdrop, button, cheerAt, genChip, modalOpen, portrait, radar, speech, sprite, statIcon, talentChip } from './kit';
@@ -41,8 +41,10 @@ export function recruitScreen(): HTMLElement {
   const founding = isFounding(season);
   /** the first hero signed becomes captain (a new club, or one whose heroes have all graduated) */
   const lead = needsCaptain(season);
+  /** the briefing in May: the spring tournament brought them */
+  const may = midYear(season);
   /** how many left when the last year ended */
-  const gone = founding ? 0 : (season.left ?? []).length;
+  const gone = founding || may ? 0 : (season.left ?? []).length;
   /** what a newcomer to a club of this standing has on top of a beginner's abilities */
   const plus = founding ? 0 : tierOf(season.tier).join;
   const joinStats = (id: number): Stats => {
@@ -282,6 +284,7 @@ export function recruitScreen(): HTMLElement {
     const names = miss.slice(0, 2).map((k) => `「${STAT_LABEL[k]}」`).join('と');
     if (!picked.length && founding) tell('まずは主将をえらびましょう！ さいしょの1人は、特別作戦をすぐに使えますよ。', 'point');
     else if (!picked.length && lead) tell(`部員はみんな卒業しました。新しい部のはじまりです！ まずは主将をえらびましょう。`, 'point');
+    else if (!picked.length && may) tell(`春の大会を見て、入部したいヒーローが来てくれました！ ${NEED}人むかえられます。`, 'cheer');
     else if (!picked.length && gone) tell(`3年生が${gone}人、卒業しました。新しい部員を${NEED}人むかえましょう！`, 'point');
     else if (!picked.length) tell(`${tierOf(season.tier).name}になって、部員を${NEED}人むかえられます！ ${miss.length ? `${names}が得意な子がほしいですね。` : 'だれをむかえましょう？'}`, 'point');
     else if (left === 0 && !miss.length) tell(founding ? `6つの能力がぜんぶそろった、いいチームです！ この${NEED}人でいきましょう、監督！` : `これで部員は${old.length + NEED}人！ たのもしくなりますね、監督！`, 'sparkle');
@@ -504,8 +507,8 @@ export function recruitScreen(): HTMLElement {
   const root = h('div.screen.recruit',
     backdrop(['ROOKIES WANTED', '新入部員 大募集'], ['#3a1f8a', '#090d24', '#ffb648']),
     h('header.head.pad',
-      h('h2', '入部説明会'),
-      h('p', h('span', `${ids.length}人から${NEED}人をえらぼう。`), h('span', founding ? 'さいしょの1人が主将になる！' : lead ? `${season.year}年目の春。さいしょの1人が主将になる！` : `${season.year}年目の春。格は「${tierOf(season.tier).name}」！`)),
+      h('h2', may ? '追加の入部説明会' : '入部説明会'),
+      h('p', h('span', `${ids.length}人から${NEED}人をえらぼう。`), h('span', founding ? 'さいしょの1人が主将になる！' : may ? `${season.year}年目の5月。格は「${tierOf(season.tier).name}」！` : lead ? `${season.year}年目の春。さいしょの1人が主将になる！` : `${season.year}年目の春。格は「${tierOf(season.tier).name}」！`)),
       h('div.row.rc-score', h('div.rc-cov', h('small', 'チームの得意'), h('div.rc-lamps', [...lamps.values()])))),
     h('main.rc-body.pad', stage, rack, clip),
     h('footer.foot.pad', mgr.el, h('div.row', signBtn, startBtn)));

@@ -4,7 +4,7 @@ import { KIND } from '../src/game/cards';
 import { RECRUITS, hero } from '../src/game/heroes';
 import { roleOf } from '../src/game/model';
 import { TIERS } from '../src/game/prestige';
-import { mend, nextYear, schoolAt, schoolId } from '../src/game/season';
+import { MATCH_COUNT, mend, nextYear, schoolAt, schoolId } from '../src/game/season';
 import { CUP_SCHOOLS, FIRST_DRAW, ROUNDS, SCHOOLS, aces, complete, cupIndex, drawSchools, opponentSheet } from '../src/game/teams';
 import { runCareer, runSeason } from './bot';
 
@@ -97,17 +97,22 @@ describe('the schools', () => {
     expect(CUP_SCHOOLS[1]!.filter((id) => CUP_SCHOOLS[0]!.includes(id)).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('a club\'s first year is always against the same four; from the second year the draw changes', () => {
+  it('a club\'s first spring is always against the same four; from the second year the draw changes', () => {
     const { season: s } = runSeason(3 * 31);
-    expect(s.draw).toEqual([...FIRST_DRAW]);
+    expect(s.draw.slice(0, 4)).toEqual([...FIRST_DRAW]);
+    expect(s.draw.length).toBe(MATCH_COUNT);
     expect(schoolAt(s, 3).name).toBe(SCHOOLS[3]!.name);
+    // the autumn's schools are of the tournament the club reached by then
+    for (const id of s.draw.slice(5)) expect(CUP_SCHOOLS[cupIndex(s.league)]).toContain(id);
     const seen = new Set<string>();
     for (let seed = 1; seed <= 12; seed += 1) {
       const { season: t } = runSeason(3 * 31);
       t.tier = 2;
       nextYear(t, seed);
-      expect(t.draw.length).toBe(4);
+      expect(t.draw.length).toBe(MATCH_COUNT);
       for (const id of t.draw) expect(CUP_SCHOOLS[1]).toContain(id);
+      // the spring's four in order of strength, the June practice match one of the others when there is one
+      expect(t.draw.slice(0, 4).includes(t.draw[4]!)).toBe(false);
       expect(schoolId(t, 0)).toBe(t.draw[0]);
       seen.add(t.draw.join());
     }
@@ -118,7 +123,8 @@ describe('the schools', () => {
     const { season: s } = runSeason(5 * 31);
     delete (s as unknown as Record<string, unknown>).draw;
     mend(s);
-    expect(s.draw).toEqual([...FIRST_DRAW]);
+    expect(s.draw.slice(0, 4)).toEqual([...FIRST_DRAW]);
+    expect(s.draw.length).toBe(MATCH_COUNT);
     const { season: t } = runSeason(5 * 31);
     t.league = 4;
     delete (t as unknown as Record<string, unknown>).draw;

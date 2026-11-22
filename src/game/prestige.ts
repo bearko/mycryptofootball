@@ -21,12 +21,12 @@ export interface Tier {
 
 export const TIERS: readonly Tier[] = [
   { name: '素人', roster: 7, hand: 5, cup: '地区大会', level: 0, join: 0, size: 6 },
-  { name: '同好会', roster: 9, hand: 5, cup: '地区大会', level: 7, join: 4, size: 6 },
-  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 9, join: 9, size: 11 },
-  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 15, join: 13, size: 11 },
-  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 21, join: 17, size: 11 },
-  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 28, join: 21, size: 11 },
-  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 32, join: 25, size: 11 },
+  { name: '同好会', roster: 9, hand: 5, cup: '地区大会', level: 8, join: 4, size: 6 },
+  { name: '弱小', roster: 11, hand: 6, cup: '県大会', level: 13, join: 9, size: 11 },
+  { name: '注目株', roster: 16, hand: 6, cup: '県大会', level: 19, join: 13, size: 11 },
+  { name: '中堅', roster: 22, hand: 6, cup: '地方大会', level: 25, join: 17, size: 11 },
+  { name: '強豪', roster: 22, hand: 7, cup: '全国大会', level: 29, join: 21, size: 11 },
+  { name: '名門', roster: 24, hand: 7, cup: '全国大会', level: 35, join: 25, size: 11 },
 ];
 /** the tournaments, the smallest first */
 export const CUPS: readonly string[] = ['地区大会', '県大会', '地方大会', '全国大会'];
@@ -35,7 +35,7 @@ export const FAME_MAX = 100;
 /** the gauge after going up a step / after going down one */
 export const FAME_AFTER_UP = 30;
 export const FAME_AFTER_DOWN = 60;
-/** what a win and a defeat are worth in each of the year's four matches: the practice match, then the three rounds */
+/** what a win and a defeat are worth: a practice match, then the three rounds of a tournament (before its weight) */
 export const FAME_WIN: readonly number[] = [15, 30, 40, 50];
 export const FAME_LOSS: readonly number[] = [-10, -25, -15, -10];
 
@@ -57,11 +57,17 @@ export interface FameChange {
 }
 
 /**
- * Books one match. `match`: 0 for the practice match, 1–3 for the rounds of the tournament.
+ * How much a match counts, by the time of year: the spring tournament is a warm-up, the autumn one counts in full;
+ * the practice matches between them a little less than the spring's.
+ */
+export const FAME_WEIGHT = { spring: 0.35, summer: 0.3, camp: 0.3, autumn: 0.6 } as const;
+
+/**
+ * Books one match. `match`: 0 for a practice match, 1–3 for the rounds of a tournament; `weight`: FAME_WEIGHT.
  * Beginners who win their first round (and so reach the semi-final) become a club at once, whatever the gauge says.
  */
-export function applyResult(now: Standing, match: number, win: boolean): FameChange {
-  const delta = (win ? FAME_WIN : FAME_LOSS)[Math.max(0, Math.min(3, match))]!;
+export function applyResult(now: Standing, match: number, win: boolean, weight = 1): FameChange {
+  const delta = Math.round((win ? FAME_WIN : FAME_LOSS)[Math.max(0, Math.min(3, match))]! * weight);
   let { tier, fame } = now;
   fame += delta;
   if (now.tier === 0 && match === 1 && win) fame = Math.max(fame, FAME_MAX);

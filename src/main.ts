@@ -19,8 +19,8 @@ import { Rng } from './core/rng';
 import { save } from './core/save';
 import { RECRUITS } from './game/heroes';
 import { TOP_TIER } from './game/prestige';
-import { drawSchools } from './game/teams';
-import { ROSTER_SIZE, SCHEDULE, hasTactic, joinCount, newSeason, nextYear, signRecruits, startDay, tacticOf } from './game/season';
+import { drawYear } from './game/teams';
+import { ROSTER_SIZE, SCHEDULE, hasTactic, joinCount, newSeason, nextYear, signRecruits, stageStart, startDay, tacticOf, type DayPlan } from './game/season';
 import { LEVEL_PTS, TACTICS, type Tactic } from './game/tactics';
 import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
@@ -60,6 +60,15 @@ function jump(to: string): void {
   save().season = s;
   save().match = null;
   save().helpSeen = true;
+  if (to === 'recruit' && debug.day !== null) {
+    signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
+    // the May briefing: the spring is over, and the club has gone up a step (or as far as ?tier= says)
+    s.tier = Math.max(1, Math.min(TOP_TIER, debug.tier ?? 1));
+    s.day = stageStart('summer');
+    startDay(s);
+    show(s.phase === 'recruit' ? recruitScreen() : clubScreen()[0]);
+    return;
+  }
   if (to === 'recruit' && debug.tier === null) {
     show(recruitScreen());
     return;
@@ -81,7 +90,7 @@ function jump(to: string): void {
       return;
     }
     s.league = s.tier;
-    s.draw = drawSchools(s.league, new Rng(debug.seed ?? 7));
+    s.draw = drawYear(s.league, new Rng(debug.seed ?? 7));
     const have = new Set(s.members.map((m) => m.id));
     s.candidates = RECRUITS.map((r) => r.id).filter((id) => !have.has(id));
     if (joinCount(s) > 0) signRecruits(s, s.candidates.slice(0, joinCount(s)));
@@ -97,16 +106,25 @@ function jump(to: string): void {
     s.tacticWins = LEVEL_PTS[Math.max(1, Math.min(LEVEL_PTS.length, debug.tlv ?? 1)) - 1];
   }
   const firstMatch = SCHEDULE.findIndex((w) => w.t === 'match');
-  s.day = debug.day ?? (to === 'match' ? firstMatch : 0);
+  s.day = Math.max(0, Math.min(SCHEDULE.length - 1, debug.day ?? (to === 'match' ? firstMatch : 0)));
+  // a day in the middle of a part of the year: that part has begun already (its first day: it begins now)
+  const at = SCHEDULE[s.day]!;
+  if (s.day !== stageStart(at.stage)) {
+    s.stageAt = stageStart(at.stage);
+    if (at.stage === 'autumn') s.league = s.tier;
+  }
   s.hand = [];
   startDay(s);
-  if (to === 'lineup') show(lineupScreen(() => open(clubScreen())));
+  if (s.phase === 'recruit') show(recruitScreen());
+  else if (to === 'lineup') show(lineupScreen(() => open(clubScreen())));
   else if (to === 'match' && SCHEDULE[s.day]!.t === 'match') show(...matchScreen());
   else if (to === 'end' || to === 'champion') {
     s.phase = 'done';
     s.champion = to === 'champion';
-    s.results = [{ day: 6, opp: 0, us: 21, them: 7, win: true }, { day: 13, opp: 1, us: 14, them: 7, win: true },
-      { day: 20, opp: 2, us: 21, them: 14, win: true }, { day: 27, opp: 3, us: to === 'champion' ? 28 : 7, them: 21, win: to === 'champion' }];
+    // a year played to its end: lost the spring's semi-final, then all the way to the autumn's final
+    const won = (d: DayPlan): boolean => (d.stage === 'spring' ? d.round < 2 : d.round < 3 || to === 'champion');
+    s.results = SCHEDULE.filter((d) => d.t === 'match' && !(d.stage === 'spring' && d.round === 3))
+      .map((d) => ({ day: d.n, m: d.m, opp: d.round, us: won(d) ? 21 : 7, them: won(d) ? 14 : 17, win: won(d) }));
     show(...endScreen());
   } else open(clubScreen());
 }

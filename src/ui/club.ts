@@ -13,10 +13,11 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  SCHEDULE, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, graduating, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { aces } from '../game/teams';
+import { tierOf } from '../game/prestige';
 import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
 import { calendar } from './ground/calendar';
@@ -65,14 +66,35 @@ function contextLine(s: Season): Line {
   if (p.t === 'match') {
     const worn = s.members.filter((m) => tired(m) && isStarter(s.lineup!, m.id));
     if (worn.length) return [`${worn.slice(0, 2).map((m) => shortName(m.id)).join('と')}${worn.length > 2 ? 'たち' : ''}がバテ気味です…。試合では少し動きが落ちます。`, 'think'];
-    if (s.day >= SCHEDULE.length - 1) return ['ついに決勝です！ ここまで来たら、あとは思いきりぶつかるだけ！', 'cheer'];
-    if (p.cup) return [`今日は${shortLabel(p)}。負けたら今年はここまで…！ いざ、試合へ！`, 'cheer'];
+    if (isFinal(p)) return ['ついに秋の決勝です！ ここまで来たら、あとは思いきりぶつかるだけ！', 'cheer'];
+    if (p.cup && p.stage === 'spring') return p.round === 3
+      ? ['春の決勝です！ 秋の本番の前に、いちばん上を取ってしまいましょう！', 'cheer']
+      : [`今日は春の${shortLabel(p)}。負けたら春の大会はここまで…！ いざ、試合へ！`, 'cheer'];
+    if (p.cup) return [`今日は秋の${shortLabel(p)}。負けたら今年はここまで…！ いざ、試合へ！`, 'cheer'];
+    if (p.stage !== 'spring') return ['今日は練習試合。秋の大会に向けて、いまの力をためしましょう！', 'point'];
     return ['今日は練習試合です。負けても大会には出られます。思いきり試しましょう！', 'point'];
   }
+  // the first day of a part of the year: what it is about
+  if (s.stageAt === s.day && s.day > 0) {
+    if (p.stage === 'summer') {
+      const spring = s.results.filter((r) => SCHEDULE[r.day]!.stage === 'spring' && SCHEDULE[r.day]!.cup);
+      const lastCup = spring[spring.length - 1];
+      const won = lastCup?.win && lastCup.opp === 3;
+      return [won ? '春の大会、優勝です！！ でも本番は秋。ここからは、カード1枚で2週間ぶん練習します！'
+        : `${lastCup ? `春の大会は${ROUND_NAME[lastCup.opp]}まででした。` : '春の大会、おつかれさまでした！ '}本番は秋！ ここからは、カード1枚で2週間ぶん練習します。`, won ? 'sparkle' : 'point'];
+    }
+    if (p.stage === 'camp') return ['夏合宿です！ 練習の効果は2倍、そのぶん疲れも大きい。最後の日は紅白戦！ 方針もいまだけ見直せます。', 'cheer'];
+    if (p.stage === 'autumn') {
+      return sizeOf(s.lineup!) === 11 && tierOf(s.springLeague ?? s.league).size !== 11
+        ? [`秋は${cupOf(s)}。試合は11人制です！ 「編成」で、11人の並びを見ておきましょう。`, 'point']
+        : [`いよいよ秋。目指すは${cupOf(s)}の優勝です！ 方針もいまだけ見直せます。`, 'cheer'];
+    }
+  }
+  if (p.scrim) return ['合宿の最後は紅白戦！ 2週間の成果を見せてもらいましょう。', 'cheer'];
   if (policyOpen(s) && s.day > 0) return ['練習試合、おつかれさまでした！ いまだけ「方針」を見直せます。カードを出すと締め切りです。', 'point'];
   if (last && last.day === s.day - 1) {
     return last.win
-      ? [`${schoolAt(s, last.opp).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
+      ? [`${schoolAt(s, last.m).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
   if (s.day === 0 && s.year > 1 && s.results.length === 0) {
@@ -86,12 +108,15 @@ function contextLine(s: Season): Line {
   const worn = s.members.filter(tired);
   if (worn.length >= 3) return [`${worn.length}人がバテ気味です。バテると練習が身につきにくい…「休養」も立派な練習ですよ。`, 'think'];
   const next = nextMatch(s);
-  if (next && next.n - s.day === 1) return [`あしたは${shortLabel(next)}！ 仕上げの1枚をえらびましょう。`, 'cheer'];
+  const until = next ? daysTo(s, next) : 0;
+  if (next && until <= 1) return [`あしたは${shortLabel(next)}！ 仕上げの1枚をえらびましょう。`, 'cheer'];
+  if (p.days > 1) return [next ? `${schoolAt(s, next.m).name}との${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！` : 'この2週間の1枚をどうぞ！', 'smile'];
+  if (p.stage === 'camp') return ['合宿の1日をえらびましょう！ バテたら「休養」も忘れずに。', 'smile'];
   const near = s.members.filter((m) => !learned(m)).sort((a, b) => b.trust - a.trust)[0];
   if (near && TRUST_LEARN - near.trust <= 12) {
     return [`${shortName(near.id)}はあと信頼${TRUST_LEARN - near.trust}で特別作戦を覚えます。マンツーマンのカードが近道ですよ。`, 'point'];
   }
-  if (next) return [`${schoolAt(s, next.opp).name}との${shortLabel(next)}まで、あと${next.n - s.day}日。きょうの1枚をどうぞ！`, 'smile'];
+  if (next) return [`${schoolAt(s, next.m).name}との${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！`, 'smile'];
   return ['きょうの1枚をえらびましょう！', 'smile'];
 }
 
@@ -432,9 +457,9 @@ export function clubScreen(): [HTMLElement, () => void] {
     show(...matchScreen());
   };
   const vsBanner = (p: DayPlan): HTMLElement => {
-    const opp = schoolAt(s, p.opp);
+    const opp = schoolAt(s, p.m);
     const studied = scoutedKeys(s);
-    const stars = aces(schoolId(s, p.opp), p.opp, sizeOf(s.lineup!));
+    const stars = aces(schoolId(s, p.m), p.opp, sizeOf(s.lineup!));
     return h('footer.pg-vs', { style: { '--oc': opp.color } },
       studied.length ? h('div.vs-warn', { role: 'alert' }, icon(ICON.warn), h('b', '研究されている！'),
         h('span', `「${studied.map((k) => hero(Number(k)).passive).join('」「')}」は、最初から少し読まれる`)) : null,
@@ -443,7 +468,7 @@ export function clubScreen(): [HTMLElement, () => void] {
         h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
         h('p.vs-style', opp.style),
         sizeOf(s.lineup!) === 11 && opp.tactic ? colourLine(opp.tactic) : null,
-        h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? '負けたら今年はここまで' : '負けても大会へ進める')),
+        h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? (p.stage === 'spring' ? '負けたら春はここまで' : '負けたら今年はここまで') : p.stage === 'spring' ? '負けても大会へ進める' : '秋への腕だめし')),
       h('ul.vs-aces', { class: stars.length > 3 ? 'is-many' : '' },
         h('li.vs-cap', '要注意のエース'),
         stars.map((a, i) => h('li', { style: { '--i': String(i) } },
@@ -499,7 +524,7 @@ export function clubScreen(): [HTMLElement, () => void] {
     const p = plan(s);
     const match = p.t === 'match';
     root.classList.toggle('is-matchday', match);
-    root.classList.toggle('is-final', match && s.day >= SCHEDULE.length - 1);
+    root.classList.toggle('is-final', match && isFinal(p));
     if (match) {
       if (!vs) {
         vs = vsBanner(p);
@@ -699,9 +724,10 @@ export function clubScreen(): [HTMLElement, () => void] {
       });
       return;
     }
-    // a new month: first look back on the last one (then the day goes on as usual)
+    // a new part of the year: first look back on the last one (then the day goes on as usual)
     if (s.review) {
-      coach.say('月がかわりました！ 先月のみんなの成長を見てみましょう。', 'smile');
+      const was = SCHEDULE[Math.max(0, s.day - 1)]!.stage;
+      coach.say(`${STAGE_NAME[was]}${was === 'camp' ? '' : 'の期間'}がおわりました！ みんなの成長を見てみましょう。`, 'smile');
       setTimeout(() => {
         if (!alive) return;
         reviewModal(s, {

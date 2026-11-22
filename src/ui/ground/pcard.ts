@@ -2,13 +2,14 @@
 // (the effect bar over the hand, and the numbers over the heroes' heads).
 // The frame and the background say what kind of card it is: paper for the ordinary drills, red for one-on-one,
 // dark foil with a gold frame for a hero's special practice, green for the day off, the club's colour for the
-// tactic practice.
+// tactic practice, red and white for the camp's scrimmage. Between the tournaments a card stands for a fortnight
+// (a "2週間" tag), at the camp it says so (a "合宿" tag): its effect is bigger, the picture the same.
 
 import catalog from '../../generated/catalog.json';
 import { h } from '../../core/dom';
 import { hero, recruit, talentOf } from '../../game/heroes';
 import { STAT_LABEL } from '../../game/model';
-import { XPS, cardInfo, clubTacticLv, member, tacticOf, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
+import { XPS, cardInfo, clubTacticLv, member, plan, tacticOf, weeksOf, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
 import { LEVEL_PTS, TACTIC, TACTIC_LV_MAX } from '../../game/tactics';
 import { tilt } from '../fx';
 import { stars } from '../kit';
@@ -24,7 +25,15 @@ const artOf = (key: PracticeKey | 'rest', star: number): string => {
 
 /** The drill the heroes perform for a card (the day off has none). */
 export const drillKind = (card: PracticeCard): DrillKind | null =>
-  (card.kind === 'basic' ? card.key : card.kind === 'rest' ? null : card.kind === 'tactic' ? 'game' : card.kind);
+  (card.kind === 'basic' ? card.key : card.kind === 'rest' ? null : card.kind === 'tactic' || card.kind === 'scrim' ? 'game' : card.kind);
+
+/** What a card stands for today, when it is not one ordinary day: "2週間", "合宿" (or ''). */
+export function cardWhen(s: Season): string {
+  const p = plan(s);
+  const weeks = weeksOf(p);
+  if (weeks) return `${Math.round(weeks)}週間`;
+  return p.stage === 'camp' && !p.scrim ? '合宿' : '';
+}
 
 /** One card of the hand. `index` only numbers the key hint; the caller wires the pointer. */
 export function practiceCard(s: Season, card: PracticeCard, index: number): HTMLButtonElement {
@@ -44,6 +53,11 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
     cls = 'is-rest';
     inner.append(
       h('span.pgc-art', h('img.px', { src: artOf('rest', 1), alt: '', draggable: false })),
+      h('span.pgc-name', info.name));
+  } else if (card.kind === 'scrim') {
+    cls = 'is-scrim';
+    inner.append(
+      h('span.pgc-art.is-scrim', h('b.pgc-red', '紅'), h('b.pgc-white', '白')),
       h('span.pgc-name', info.name));
   } else if (card.kind === 'tactic') {
     const t = tacticOf(s) ?? 'speed';
@@ -67,6 +81,12 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
       h('span.pgc-art.is-hero', h('img.px', { src: hero(card.hero).img, alt: '', draggable: false }), h('b.pgc-who', '特別練習')),
       h('span.pgc-name', `「${info.name}」`));
   }
+  const when = cardWhen(s);
+  if (when) {
+    cls += ` ${weeksOf(plan(s)) ? 'is-span' : 'is-camp'}`;
+    label = `${when}：${label}`;
+    inner.append(h('span.pgc-when', when));
+  }
   inner.append(h('span.card-glare'));
   const tc = card.kind === 'tactic' ? { '--tc': TACTIC[tacticOf(s) ?? 'speed'].color } : {};
   const btn: HTMLButtonElement = h('button.card.pgc', { class: cls, type: 'button', 'aria-label': label, data: { uid: String(card.uid) }, style: { '--i': '0', ...tc } }, inner, key);
@@ -83,10 +103,21 @@ export function staChip(n: number, who = ''): HTMLElement {
 
 /** What a card is expected to do, for the effect bar over the hand. */
 export function cardEffect(s: Season, card: PracticeCard): { title: HTMLElement; text: string; chips: HTMLElement[] } {
+  const out = effectOf(s, card);
+  // a fortnight, or the camp: said next to the name
+  const when = cardWhen(s);
+  if (when) out.title.append(h('i.fx-when', when));
+  return out;
+}
+
+function effectOf(s: Season, card: PracticeCard): { title: HTMLElement; text: string; chips: HTMLElement[] } {
   const info: CardInfo = cardInfo(s, card);
   const xp = XPS.filter((k) => info.xp[k]).map((k) => xpChip(k, info.xp[k]!, true));
   const heart = (n: number, who: string): HTMLElement => h('span.fx-heart', h('u', `${who}信頼`), h('b', `+${n}`));
   const who = (text: string): HTMLElement => h('span.fx-who', text);
+  if (card.kind === 'scrim') {
+    return { title: h('b.fx-name', info.name), text: info.text, chips: [...xp, staChip(info.sta), heart(info.trust, '')] };
+  }
   if (card.kind === 'basic') {
     return {
       title: h('b.fx-name', info.name, stars(card.star)), text: info.text,
