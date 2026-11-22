@@ -6,9 +6,9 @@ import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { commit, save } from '../core/save';
 import { hero, recruit, talentOf } from '../game/heroes';
-import { STATS, STAT_LABEL, type Stat } from '../game/model';
+import { ROLE_FULL, ROLE_LABEL, STATS, STAT_LABEL, type Stat } from '../game/model';
 import {
-  PRESET_LABEL, applyPreset, clubTacticLv, hasTactic, policyOpen, presetFocus, setFocus, setTactic, suggestedTactic, tacticOf, tacticOpen,
+  GROUP_ROLES, PRESET_LABEL, applyPreset, clubSize, clubTacticLv, groupFocus, groupMembers, hasTactic, policyOpen, presetFocus, roleStats, setFocus, setGroupFocus, setTactic, suggestedTactic, tacticOf, tacticOpen,
   type Member, type Preset, type Season,
 } from '../game/season';
 import { TACTIC, TACTICS, TACTIC_LV_MAX } from '../game/tactics';
@@ -127,8 +127,36 @@ export function policyPanel(s: Season, onClose: () => void): void {
     presets.get(key)!.title = PRESET_LABEL[key].text;
   }
 
+  // eleven a side: the policy a position at a time. A tap gives everybody at that position the next ability it uses
+  const groups = open && clubSize(s) === 11
+    ? GROUP_ROLES.filter((role) => groupMembers(s, role).length).map((role) => {
+      const btn = h('button.pol-group', {
+        type: 'button', title: `${ROLE_FULL[role]}の全員に、同じ能力を伸ばさせる（押すたびに次の能力）`,
+        onclick: () => {
+          const opts = roleStats(role);
+          const now = groupFocus(s, role);
+          const next = opts[(now ? opts.indexOf(now) + 1 : 0) % opts.length]!;
+          setGroupFocus(s, role, next);
+          sfx.cardPick();
+          vibrate(10);
+          draw();
+          for (const c of cols) if (groupMembers(s, role).includes(c.m)) kick(c.el.querySelector('.portrait'), 'hop');
+        },
+      });
+      return { role, btn };
+    })
+    : [];
+  const drawGroups = (): void => {
+    for (const { role, btn } of groups) {
+      const k = groupFocus(s, role);
+      btn.replaceChildren(h('b', ROLE_LABEL[role]), k ? h('span', { class: `t-${k}` }, statIcon(k), STAT_LABEL[k]) : h('span.is-mixed', 'ばらばら'));
+      btn.classList.toggle('is-set', !!k);
+    }
+  };
+
   /** Lights the chosen ability of every hero, and the preset that matches everyone (if one does). */
   function draw(): void {
+    drawGroups();
     for (const c of cols) {
       for (const [k, cell] of c.stats) {
         const on = c.m.focus === k;
@@ -148,6 +176,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
         ? ['ヒーローごとに', h('b', '伸ばす能力を1つ'), '決めます。練習の経験は、まずその能力になります。']
         : [icon(ICON.lock), h('b', '次に変えられるのは節目だけ'), '（練習試合の次の日）。いまは見るだけです。']),
       h('p.pol-legend', h('span', h('i.pol-rec', 'おすすめ'), '得意'), h('span', h('i.pol-hard', '△'), '苦手'))),
+    groups.length ? h('div.pol-groups', h('span', 'ポジション', h('br'), 'ごとに'), groups.map((g) => g.btn)) : null,
     h('div.pol-grid', cols.map((c) => c.el)),
     h('div.pol-foot',
       open ? h('div.pol-presets', h('span', 'まとめて', h('br'), '決める'), [...presets.values()]) : null,

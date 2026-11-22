@@ -7,7 +7,7 @@ import {
 } from '../src/game/match';
 import { DEF_POS_OF, OFF_POS_OF, defPos, offPos, roleOf, sizeOf } from '../src/game/model';
 import { TIERS } from '../src/game/prestige';
-import { asPlayer, clubSheet, clubSize, mend, nextYear, signRecruits, type Season } from '../src/game/season';
+import { GROUP_ROLES, asPlayer, clubSheet, clubSize, groupFocus, groupMembers, mend, nextYear, policyOpen, roleStats, setGroupFocus, signRecruits, type Season } from '../src/game/season';
 import { SCHOOLS, opponentSheet } from '../src/game/teams';
 import { WIDTH } from '../src/ui/stadium/assets';
 import { buildScript, evalKeys, formation, lineUp, specOf } from '../src/ui/stadium/choreo';
@@ -277,5 +277,21 @@ describe('eleven a side', () => {
         expect(plan.cues.some((c) => c.c === 'payoff' && c.who === a.id), `${kind}: no payoff for ${a.id}`).toBe(true);
       }
     }
+  });
+});
+
+describe('the policy a position at a time (eleven a side)', () => {
+  it('sets everybody at one kind of position to an ability that position uses', () => {
+    const s = clubAt(2);
+    expect(policyOpen(s)).toBe(true);
+    for (const role of GROUP_ROLES) {
+      const g = groupMembers(s, role);
+      if (!g.length) continue;
+      const k = roleStats(role)[1] ?? roleStats(role)[0]!;
+      setGroupFocus(s, role, k);
+      expect(groupFocus(s, role)).toBe(k);
+      expect(g.every((m) => m.focus === k)).toBe(true);
+    }
+    expect(roleStats('QB')).toEqual(['pas', 'iq']);
   });
 });
