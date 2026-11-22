@@ -13,7 +13,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, SUMMIT_DAY, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
@@ -33,6 +33,7 @@ import { policyPanel } from './policy';
 import { reviewModal } from './review';
 import { bracketModal, showBracket } from './bracket';
 import { facilitiesModal } from './facilities';
+import { alumniModal } from './alumni';
 import { memberModal, settingsModal } from './shared';
 import { standingChip } from './standing';
 import { titleScreen } from './title';
@@ -105,6 +106,7 @@ function contextLine(s: Season): Line {
     const last = graduating(s);
     const gone = (s.left ?? []).length;
     // the first words of a new year: who has gone, and whose last year this is
+    if (gone && s.obGain) return [`3年生が${gone}人卒業して、OBポイントを${s.obGain}のこしてくれました！ 「OB会」で、お弁当やメダルに換えられます。`, 'sparkle'];
     if (gone && sizeOf(s.lineup!) !== 11) return [`3年生が${gone}人卒業して、新しい1年が始まります。${last.length ? `今年の3年生は${last.length}人。悔いのない年にしましょう！` : 'じっくり育てていきましょう！'}`, 'point'];
   }
   if (s.day === 0 && s.year > 1 && sizeOf(s.lineup!) === 11) return [`今年は${cupOf(s)}。試合は11人制です！ ${(s.left ?? []).length ? `3年生が${(s.left ?? []).length}人卒業したので、` : ''}「編成」で、11人の並びを見ておきましょう。`, 'point'];
@@ -187,6 +189,21 @@ export function clubScreen(): [HTMLElement, () => void] {
     facMoney.textContent = `${moneyOf(s)}万円`;
   };
   drawFacBtn();
+  // the alumni's room: the OB points the graduates left, under the word
+  const obPts = h('small');
+  const obBtn = button([h('span', 'OB会'), obPts], () => alumniModal(s, () => {
+    save().season = s;
+    commit();
+    drawFacBtn();
+    drawObBtn();
+    for (const m of s.members) drawTag(m);
+    if (plan(s).t === 'train' && !busy) drawHand('none', true);
+  }), 'alt pg-ob');
+  const drawObBtn = (): void => {
+    obBtn.hidden = !shopOpen(s);
+    obPts.textContent = `${obOfClub(s)}pt`;
+  };
+  drawObBtn();
   const top = h('header.pg-top',
     h('div.pg-school', h('b', TEAM_NAME), standingChip(s)),
     cal.el,
@@ -196,6 +213,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       button('成長', () => reviewModal(s, { closed: false }), 'alt'),
       bracketBtn,
       facBtn,
+      obBtn,
       button('設定', settingsModal, 'alt'),
       button('タイトル', () => {
         save().season = s;

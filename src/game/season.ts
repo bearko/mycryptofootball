@@ -18,6 +18,7 @@ import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
 import { acesFit, suggestAces, type Aces } from './duel';
+import { BENTO, MEDAL_PACK, MEDAL_RATE, obOf, spin, type BentoKey, type Spin } from './alumni';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
 import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, PRO_SCHOOL, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
@@ -565,6 +566,12 @@ export interface Season {
   aces?: Partial<Aces>;
   /** the summit against the corporate champion, once played: won (the game is beaten) or lost */
   summit?: 'won' | 'lost';
+  /** OB points the graduates have left (game/alumni.ts), and what the last graduation brought (shown in spring) */
+  ob?: number;
+  obGain?: number;
+  /** lunch boxes in the club room, and medals for the medal game */
+  items?: Partial<Record<BentoKey, number>>;
+  medals?: number;
 }
 
 // ------------------------------------------------------------------ start and recruiting
@@ -707,6 +714,9 @@ export function nextYear(s: Season, seed: number): void {
   const leaving = graduating(s);
   s.alumni ??= {};
   for (const m of leaving) s.alumni[m.id] = { n: (s.alumni[m.id]?.n ?? 0) + 1, year: s.year };
+  // what they leave behind: OB points for the alumni's shop
+  s.obGain = leaving.reduce((v, m) => v + obOf(m), 0);
+  s.ob = (s.ob ?? 0) + s.obGain;
   s.left = leaving.map((m) => m.id);
   s.members = s.members.filter((m) => m.grade < GRADES);
   for (const m of s.members) m.grade += 1;
@@ -1506,6 +1516,59 @@ export function mend(s: Season): Season {
     s.uid += 1;
   }
   return s;
+}
+
+// ------------------------------------------------------------------ the alumni's shop (game/alumni.ts)
+
+export const obOfClub = (s: Season): number => s.ob ?? 0;
+export const medalsOf = (s: Season): number => s.medals ?? 0;
+export const itemCount = (s: Season, k: BentoKey): number => s.items?.[k] ?? 0;
+/** Is the alumni's shop open? From the second year (somebody may have graduated). */
+export const shopOpen = (s: Season): boolean => s.year > 1 || obOfClub(s) > 0 || medalsOf(s) > 0;
+
+/** Buys a lunch box with OB points (false: not enough). */
+export function buyBento(s: Season, k: BentoKey): boolean {
+  const price = BENTO[k].price;
+  if (obOfClub(s) < price) return false;
+  s.ob = obOfClub(s) - price;
+  s.items = { ...(s.items ?? {}), [k]: itemCount(s, k) + 1 };
+  return true;
+}
+/** Opens a lunch box: everybody gets stamina back (and trust, from the grandest). Returns what changed. */
+export function useBento(s: Season, k: BentoKey): Change[] {
+  if (itemCount(s, k) <= 0) return [];
+  s.items = { ...(s.items ?? {}), [k]: itemCount(s, k) - 1 };
+  const b = BENTO[k];
+  return withMilestones(s, (ch) => {
+    for (const m of s.members) {
+      const c = ch.get(m.id)!;
+      c.sta += addSta(m, b.sta);
+      if (b.trust) c.trust += addTrust(m, b.trust);
+    }
+  }).filter((c) => c.sta !== 0 || c.trust !== 0);
+}
+/** Buys a bag of medals with OB points (false: not enough). */
+export function buyMedals(s: Season): boolean {
+  if (obOfClub(s) < MEDAL_PACK.price) return false;
+  s.ob = obOfClub(s) - MEDAL_PACK.price;
+  s.medals = medalsOf(s) + MEDAL_PACK.medals;
+  return true;
+}
+/** Changes medals into the club's money (false: not enough medals). */
+export function cashMedals(s: Season): boolean {
+  if (medalsOf(s) < MEDAL_RATE.medals) return false;
+  s.medals = medalsOf(s) - MEDAL_RATE.medals;
+  s.money = moneyOf(s) + MEDAL_RATE.money;
+  return true;
+}
+/** One spin of the medal game (null: not enough medals for the bet). */
+export function playSlot(s: Season, bet: number): Spin | null {
+  if (medalsOf(s) < bet) return null;
+  const rng = rngOf(s);
+  const out = spin(rng, bet);
+  keep(s, rng);
+  s.medals = medalsOf(s) - bet + out.pay;
+  return out;
 }
 
 /** A short description of a change, e.g. "走力 +4". */

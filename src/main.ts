@@ -14,6 +14,7 @@ import './styles/end.css';
 import './styles/tutor.css';
 import './styles/bracket.css';
 import './styles/duel.css';
+import './styles/alumni.css';
 
 import { unlockAudio } from './core/audio';
 import { debug } from './core/debug';
@@ -103,6 +104,10 @@ function jump(to: string): void {
     });
   }
   if (debug.trust !== null) for (const m of s.members) m.trust = debug.trust;
+  if (debug.ob !== null) {
+    s.ob = debug.ob;
+    s.medals = debug.ob;
+  }
   if (hasTactic(s) && (debug.tactic || debug.tlv !== null)) {
     if (debug.tactic && (TACTICS as readonly string[]).includes(debug.tactic)) s.tactic = debug.tactic as Tactic;
     s.tactic ??= tacticOf(s);
