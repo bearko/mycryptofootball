@@ -18,9 +18,13 @@ import { bestKicker, bestLineup, starters, validLineup } from './lineup';
 import type { MatchState, TeamSheet } from './match';
 import { bookMatch, type Box } from './boxscore';
 import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Tactic } from './tactics';
-import { FAME_WEIGHT, applyResult, tierOf, type FameChange } from './prestige';
+import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
-import { bookRound, clubOpponent, makeBracket, type Bracket } from './bracket';
+import { bookRound, clubOpponent, makeBracket, BRACKET_SCHOOLS, type Bracket } from './bracket';
+import {
+  ALLOWANCE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost,
+  type FacKey, type Facilities,
+} from './funds';
 import { ROLE_WEIGHTS, STATS, STAT_LABEL, STAT_MAX, defPos, offPos, rankIndex, roleOf, type Lineup, type Player, type Size, type Stat, type Stats } from './model';
 
 export const ROSTER_SIZE = 7;
@@ -36,6 +40,7 @@ export const STA_MAX = 100;
 /** under this a hero is tired: practice sticks less, and they play a match a little worse */
 export const STA_TIRED = 50;
 /** stamina a rest day gives back / a starter spends in a match / the others regain while one hero trains alone */
+/** what a day off gives back with the club room at its first level (funds.ts REST_LV) */
 export const REST_STA = 45;
 export const MATCH_STA = 10;
 const SOLO_REST = 8;
@@ -310,7 +315,6 @@ export const PRACTICE: Record<PracticeKey, Practice> = {
   game: { name: 'ミニゲーム', xp: { pow: 3, spd: 3, tec: 3, int: 3 }, trust: 2, sta: 10, text: 'みんなで試合形式。信頼が上がる' },
 };
 export const PRACTICE_KEYS = Object.keys(PRACTICE) as PracticeKey[];
-export const STAR_MUL = [0, 1.2, 1.6, 2];
 
 /** The special practice a trusted hero can run, by that hero's talent. */
 export const DRILL_NAME: Record<Stat, string> = {
@@ -413,11 +417,14 @@ function dayInfo(s: Season, card: Exclude<PracticeCard, { kind: 'scrim' }>): Car
   if (card.kind === 'basic') {
     const p = PRACTICE[card.key];
     const xp: Partial<XpBag> = {};
-    for (const [c, v] of Object.entries(p.xp)) xp[c as Xp] = Math.round((v as number) * STAR_MUL[card.star]! * 10) / 10;
-    return { name: p.name, text: p.text, xp, trust: p.trust, heroTrust: 0, hero: null, star: card.star, sta: -p.sta, others: 0 };
+    // the drill's facility decides how much it gives (its level is the card's stars)
+    const lv = facLv(s, card.key);
+    for (const [c, v] of Object.entries(p.xp)) xp[c as Xp] = Math.round((v as number) * LV_MUL[lv]! * 10) / 10;
+    return { name: p.name, text: p.text, xp, trust: p.trust, heroTrust: 0, hero: null, star: lv, sta: -p.sta, others: 0 };
   }
   if (card.kind === 'rest') {
-    return { name: '休養', text: '練習は休み。全員の体力が戻る', xp: {}, trust: 0, heroTrust: 0, hero: null, star: 0, sta: REST_STA, others: 0 };
+    const lv = facLv(s, 'rest');
+    return { name: '休養', text: '練習は休み。全員の体力が戻る', xp: {}, trust: 0, heroTrust: 0, hero: null, star: lv, sta: REST_LV[lv]!, others: 0 };
   }
   if (card.kind === 'tactic') {
     const t = TACTIC[tacticOf(s) ?? 'speed'].name;
@@ -446,6 +453,8 @@ export interface MatchRecord {
   m: number;
   /** 0 a practice match, 1–3 a round of a tournament */
   opp: number;
+  /** the school met, when it was not the one drawn for the match (away) */
+  school?: number;
   us: number;
   them: number;
   win: boolean;
@@ -482,6 +491,13 @@ export interface Season {
   springLeague?: number;
   /** the brackets of this year's tournaments (bracket.ts): the spring's from the year's start, the autumn's from autumn */
   cups?: Partial<Record<'spring' | 'autumn', Bracket>>;
+  /** the club's money (万円), and the level of each training facility (funds.ts) */
+  money?: number;
+  fac?: Facilities;
+  /** the money that came in when this part of the year began (shown once on the practice ground) */
+  paid?: number;
+  /** the practice match (an index into draw) the club goes away for */
+  trip?: number;
   /** a club a new coach founded from the title screen (its first year is followed step by step: ui/platform.ts) */
   guide?: boolean;
   /** this season's numbers of every hero who played (boxscore.ts; emptied when a new year begins) */
@@ -548,6 +564,7 @@ export function newSeason(seed: number): Season {
     v: 2, seed, rs: rng.s, phase: 'recruit', candidates, members: [], lineup: null, day: 0,
     hand: [], uid: 1, meeting: false, event: null, seen: [], results: [], usage: {}, champion: false,
     year: 1, tier: 0, fame: 0, league: 0, draw, alumni: {}, stageAt: 0, cups: { spring },
+    money: START_MONEY + ALLOWANCE[0], fac: newFacilities(),
   };
 }
 
@@ -687,6 +704,8 @@ export function nextYear(s: Season, seed: number): void {
   s.event = null;
   s.champion = false;
   s.cups = {};
+  s.trip = undefined;
+  payAllowance(s);
   s.springLeague = undefined;
   s.hand = [];
   s.review = false;
@@ -714,9 +733,14 @@ export function nextYear(s: Season, seed: number): void {
 /** The school of one of the year's matches (`m`: DayPlan.m, MatchRecord.m). */
 export const schoolId = (s: Season, m: number): number => s.draw?.[m] ?? FIRST_DRAW[m] ?? 0;
 export const schoolAt = (s: Season, m: number): School => SCHOOLS[schoolId(s, m)]!;
+/** The school a match was played against. */
+export const metAt = (s: Season, r: MatchRecord): School => SCHOOLS[r.school ?? schoolId(s, r.m)]!;
 /** The school a match day brings, as the match engine sees it. */
 export const opponentFor = (s: Season, d: DayPlan = plan(s)): TeamSheet =>
-  opponentSheet(d.opp, s.league, clubSize(s), schoolId(s, d.m), liftOf(d, s.league));
+  isTrip(s, d)
+    // away: a school of the tournament above, as strong as a semi-final there
+    ? opponentSheet(2, Math.min(TOP_TIER, s.league + 1), clubSize(s), tripSchool(s, d), liftOf(d, Math.min(TOP_TIER, s.league + 1)))
+    : opponentSheet(d.opp, s.league, clubSize(s), schoolId(s, d.m), liftOf(d, s.league));
 /**
  * What the schools have on top at this time of year in a tournament of this standing. A young club grows a lot over
  * its first summer, a club near the top far less: the higher the tournament, the less the schools gain by autumn.
@@ -855,11 +879,6 @@ export function applyPreset(s: Season, preset: Preset): void {
 
 // ------------------------------------------------------------------ a practice day
 
-function star(rng: Rng): number {
-  const r = rng.next();
-  return r < 0.45 ? 1 : r < 0.82 ? 2 : 3;
-}
-
 function drawCard(s: Season, rng: Rng): PracticeCard {
   const uid = s.uid;
   s.uid += 1;
@@ -880,7 +899,8 @@ function drawCard(s: Season, rng: Rng): PracticeCard {
   }
   const count = (key: PracticeKey): number => s.hand.filter((c) => c.kind === 'basic' && c.key === key).length;
   const keys = PRACTICE_KEYS.filter((k) => count(k) === 0);
-  return { uid, kind: 'basic', key: rng.pick(keys.length ? keys : PRACTICE_KEYS), star: star(rng) };
+  const key = rng.pick(keys.length ? keys : PRACTICE_KEYS);
+  return { uid, kind: 'basic', key, star: facLv(s, key) };
 }
 
 /** Days on which something happens in the club before practice: four in spring, one in each part of the year after. */
@@ -903,6 +923,7 @@ function enterStage(s: Season, rng: Rng): void {
   s.review = true;
   s.meeting = true;
   s.tacticWas = undefined;
+  payAllowance(s);
   if (p.stage === 'summer') {
     const room = tierOf(s.tier).roster - s.members.length;
     s.candidates = candidatesFor(s, rng, room, (n) => Math.min(2, Math.max(1, Math.round(n / 3))));
@@ -916,6 +937,57 @@ function enterStage(s: Season, rng: Rng): void {
     fitLineup(s);
   }
 }
+// ------------------------------------------------------------------ money, facilities, trips (funds.ts)
+
+/** The level of a training facility (1–5). */
+export const facLv = (s: Season, k: FacKey): number => s.fac?.[k] ?? 1;
+/** The club's money (万円). */
+export const moneyOf = (s: Season): number => s.money ?? 0;
+/** The money a part of the year brings: the club's standing decides. */
+function payAllowance(s: Season): void {
+  const v = ALLOWANCE[Math.max(0, Math.min(ALLOWANCE.length - 1, s.tier))]!;
+  s.money = moneyOf(s) + v;
+  s.paid = v;
+}
+/** Can the club take a facility up a level now? */
+export function canBuy(s: Season, k: FacKey): boolean {
+  const price = nextPrice(facLv(s, k));
+  return price != null && moneyOf(s) >= price;
+}
+/** Takes a facility up a level (paid for at once). The cards in hand follow. */
+export function buyFacility(s: Season, k: FacKey): boolean {
+  if (!canBuy(s, k)) return false;
+  const lv = facLv(s, k);
+  s.money = moneyOf(s) - nextPrice(lv)!;
+  (s.fac ??= newFacilities())[k] = Math.min(FAC_MAX, lv + 1);
+  for (const c of s.hand) if (c.kind === 'basic' && c.key === k) c.star = s.fac[k];
+  return true;
+}
+
+/** Is today a practice match the club may play away (the summer's and the autumn's)? */
+export function tripOpen(s: Season): boolean {
+  const p = plan(s);
+  return s.phase === 'club' && p.t === 'match' && !p.cup && p.stage !== 'spring';
+}
+/** What going away costs today. */
+export const tripPrice = (s: Season): number => tripCost(s.league);
+/** Goes away for today's practice match, or stays (when the money is there). */
+export function setTrip(s: Season, away: boolean): void {
+  if (!tripOpen(s)) return;
+  if (!away) s.trip = undefined;
+  else if (moneyOf(s) >= tripPrice(s)) s.trip = plan(s).m;
+}
+/** Is the club away for this match? */
+export const isTrip = (s: Season, d: DayPlan = plan(s)): boolean => s.trip === d.m && !d.cup && d.t === 'match';
+/** The school met away: one of the strong schools of the tournament above (the same one all day). */
+export function tripSchool(s: Season, d: DayPlan = plan(s)): number {
+  const cup = Math.min(BRACKET_SCHOOLS.length - 1, cupIndexOf(s.league) + 1);
+  const pool = BRACKET_SCHOOLS[cup]!;
+  const strong = pool.slice(3);
+  return strong[(s.seed + d.m * 7 + s.year) % strong.length]!;
+}
+const cupIndexOf = (league: number): number => Math.max(0, ['地区大会', '県大会', '地方大会', '全国大会'].indexOf(tierOf(league).cup));
+
 /** Draws a tournament's bracket; its first round's school becomes the club's first opponent. */
 export function drawCup(s: Season, stage: 'spring' | 'autumn', rng: Rng): void {
   const b = makeBracket(s.league, rng);
@@ -1239,11 +1311,11 @@ export const springOver = (s: Season): boolean => s.day >= stageStart('summer');
  * Books a finished match (the club is team 0) and moves the calendar on. A defeat in the spring tournament takes the
  * club on to the summer (`out`); in the autumn one, it ends the year (`ended`).
  */
-export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean; out: boolean; fame: FameChange } {
+export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win: boolean; ended: boolean; out: boolean; fame: FameChange; gift: number; trip: number } {
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
-  s.results.push({ day: s.day, m: p.m, opp: p.round, us: st.score[0], them: st.score[1], win });
+  s.results.push({ day: s.day, m: p.m, opp: p.round, us: st.score[0], them: st.score[1], win, ...(isTrip(s, p) ? { school: tripSchool(s, p) } : {}) });
   // who did what goes into the season's numbers
   bookMatch((s.box ??= {}), st.box?.[0]);
   // eleven a side the club now plays with its colour: it is the club's, and a win takes it further
@@ -1256,13 +1328,20 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   }
   for (const [key, n] of Object.entries(st.totals[0].specials)) s.usage[key] = (s.usage[key] ?? 0) + n;
   const on = starters(s.lineup!);
+  // away: everybody (the bench too) takes something home from the trip
+  const away = isTrip(s, p);
   const changes = withMilestones(s, (ch) => {
     for (const m of s.members) {
+      const c = ch.get(m.id)!;
+      if (away) {
+        for (const [k, v] of Object.entries(TRIP_XP)) m.xp[k as Xp] += v * (win ? TRIP_WIN : 1) * intake(m.sta);
+        for (const [k, v] of Object.entries(convert(m, s.lineup))) c.stats[k as Stat] = (c.stats[k as Stat] ?? 0) + (v as number);
+      }
       if (!on.includes(m.id)) continue;
-      ch.get(m.id)!.trust += addTrust(m, win ? 4 : 2);
-      ch.get(m.id)!.sta += addSta(m, -MATCH_STA);
+      c.trust += addTrust(m, win ? 4 : 2);
+      c.sta += addSta(m, -MATCH_STA);
     }
-  }).filter((c) => c.trust !== 0 || c.sta !== 0);
+  }).filter((c) => c.trust !== 0 || c.sta !== 0 || Object.keys(c.stats).length > 0);
   // the club's standing: the gauge moves with every result
   // the tournament's bracket: the club's game, the other games of the round, and who the club meets next
   if (p.cup && (p.stage === 'spring' || p.stage === 'autumn')) {
@@ -1275,6 +1354,11 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
       keep(s, rng);
     }
   }
+  // the supporters give for a win; a trip costs
+  const gift = win ? donationOf(p.round, s.league) + (isFinal(p) ? TITLE_DONATION : 0) : 0;
+  const trip = away ? tripPrice(s) : 0;
+  s.money = moneyOf(s) + gift - trip;
+  s.trip = undefined;
   const fame = applyResult({ tier: s.tier, fame: s.fame }, p.round, win, FAME_WEIGHT[p.stage]);
   s.tier = fame.after.tier;
   s.fame = fame.after.fame;
@@ -1293,7 +1377,7 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
     s.day = out ? stageStart('summer') : s.day + 1;
     startDay(s);
   }
-  return { changes, win, ended, out, fame };
+  return { changes, win, ended, out, fame, gift, trip };
 }
 
 /** Brings a season saved by an earlier version up to date (stamina and the rest card came later). */
@@ -1322,6 +1406,9 @@ export function mend(s: Season): Season {
   for (const r of s.results) if (typeof r.m !== 'number') r.m = SCHEDULE[r.day]?.m ?? r.opp;
   // a year that began before the summer existed is in its spring
   s.stageAt ??= s.day < stageStart('summer') ? 0 : s.day;
+  // money and facilities came later: every facility at its first level, and a little money to start with
+  s.fac ??= newFacilities();
+  if (typeof s.money !== 'number') s.money = ALLOWANCE[Math.max(0, Math.min(ALLOWANCE.length - 1, s.tier))]! * 2;
   // the brackets came later: drawn now, with the club's games so far booked on them (its first school kept)
   if (!s.cups) {
     s.cups = {};

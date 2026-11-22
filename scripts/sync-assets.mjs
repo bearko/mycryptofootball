@@ -65,7 +65,7 @@ for (const file of readdirSync(join(src, 'Image/Characters'))) {
 }
 
 // ---------------------------------------------------------------- practice card art (Extensions)
-// One Extension series per practice; the card's star level picks the rarity (Common, Rare, Legendary).
+// One Extension series per practice; the level of its facility picks the rarity (Common … Legendary).
 const DRILL_ART = {
   dash: 1031, // boots
   pass: 1187, // javelin
@@ -79,7 +79,7 @@ const DRILL_ART = {
 const extById = new Map(readJson('Data/Extensions/extensions.json').map((e) => [e.id, e]));
 const drills = {};
 for (const [key, base] of Object.entries(DRILL_ART)) {
-  drills[key] = [0, 2000, 4000].map((step) => {
+  drills[key] = [0, 1000, 2000, 3000, 4000].map((step) => {
     const e = extById.get(base + step) ?? extById.get(base);
     if (!e) throw new Error(`missing extension ${base}`);
     return { name: e.name.ja, img: use(e.image_file_path) };

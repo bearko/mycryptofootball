@@ -257,7 +257,7 @@
 .pgc-art { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; }
 .pgc-art img { width: 5rem; height: 5rem; object-fit: contain; filter: drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
 .pgc-art.is-hero img { width: 5.6rem; height: 5.6rem; transform-origin: 50% 100%; animation: breathe 1.3s steps(2) infinite; }
-.pgc .stars { position: absolute; top: auto; right: 0.25rem; bottom: 0.05rem; font-size: var(--fs-xs); line-height: 1; color: #c2360a; text-shadow: 0.06rem 0.06rem 0 var(--paper); }
+.pgc .stars { position: absolute; top: auto; right: 0.25rem; bottom: 0.05rem; font-size: 0.78rem; letter-spacing: -0.12em; line-height: 1; color: #c2360a; text-shadow: 0.06rem 0.06rem 0 var(--paper); }
 .pgc .stars i { opacity: 0.22; font-style: normal; }
 .pgc-who { position: absolute; left: 50%; bottom: -0.1rem; transform: translateX(-50%) rotate(-3deg); font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.35; padding: 0 0.5rem; white-space: nowrap; color: var(--ink2); background: var(--band); }
 .pgc-name { flex: none; display: grid; place-items: center; height: 2.1rem; padding: 0 0.2rem; font-family: var(--display); font-size: var(--fs-s); line-height: 1.1; letter-spacing: -0.04em; white-space: nowrap; color: var(--ink2); background: var(--band); }
@@ -288,8 +288,13 @@
 .pgc.is-camp .pgc-when { color: var(--chalk); background: #ff7a2e; }
 .pgc.is-camp.is-basic .card-in { --frame: #8a3300; --bg2: #ffc58a; }
 /* better drills shine a little */
-.pgc.star3 .card-in { --frame: #a85a00; --bg2: #ffe08a; }
-.pgc.star3 .pgc-art img { filter: drop-shadow(0 0 0.35rem rgba(255, 190, 40, 0.9)) drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
+/* the facility's level (the Extension's rarity): uncommon green, rare blue, epic purple, legendary gold */
+.pgc.star2 .card-in { --frame: #1f7a3a; --bg2: #d6f2c4; }
+.pgc.star3 .card-in { --frame: #1d5fc4; --bg2: #c8dcff; }
+.pgc.star4 .card-in { --frame: #7a2bc4; --bg2: #e2ccff; }
+.pgc.star4 .pgc-art img { filter: drop-shadow(0 0 0.3rem rgba(176, 107, 255, 0.9)) drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
+.pgc.star5 .card-in { --frame: #a85a00; --bg2: #ffe08a; }
+.pgc.star5 .pgc-art img { filter: drop-shadow(0 0 0.35rem rgba(255, 190, 40, 0.9)) drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
 
 /* ---------- match day: the opponent and one button ---------- */
 .pg-vs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.4rem; padding: 0.8rem max(1.2rem, env(safe-area-inset-right)) 0.7rem max(1.2rem, env(safe-area-inset-left)); color: var(--chalk); background: repeating-linear-gradient(-60deg, transparent 0 2.2rem, rgba(255, 255, 255, 0.035) 2.2rem 4.4rem), linear-gradient(180deg, rgba(6, 8, 26, 0.9), var(--ink)); border-top: 0.3rem solid var(--oc); animation: pg-vs-in 0.5s var(--spring) backwards; }
@@ -458,3 +463,47 @@
   .rv-now u, .rv-cell.up .rv-now .rank:first-child { display: none; }
   .rv-panel .modal-actions { padding-top: 0.4rem; }
 }
+
+/* ---------- facilities and money (ui/facilities.ts) ---------- */
+.pg-fac { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.pg-fac small { font-family: var(--body); font-size: var(--fs-xs); color: var(--yellow); }
+.pg-fac.is-paid small { animation: fac-paid 1.6s var(--spring); }
+@keyframes fac-paid { 0%, 40% { transform: scale(1.5); color: var(--lime); } }
+.fac { display: flex; flex-direction: column; gap: 0.8rem; }
+.fac-top { display: flex; align-items: center; gap: 1.2rem; }
+.fac-money { display: flex; align-items: baseline; gap: 0.4rem; padding: 0.2rem 1rem; color: var(--ink); background: var(--yellow); transform: skewX(-8deg); white-space: nowrap; }
+.fac-money b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); }
+.fac-money small { font-size: var(--fs-xs); }
+.fac-how { font-size: var(--fs-xs); line-height: 1.4; color: var(--dim); }
+.fac-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
+.fac-item { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: center; gap: 0.05rem 0.5rem; padding: 0.45rem 0.5rem; background: linear-gradient(180deg, #232a78, #141846); border: 0.16rem solid var(--ink); box-shadow: inset 0 0.14rem 0 rgba(255, 255, 255, 0.16); animation: fade-up 0.35s calc(var(--i) * 40ms) backwards; }
+.fac-item.lv2 { border-color: #2f9a4a; }
+.fac-item.lv3 { border-color: #3f8cff; }
+.fac-item.lv4 { border-color: #b06bff; }
+.fac-item.lv5 { border-color: var(--yellow); box-shadow: 0 0 0.8rem rgba(255, 225, 74, 0.5); }
+.fac-item.is-up { animation: fac-up 0.6s var(--spring); }
+@keyframes fac-up { 0% { transform: scale(1.12); filter: brightness(1.8); } }
+.fac-art { grid-row: 1 / 4; }
+.fac-art img { display: block; width: 3.4rem; height: 3.4rem; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0.12rem 0.16rem 0 rgba(6, 8, 26, 0.6)); }
+.fac-name { font-family: var(--display); font-weight: 400; font-size: var(--fs-s); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fac-lv { display: flex; align-items: center; gap: 0.2rem; font-size: var(--fs-xs); line-height: 1.2; white-space: nowrap; }
+.fac-lv em { font-style: normal; font-family: var(--display); color: var(--chalk); margin-right: 0.1rem; }
+.fac-lv i { font-style: normal; color: var(--yellow); letter-spacing: -0.1em; }
+.fac-lv u { text-decoration: none; color: rgba(170, 179, 221, 0.3); letter-spacing: -0.1em; }
+.fac-lv small { margin-left: 0.2rem; font-size: 0.8em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.fac-eff { display: flex; flex-wrap: wrap; gap: 0 0.3rem; font-size: var(--fs-xs); line-height: 1.25; color: var(--dim); }
+.fac-eff b { font-weight: 400; color: var(--lime); }
+.fac-eff i { font-style: normal; color: var(--yellow); }
+.fac-buy, .fac-max { grid-column: 1 / -1; margin-top: 0.3rem; }
+.fac-buy { min-height: max(44px, 2.8rem); display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-family: var(--display); font-size: var(--fs-s); color: var(--ink); background: var(--yellow); border: 0.16rem solid var(--ink); box-shadow: 0.2rem 0.2rem 0 var(--ink); cursor: pointer; transform: skewX(-8deg); }
+.fac-buy b { font-weight: 400; }
+.fac-buy.off { color: var(--dim); background: #2a2f5a; box-shadow: none; cursor: default; }
+.fac-buy.go:hover { filter: brightness(1.08); }
+.fac-buy.go:active { transform: skewX(-8deg) translateY(0.15rem); box-shadow: none; }
+.fac-max { min-height: max(44px, 2.8rem); display: grid; place-items: center; font-family: var(--display); font-size: var(--fs-s); color: var(--yellow); }
+
+/* a practice match at home or away */
+.vs-trip { display: flex; gap: 0.4rem; margin-top: 0.2rem; }
+.vs-trip .vs-call { min-width: 0; min-height: max(44px, 3rem); flex-direction: column; gap: 0; line-height: 1.15; padding: 0.15rem 0.8rem; }
+.vs-trip .vs-call span { font-size: var(--fs-xs); opacity: 0.85; }
+.vs-trip .vs-call.is-short:not([aria-pressed='true']) { opacity: 0.5; }

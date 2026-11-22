@@ -4,7 +4,8 @@
 // When a day passes the strip slides one tile and the ball rolls on.
 
 import { h } from '../../core/dom';
-import { DOW, SCHEDULE, daysTo, nextMatch, plan, roundOf, schoolAt, spanText, undecided, weeksOf, type Season } from '../../game/season';
+import { SCHOOLS } from '../../game/teams';
+import { DOW, SCHEDULE, daysTo, isTrip, tripSchool, nextMatch, plan, roundOf, schoolAt, spanText, undecided, weeksOf, type Season } from '../../game/season';
 import { kick } from '../fx';
 
 export interface Calendar {
@@ -17,7 +18,7 @@ export interface Calendar {
 export function calendar(s: Season): Calendar {
   const tiles = SCHEDULE.map((d) => {
     // (a round whose school is not known yet: no colour)
-    const opp = d.t === 'match' && !undecided(s, d) ? schoolAt(s, d.m) : null;
+    const opp = d.t === 'match' && !undecided(s, d) ? (isTrip(s, d) ? SCHOOLS[tripSchool(s, d)]! : schoolAt(s, d.m)) : null;
     const weeks = weeksOf(d);
     const dow = weeks ? '' : d.dow === 5 ? 'is-sat' : d.dow === 6 ? 'is-sun' : '';
     return h('li.cal-day', { class: `is-${d.t} ${dow} ${d.cup ? 'is-cup' : ''} ${weeks ? 'is-span' : ''} ${d.stage === 'camp' ? 'is-camp' : ''}`, style: { '--oc': opp?.color ?? '' } },
