@@ -381,3 +381,8 @@ html.calm .hcard { animation: none; }
 .flow-to:focus-visible { outline: 0.2rem solid var(--chalk); outline-offset: 0.15rem; }
 .flowcall b { display: flex; align-items: center; gap: 1rem; font-size: var(--fs-l); }
 .flowcall b i { font-style: normal; color: var(--yellow); }
+/* money after a match: the supporters' gift, a trip's cost */
+.fulltime-side { display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; }
+.fulltime-money { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.2rem 1rem; font-size: var(--fs-xs); color: var(--dim); }
+.fulltime-money b { margin-left: 0.3rem; font-family: var(--display); font-weight: 400; color: var(--lime); }
+.fulltime-money b.is-cost { color: var(--pink); }

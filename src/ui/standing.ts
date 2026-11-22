@@ -3,7 +3,7 @@
 
 import { sfx } from '../core/audio';
 import { h } from '../core/dom';
-import { FAME_LOSS, FAME_MAX, FAME_WIN, TIERS, tierOf, type FameChange } from '../game/prestige';
+import { FAME_LOSS, FAME_WEIGHT, FAME_MAX, FAME_WIN, TIERS, tierOf, type FameChange } from '../game/prestige';
 import type { Season } from '../game/season';
 import { button, closeModal, modal } from './kit';
 
@@ -58,7 +58,8 @@ export function standingModal(s: Season): void {
     h('p.st-rule',
       h('span', `勝ち：練習試合 +${FAME_WIN[0]}／1回戦 +${FAME_WIN[1]}／準決勝 +${FAME_WIN[2]}／決勝 +${FAME_WIN[3]}`),
       h('span', `負け：練習試合 ${FAME_LOSS[0]}／1回戦 ${FAME_LOSS[1]}／準決勝 ${FAME_LOSS[2]}／決勝 ${FAME_LOSS[3]}`),
-      h('span', '対戦校の強さと大会は、その年の春の格で決まります。部員は春の入部説明会でふえます。')),
+      h('span', `時期の重み：春 ×${FAME_WEIGHT.spring}／初夏 ×${FAME_WEIGHT.summer}／秋 ×${FAME_WEIGHT.autumn}（秋の大会が本番）`),
+      h('span', '大会と対戦校の強さは、春は年のはじめの格、秋は秋に入ったときの格で決まります。部員は春と5月の入部説明会でふえます。')),
     h('div.modal-actions', button('とじる', closeModal, { sound: 'back' }))), { cls: 'wide', title: `格：${tierOf(s.tier).name}（${s.year}年目）` });
 }
 

@@ -9,7 +9,8 @@ import catalog from '../../generated/catalog.json';
 import { h } from '../../core/dom';
 import { hero, recruit, talentOf } from '../../game/heroes';
 import { STAT_LABEL } from '../../game/model';
-import { XPS, cardInfo, clubTacticLv, member, plan, tacticOf, weeksOf, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
+import { FAC_MAX } from '../../game/funds';
+import { XPS, cardInfo, clubTacticLv, facLv, member, plan, tacticOf, weeksOf, type CardInfo, type PracticeCard, type PracticeKey, type Season } from '../../game/season';
 import { LEVEL_PTS, TACTIC, TACTIC_LV_MAX } from '../../game/tactics';
 import { tilt } from '../fx';
 import { stars } from '../kit';
@@ -44,15 +45,17 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
   let label = `${info.name}：${info.text}`;
   if (card.kind === 'basic') {
     const stat = DRILL_STAT[card.key];
-    cls = `is-basic ${stat ? `t-${stat}` : 't-all'} star${card.star}`;
-    label = `${info.name} ★${card.star}：${info.text}`;
+    // the stars are the level of the drill's facility, and so is the picture (Common … Legendary)
+    const lv = facLv(s, card.key);
+    cls = `is-basic ${stat ? `t-${stat}` : 't-all'} star${lv}`;
+    label = `${info.name} ★${lv}：${info.text}`;
     inner.append(
-      h('span.pgc-art', h('img.px', { src: artOf(card.key, card.star), alt: '', draggable: false }), stars(card.star)),
+      h('span.pgc-art', h('img.px', { src: artOf(card.key, lv), alt: '', draggable: false }), stars(lv, FAC_MAX)),
       h('span.pgc-name', info.name));
   } else if (card.kind === 'rest') {
     cls = 'is-rest';
     inner.append(
-      h('span.pgc-art', h('img.px', { src: artOf('rest', 1), alt: '', draggable: false })),
+      h('span.pgc-art', h('img.px', { src: artOf('rest', facLv(s, 'rest')), alt: '', draggable: false })),
       h('span.pgc-name', info.name));
   } else if (card.kind === 'scrim') {
     cls = 'is-scrim';
@@ -120,7 +123,7 @@ function effectOf(s: Season, card: PracticeCard): { title: HTMLElement; text: st
   }
   if (card.kind === 'basic') {
     return {
-      title: h('b.fx-name', info.name, stars(card.star)), text: info.text,
+      title: h('b.fx-name', info.name, stars(facLv(s, card.key), FAC_MAX)), text: info.text,
       chips: [who('全員'), ...xp, staChip(info.sta), ...(info.trust ? [heart(info.trust, '')] : [])],
     };
   }

@@ -169,7 +169,7 @@ export function gauge(value: number, opts: { cls?: string; marks?: number[]; col
 export const trustGauge = (trust: number): HTMLElement =>
   gauge(trust / TRUST_MAX, { cls: 'trust', marks: [TRUST_LEARN / TRUST_MAX, TRUST_BOOST / TRUST_MAX] });
 
-export const stars = (n: number): HTMLElement => h('span.stars', { title: `★${n}` }, '★'.repeat(n), h('i', '★'.repeat(3 - n)));
+export const stars = (n: number, max = 3): HTMLElement => h('span.stars', { title: `★${n}` }, '★'.repeat(n), h('i', '★'.repeat(Math.max(0, max - n))));
 
 // ------------------------------------------------------------------ the people who talk
 

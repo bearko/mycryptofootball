@@ -9,8 +9,9 @@ import {
   STAT_COST, STA_MAX, STA_TIRED, TRUST_LEARN, answerEvent, asPlayer, cardInfo, clubSheet, costOf, finishMatch, intake, joinCount, needOf, newSeason,
   nextMatch, nextYear, plan, policyOpen, setFocus, signRecruits, train,
   type PracticeCard, type Season, type Xp,
-  clubSize, opponentFor,
+  clubSize, opponentFor, buyFacility, facLv, moneyOf, setTrip, tripOpen, tripPrice,
 } from '../src/game/season';
+import { FAC_KEYS, FAC_MAX } from '../src/game/funds';
 
 export type Style = 'sensible' | 'careless';
 
@@ -82,8 +83,28 @@ export interface SeasonRun {
   matches: MatchState[];
 }
 
+/**
+ * Money: a careful coach takes the weakest facility up whenever he can (the club room last), and goes away for a
+ * practice match when the money is there; a careless one buys now and then, whatever, and never goes away.
+ */
+function spend(s: Season, rng: Rng, style: Style): void {
+  if (style === 'careless') {
+    if (rng.chance(0.2)) {
+      const k = rng.pick(FAC_KEYS);
+      buyFacility(s, k);
+    }
+    return;
+  }
+  if (tripOpen(s) && moneyOf(s) >= tripPrice(s) + 4) setTrip(s, true);
+  for (let guard = 0; guard < 8; guard += 1) {
+    const keys = FAC_KEYS.filter((k) => facLv(s, k) < FAC_MAX)
+      .sort((a, b) => facLv(s, a) + (a === 'rest' ? 1.5 : 0) - (facLv(s, b) + (b === 'rest' ? 1.5 : 0)));
+    if (!keys.length || !buyFacility(s, keys[0]!)) break;
+  }
+}
+
 /** Plays the year the club is in to its end (recruiting first, when a briefing is due). */
-function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): void {
+export function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): void {
   let guard = 0;
   while (s.phase !== 'done' && guard < 200) {
     guard += 1;
@@ -93,6 +114,7 @@ function playYear(s: Season, rng: Rng, style: Style, matches: MatchState[]): voi
       continue;
     }
     const p = plan(s);
+    spend(s, rng, style);
     if (p.t === 'train') {
       if (style === 'sensible' && policyOpen(s)) setPolicy(s);
       if (s.event) answerEvent(s, style === 'careless' ? rng.int(0, 1) : 0);

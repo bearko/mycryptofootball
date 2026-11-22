@@ -13,10 +13,10 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, STAGE_NAME, bracketNow, drawDue, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, STAGE_NAME, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
-import { aces } from '../game/teams';
+import { SCHOOLS, aces } from '../game/teams';
 import { tierOf } from '../game/prestige';
 import { burst, center, flip, kick, motion, pop, ring, shake } from './fx';
 import { ICON, XP_GLYPH, icon, shortName, xpChip } from './ground/bits';
@@ -32,6 +32,7 @@ import { show } from './nav';
 import { policyPanel } from './policy';
 import { reviewModal } from './review';
 import { bracketModal, showBracket } from './bracket';
+import { facilitiesModal } from './facilities';
 import { memberModal, settingsModal } from './shared';
 import { standingChip } from './standing';
 import { titleScreen } from './title';
@@ -95,7 +96,7 @@ function contextLine(s: Season): Line {
   if (policyOpen(s) && s.day > 0) return ['練習試合、おつかれさまでした！ いまだけ「方針」を見直せます。カードを出すと締め切りです。', 'point'];
   if (last && last.day === s.day - 1) {
     return last.win
-      ? [`${schoolAt(s, last.m).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
+      ? [`${metAt(s, last).name}に勝ちました！ この勢いで、次の試合まで鍛えましょう！`, 'sparkle']
       : ['くやしい…！ でも大会はこれからです。練習で取り返しましょう、監督！', 'cry'];
   }
   if (s.day === 0 && s.year > 1 && s.results.length === 0) {
@@ -172,6 +173,18 @@ export function clubScreen(): [HTMLElement, () => void] {
     bracketBtn.hidden = !bracketNow(s);
   };
   drawBracketBtn();
+  // the facilities, with the club's money under the word
+  const facMoney = h('small');
+  const facBtn = button([h('span', '設備'), facMoney], () => facilitiesModal(s, () => {
+    save().season = s;
+    commit();
+    drawFacBtn();
+    if (plan(s).t === 'train' && !busy) drawHand('none', true);
+  }), 'alt pg-fac');
+  const drawFacBtn = (): void => {
+    facMoney.textContent = `${moneyOf(s)}万円`;
+  };
+  drawFacBtn();
   const top = h('header.pg-top',
     h('div.pg-school', h('b', TEAM_NAME), standingChip(s)),
     cal.el,
@@ -180,6 +193,7 @@ export function clubScreen(): [HTMLElement, () => void] {
       h('span.pg-policy', policyBtn, policyTag),
       button('成長', () => reviewModal(s, { closed: false }), 'alt'),
       bracketBtn,
+      facBtn,
       button('設定', settingsModal, 'alt'),
       button('タイトル', () => {
         save().season = s;
@@ -469,24 +483,58 @@ export function clubScreen(): [HTMLElement, () => void] {
     show(...matchScreen());
   };
   const vsBanner = (p: DayPlan): HTMLElement => {
-    const opp = schoolAt(s, p.m);
+    // away: a strong school of the tournament above
+    const away = isTrip(s, p);
+    const oppId = away ? tripSchool(s, p) : schoolId(s, p.m);
+    const opp = SCHOOLS[oppId]!;
     const studied = scoutedKeys(s);
-    const stars = aces(schoolId(s, p.m), p.opp, sizeOf(s.lineup!));
+    const stars = aces(oppId, away ? 2 : p.opp, sizeOf(s.lineup!));
     return h('footer.pg-vs', { style: { '--oc': opp.color } },
       studied.length ? h('div.vs-warn', { role: 'alert' }, icon(ICON.warn), h('b', '研究されている！'),
         h('span', `「${studied.map((k) => hero(Number(k)).passive).join('」「')}」は、最初から少し読まれる`)) : null,
       h('div.vs-main',
-        h('span.vs-kind', labelOf(s, p)),
+        h('span.vs-kind', away ? '遠征の練習試合' : labelOf(s, p)),
         h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
         h('p.vs-style', opp.style),
         sizeOf(s.lineup!) === 11 && opp.tactic ? colourLine(opp.tactic) : null,
-        h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? (p.stage === 'spring' ? '負けたら春はここまで' : '負けたら今年はここまで') : p.stage === 'spring' ? '負けても大会へ進める' : '秋への腕だめし')),
+        tripOpen(s) ? tripSwitch()
+          : h('span.vs-note', { class: p.cup ? 'is-cup' : '' }, p.cup ? (p.stage === 'spring' ? '負けたら春はここまで' : '負けたら今年はここまで') : p.stage === 'spring' ? '負けても大会へ進める' : '秋への腕だめし')),
       h('ul.vs-aces', { class: stars.length > 3 ? 'is-many' : '' },
         h('li.vs-cap', '要注意のエース'),
         stars.map((a, i) => h('li', { style: { '--i': String(i) } },
           h('span.ace-face', sprite(a.id)),
           h('span.ace-text', h('b', `「${a.play}」`), h('i', a.tag))))),
       h('div.vs-go', sizeOf(s.lineup!) === 11 ? callsSwitch() : null, button('試合へ', goMatch, { cls: 'go big', sound: 'confirm', key: 'Enter' })));
+  };
+  /**
+   * A practice match in the summer or the autumn: at home (free), or away against a school of the tournament above
+   * (it costs money; everybody learns something from the trip, win or lose). One tap switches, the banner follows.
+   */
+  const tripSwitch = (): HTMLElement => {
+    const price = tripPrice(s);
+    const away = isTrip(s);
+    const pick = (go: boolean): void => {
+      if (go === isTrip(s)) return;
+      if (go && moneyOf(s) < price) {
+        sfx.deny();
+        coach.say(`遠征には${price}万円かかります。部費が足りません…。`, 'think');
+        return;
+      }
+      setTrip(s, go);
+      save().season = s;
+      commit();
+      sfx.cardPick();
+      vibrate(10);
+      coach.say(go ? `遠征です！ ${SCHOOLS[tripSchool(s)]!.name}は格上。勝っても負けても、全員にいい経験になりますよ。` : '近くの学校と、いつもどおりの練習試合です。', go ? 'cheer' : 'smile');
+      const p = plan(s);
+      const next = vsBanner(p);
+      vs?.replaceWith(next);
+      vs = next;
+      measure();
+    };
+    return h('div.vs-trip', { role: 'group', 'aria-label': '練習試合の相手' },
+      h('button.vs-call', { type: 'button', 'aria-pressed': String(!away), onclick: () => pick(false) }, '近くの学校', h('span', '無料')),
+      h('button.vs-call', { type: 'button', 'aria-pressed': String(away), class: moneyOf(s) < price ? 'is-short' : '', onclick: () => pick(true) }, '遠征', h('span', `${price}万円・経験値`)));
   };
   /**
    * Eleven a side: which plays the coach calls in the match. The big moments only (the others are called for him and
@@ -752,6 +800,17 @@ export function clubScreen(): [HTMLElement, () => void] {
           },
         });
       }, first ? 650 : 350);
+      return;
+    }
+    // money came in with this part of the year: the button says so (once)
+    if (s.paid) {
+      coach.say(`部費が${s.paid}万円入りました！ 「設備」で練習の設備を強化できますよ。`, 'sparkle');
+      kick(facBtn, 'is-paid');
+      sfx.trustUp();
+      s.paid = undefined;
+      save().season = s;
+      commit();
+      setTimeout(() => alive && arrive(first), 1600);
       return;
     }
     // the tournament's draw is announced (once), before anything else of the day

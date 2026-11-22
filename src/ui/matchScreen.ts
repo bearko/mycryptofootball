@@ -1132,7 +1132,7 @@ export function matchScreen(): [HTMLElement, () => void] {
     crowd.tension(false);
     root.classList.remove('clutch');
     const totals = st.totals;
-    const { changes, win, ended, out, fame } = finishMatch(s, st);
+    const { changes, win, ended, out, fame, gift, trip } = finishMatch(s, st);
     // the spring tournament is over (lost, or won to the end): the summer comes next
     const springEnd = p.cup && p.stage === 'spring' && (out || p.round === 3);
     storeMatch(null);
@@ -1174,7 +1174,9 @@ export function matchScreen(): [HTMLElement, () => void] {
           row('ファーストダウン', totals[0].firstDowns, totals[1].firstDowns, 1),
           row('タッチダウン', totals[0].td, totals[1].td, 2),
           row('ボールを奪った回数', totals[1].turnovers, totals[0].turnovers, 3)),
-        fameReport(fame)),
+        h('div.fulltime-side', fameReport(fame),
+          gift || trip ? h('p.fulltime-money', gift ? h('span', '寄付', h('b', `+${gift}万円`)) : null, trip ? h('span', '遠征', h('b.is-cost', `−${trip}万円`)) : null,
+            trip ? h('span', '全員に遠征の経験値') : null) : null)),
       changes.length ? h('div.fulltime-changes', { class: changes.length > 12 ? 'is-crowd' : changes.length > 9 ? 'is-many' : '' }, changeList(s, changes)) : null,
       h('div.modal-actions', button(ended ? '結果を見る' : 'グラウンドへもどる', () => {
         closeModal();
