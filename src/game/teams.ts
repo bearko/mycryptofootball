@@ -2,7 +2,7 @@
 // How strong a school is on the day depends on the round it is met in (and on the tournament: the higher the
 // club's standing, the stronger everybody); which schools are met changes from year to year.
 
-import { TACTIC_LV_MAX, type Tactic } from './tactics';
+import { TACTIC_LV_MAX, tacticCards, type Tactic } from './tactics';
 import type { Rng } from '../core/rng';
 import { KIND, type Kind } from './cards';
 import { hero, specialOf } from './heroes';
@@ -245,7 +245,7 @@ export function opponentSheet(round: number, league = 0, size: Size = tierOf(lea
   const players = all.map((p) => ({ id: p.id, name: hero(p.id).name, stats: oppStats(round, p, tierOf(league).level, aces.includes(p.id)) }));
   // every school has somebody who can kick: its best foot
   lineup.k = bestKicker(players, lineup);
-  return {
+  const sheet: TeamSheet = {
     name: team.name,
     short: team.short,
     color: team.color,
@@ -256,6 +256,9 @@ export function opponentSheet(round: number, league = 0, size: Size = tierOf(lea
     smart: Math.min(0.95, ROUNDS[round]!.smart + (team.smart ?? 0)),
     ...(size === 11 && team.tactic ? { tactic: team.tactic, tacticLv: schoolTacticLv(league, round) } : {}),
   };
+  // eleven a side, the colour's own plays
+  if (sheet.tactic) sheet.specials.push(...tacticCards(sheet, sheet.tactic, sheet.tacticLv ?? 1));
+  return sheet;
 }
 
 /** How far a school has come with its colour: the higher the league and the later the round, the further. */

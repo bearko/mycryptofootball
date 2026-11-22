@@ -336,6 +336,16 @@ export function unitSummary(t: TeamSheet): { runOff: number; passOff: number; ru
 
 const isPeek = (sp: SpecialCard): boolean => sp.kind === 'peekOff' || sp.kind === 'peekDef';
 
+/** The one a man-to-man mark goes after: the offense's most dangerous ball carrier or receiver. */
+export function markedAce(t: TeamSheet): number | null {
+  const ids = offPos(t.lineup).filter((p) => ['RB', 'WR', 'TE'].includes(roleOf(p))).map((p) => t.lineup.off[p]);
+  const score = (id: number): number => {
+    const s = t.players.find((x) => x.id === id)!.stats;
+    return s.spd + Math.max(s.cat, s.blk * 0.5);
+  };
+  return ids.sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
 /** Where the owner lines up on the unit the special belongs to (null: not on the field). */
 function ownerPos(t: TeamSheet, sp: SpecialCard): OffPos | DefPos | null {
   const side = KIND[sp.kind].side;
@@ -345,10 +355,11 @@ function ownerPos(t: TeamSheet, sp: SpecialCard): OffPos | DefPos | null {
 }
 
 /** Why a special cannot be called right now, or null when it can. */
-export function specialBlock(st: MatchState, t: 0 | 1, sp: SpecialCard): null | 'side' | 'bench' | 'position' | 'momentum' {
+export function specialBlock(st: MatchState, t: 0 | 1, sp: SpecialCard): null | 'side' | 'bench' | 'position' | 'momentum' | 'fourth' {
   const info = KIND[sp.kind];
   const onOffense = st.poss === t;
   if ((info.side === 'off') !== onOffense) return 'side';
+  if (info.fourth && (st.down < 4 || st.tfp || st.ko)) return 'fourth';
   const pos = ownerPos(st.teams[t], sp);
   if (!pos) return 'bench';
   if (info.roles && !info.roles.includes(roleOf(pos))) return 'position';
@@ -361,7 +372,8 @@ export const usableSpecials = (st: MatchState, t: 0 | 1): SpecialCard[] =>
 
 export function potency(st: MatchState, t: 0 | 1, sp: SpecialCard): number {
   const level = clamp(st.read[t][sp.key] ?? 0, 0, READ_MAX);
-  return READ_POTENCY[level]! * (sp.boost ? 1.15 : 1);
+  // (a colour's own play grows with the colour)
+  return READ_POTENCY[level]! * (sp.boost ? 1.15 : 1) * (sp.lv ? tacticPower(sp.lv) : 1);
 }
 
 function spend(st: MatchState, t: 0 | 1, sp: SpecialCard): void {
@@ -545,17 +557,19 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     const type = pick.type as OffType;
     const kind = sp?.kind as OffKind | undefined;
     const adv = (offRating(me, type) - defRating(opp, type)) / ADV_SCALE + colourQ(colourOf(st, t), colourOf(st, (1 - t) as 0 | 1), type);
-    const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3 : 0;
+    const push = kind === 'powerRun' ? 1.8 : kind === 'pushRun' ? 1.0 : kind === 'sureLong' ? 2.0 : kind === 'sureShort' ? 1.0 : kind === 'flyLong' ? 1.3
+      : kind === 'reverse' ? 0.6 : kind === 'fakePunt' ? 1.6 : kind === 'drive' ? 1.3 + (room <= 5 ? 0.8 : 0) : kind === 'shotgun' ? 1.0 : 0;
     let sum = 0;
     let hit = 0;
     for (const d of DEF_TYPES) {
       let m = MATCH[type][d];
-      if (kind === 'trick') m = Math.max(m, m + (1 - m) * Math.min(1, pot));
+      if (kind === 'trick' || kind === 'reverse') m = Math.max(m, m + (1 - m) * Math.min(1, pot));
+      const flea = kind === 'flea' ? (['stuff', 'contain', 'blitz'].includes(d) ? 1.6 : 0.4) : 0;
       for (const [z, w] of BELL) {
-        const q = adv + m + star - THEIR_STARS + push * pot + z * SD[type] - wall;
-        let y = worth(type, q, d === 'blitz', room, kind === 'sureLong' || kind === 'sureShort');
+        const q = adv + m + star - THEIR_STARS + (push + flea) * pot + z * SD[type] - wall;
+        let y = worth(type, q, d === 'blitz' && kind !== 'shotgun', room, kind === 'sureLong' || kind === 'sureShort');
         if (kind === 'flyLong' && q >= 1) y = Math.min(room, y + 8 * pot);
-        if ((kind === 'powerRun' || kind === 'pushRun') && q > -2.3) y = Math.max(y, (kind === 'powerRun' ? 4 : 3) * Math.min(1, pot));
+        if ((kind === 'powerRun' || kind === 'pushRun' || kind === 'drive') && q > -2.3) y = Math.max(y, (kind === 'powerRun' ? 4 : 3) * Math.min(1, pot));
         sum += w * y;
         if (y >= room) hit += w;
       }
@@ -576,6 +590,8 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     if (kind === 'roar') m -= 1.6 * pot;
     if (kind === 'rush' && type !== 'outside') m -= 0.9 * pot;
     if (kind === 'wall' && type !== 'long') m -= 0.8 * pot;
+    // (a mark takes away the ace, about half of what the other side does with the ball)
+    if (kind === 'manMark') m -= 1.0 * pot;
     const blitz = call === 'blitz' && kind !== 'steal' && kind !== 'wall' && kind !== 'roar';
     for (const [z, w] of BELL) {
       let y = worth(type, adv + m - star + THEIR_STARS + z * SD[type] - wall, blitz, room);
@@ -813,6 +829,13 @@ function specialAppeal(st: MatchState, sp: SpecialCard): number {
     case 'rush': return long ? 1.4 : 0.7;
     case 'roar': return 1;
     case 'peekDef': return 1;
+    case 'reverse': return 1.1;
+    case 'flea': return goal >= 15 ? 1.3 : 0.3;
+    case 'fakePunt': return st.toGo <= 5 ? 1.2 : 0.3;
+    case 'drive': return short || goal <= 5 ? 2 : 0.6;
+    case 'shotgun': return long ? 1.4 : 0.8;
+    case 'manMark': return 1.1;
+    case 'allBlitz': return long ? 1.3 : 0.6;
   }
 }
 
@@ -1211,7 +1234,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
 
   // quality of the play
   let m = dk && dk !== 'peekDef' ? DEF_SPECIAL_MATCH[dk][type] : MATCH[type][defPick.type as DefType];
-  if (ok === 'trick') m = Math.max(m, m + (1.0 - m) * Math.min(1, op));
+  if (ok === 'trick' || ok === 'reverse') m = Math.max(m, m + (1.0 - m) * Math.min(1, op));
   let edge: PlayResult['edge'] = m <= -1 ? 'def' : m >= 0.8 ? 'off' : 'even';
   const adv = (offRating(O, type, isRun(type) ? undefined : targetPos) - defRating(D, type)) / ADV_SCALE;
   let q = adv + m + 0.3 * (offPick.star - 1) - 0.3 * (defPick.star - 1) + rng.normal() * SD[type];
@@ -1224,13 +1247,24 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
   if (dk === 'roar') q -= 1.6 * dp;
   if (dk === 'rush' && type !== 'outside') q -= 0.9 * dp;
   if (dk === 'wall' && type !== 'long') q -= 0.8 * dp;
+  // a colour's own plays
+  const runShy = (dk && dk !== 'steal' && dk !== 'manMark' && dk !== 'peekDef') || ['stuff', 'contain', 'blitz'].includes(defPick.type);
+  if (ok === 'reverse') q += 0.6 * op;
+  if (ok === 'flea') q += (runShy ? 1.6 : 0.4) * op;
+  if (ok === 'fakePunt') q += 1.6 * op;
+  if (ok === 'drive') q += (1.3 + (FIELD - st.pos <= 5 ? 0.8 : 0)) * op;
+  if (ok === 'shotgun') q += 1.0 * op;
+  const marked = dk === 'manMark' ? markedAce(O) : null;
+  if (marked != null) q -= (carrier === marked ? 1.8 : 0.3) * dp;
   // eleven a side, the two colours
   const oc = colourOf(st, o);
   const dc = colourOf(st, d);
   q += colourQ(oc, dc, type);
 
   const noInt = ok === 'sureLong' || ok === 'sureShort';
-  const blitz = defPick.type === 'blitz' && dk !== 'steal' && dk !== 'wall' && dk !== 'roar';
+  // (from the gun the passer has time: no sack)
+  const blitz = defPick.type === 'blitz' && dk !== 'steal' && dk !== 'wall' && dk !== 'roar' && ok !== 'shotgun';
+  const allIn = dk === 'allBlitz';
   let outcome: Outcome = 'gain';
   let yards = 0;
 
@@ -1253,7 +1287,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     const sure = ok === 'sureShort' && rng.chance(Math.min(1, op));
     // (a team that throws throws fewer of them away)
     if (!sure && !noInt && q < -2.3 && rng.chance(oc.t === 'air' ? 0.25 : 0.45)) outcome = 'int';
-    else if (!sure && blitz && q < -1.6) {
+    else if (!sure && blitz && q < (allIn ? -0.9 : -1.6)) {
       outcome = 'sack';
       yards = -rng.int(4, 7);
     } else if (!sure && q < -0.9) outcome = 'incomplete';
@@ -1263,7 +1297,7 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     }
   } else {
     const sackSafe = ok === 'sureLong' && rng.chance(0.6 * Math.min(1, op));
-    if (blitz && q < 0 && !sackSafe) {
+    if (blitz && q < (allIn ? 0.7 : 0) && !sackSafe) {
       outcome = 'sack';
       yards = -rng.int(5, 8);
     } else if (!noInt && q < -1.5 && rng.chance(oc.t === 'air' ? 0.3 : 0.5)) outcome = 'int';
@@ -1272,12 +1306,13 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
       yards = clamp(Math.round(17 + 6 * (q - 1)), 15, 40);
       if (ok === 'flyLong') yards += Math.round(8 * op);
       if (oc.t === 'air') yards += Math.round(4 * oc.k);
+      if (ok === 'flea') yards += Math.round(5 * op);
     }
   }
 
   // specials that bend the result
   const moving = outcome === 'gain';
-  if (moving && (ok === 'powerRun' || ok === 'pushRun')) {
+  if (moving && (ok === 'powerRun' || ok === 'pushRun' || ok === 'drive')) {
     yards = Math.max(yards, Math.round((ok === 'powerRun' ? 4 : 3) * Math.min(1, op)));
   }
   if (moving && dk === 'wall' && type !== 'long') yards = Math.min(yards, Math.round(1 + (1 - Math.min(1, dp)) * 5));
@@ -1299,7 +1334,10 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
     if (oc.t === 'speed') p += 0.12 * oc.k;
     if (oc.t === 'royal') p += 0.02;
     if (dc.t === 'speed') p += 0.06;
-    if (rng.chance(clamp(p, 0.01, 0.4))) {
+    if (ok === 'reverse') p += 0.18 * op;
+    if (allIn) p += 0.15;
+    if (marked != null && carrier === marked) p *= 0.2;
+    if (rng.chance(clamp(p, 0.01, 0.45))) {
       breakaway = true;
       yards += rng.int(12, 36);
     }

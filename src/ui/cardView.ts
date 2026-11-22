@@ -9,6 +9,7 @@ import {
 import { hero } from '../game/heroes';
 import type { Pick } from '../game/match';
 import { ROLE_LABEL } from '../game/model';
+import { TACTIC } from '../game/tactics';
 import { kick, tilt } from './fx';
 import { stars } from './kit';
 
@@ -115,11 +116,11 @@ export const cardName = (pick: Pick, side: 'off' | 'def'): string =>
 export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): HTMLButtonElement {
   const sp = pick.special;
   const kind = isKick(pick.type) ? 'kick' : side === 'def' ? 'def' : isRun(pick.type as OffType) ? 'run' : 'pass';
-  const cls = [side, kind, sp ? 'special' : '', opts.selected ? 'selected' : '', opts.blocked ? 'blocked' : '', opts.small ? 'small' : '', opts.deal ? 'deal' : '']
+  const cls = [side, kind, sp ? 'special' : '', sp?.tactic ? 'tactic' : '', opts.selected ? 'selected' : '', opts.blocked ? 'blocked' : '', opts.small ? 'small' : '', opts.deal ? 'deal' : '']
     .filter(Boolean).join(' ');
   const inner = h('span.card-in');
   const btn: HTMLButtonElement = h('button.card', {
-    class: cls, type: 'button', style: { '--i': String(opts.index ?? 0) },
+    class: cls, type: 'button', style: { '--i': String(opts.index ?? 0), ...(sp?.tactic ? { '--tc': TACTIC[sp.tactic].color } : {}) },
     onclick: () => {
       if (opts.blocked) {
         sfx.deny();
@@ -136,7 +137,7 @@ export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): 
       h('span.foil'),
       h('span.sp-name', sp.name),
       h('span.sp-hero', h('img.px', { src: hero(sp.owner).img, alt: '', draggable: false })),
-      h('span.sp-tag', info.tag, sp.boost ? h('b', '+') : null),
+      sp.tactic ? h('span.sp-tag', `${TACTIC[sp.tactic].name}`, h('b', ` Lv${sp.lv ?? 1}`)) : h('span.sp-tag', info.tag, sp.boost ? h('b', '+') : null),
       h('span.sp-foot',
         h('span.cost', { title: `流れを${info.cost}使う` }, Array.from({ length: info.cost }, (_, i) => h('i.flame', { class: (opts.mom ?? 99) > i ? 'on' : '' }))),
         h('span.read', { class: `r${read}`, title: READ_LABEL[read] ?? '' }, Array.from({ length: READ_MAX }, (_, i) => h('i', { class: i < read ? 'on' : '' })), h('u', READ_LABEL[read] ?? ''))),
@@ -179,6 +180,7 @@ export function cardBack(small = true): HTMLElement {
 /** What a special play does, in words, with where its owner has to line up. */
 export function specialText(sp: SpecialCard): string {
   const info = KIND[sp.kind];
-  const where = info.roles ? `${info.roles.map((r) => ROLE_LABEL[r]).join('か')}で出場中に使える` : '出場していれば使える';
-  return `${info.text}。${info.side === 'off' ? '攻撃' : '守備'}の作戦／流れ${info.cost}／${where}`;
+  const where = info.fourth ? '4回目だけ使える' : info.roles ? `${info.roles.map((r) => ROLE_LABEL[r]).join('か')}で出場中に使える` : '出場していれば使える';
+  const colour = sp.tactic ? `／${TACTIC[sp.tactic].name}の作戦（練度${sp.lv ?? 1}）` : '';
+  return `${info.text}。${info.side === 'off' ? '攻撃' : '守備'}の作戦／流れ${info.cost}／${where}${colour}`;
 }
