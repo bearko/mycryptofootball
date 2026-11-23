@@ -90,8 +90,8 @@
 .pg-menu { flex: none; display: flex; gap: 0.45rem; margin-top: 1.1rem; }
 .pg-menu .btn-face { padding: 0 0.95rem; font-size: var(--fs-s); }
 /* the English words are longer: the menu keeps to its room beside the calendar */
-html.en .pg-menu { gap: 0.3rem; }
-html.en .pg-menu .btn-face { padding: 0 0.6rem; font-size: var(--fs-xs); }
+html.en .pg-menu { gap: 0.2rem; }
+html.en .pg-menu .btn-face { padding: 0 0.62rem; font-size: calc(0.88rem * var(--ts)); letter-spacing: -0.02em; }
 .pg-policy { position: relative; display: inline-flex; }
 .pg-policy .btn.is-open { animation: throb 0.8s ease-in-out infinite; }
 .pg-policy .btn.is-open .btn-face { background: var(--orange); color: var(--chalk); }
@@ -285,6 +285,9 @@ html.en .pg-menu .btn-face { padding: 0 0.6rem; font-size: var(--fs-xs); }
 .pgc-art.is-scrim { grid-auto-flow: column; gap: 0.2rem; }
 .pgc-art.is-scrim b { font-family: var(--display); font-weight: 400; font-size: 2.6rem; line-height: 1; color: var(--chalk); -webkit-text-stroke: 0.24rem var(--ink); paint-order: stroke fill; }
 .pgc-art.is-scrim .pgc-white { color: #ff5a6e; }
+/* English: "Red" over "White", smaller, inside the card */
+html.en .pgc-art.is-scrim { grid-auto-flow: row; gap: 0; }
+html.en .pgc-art.is-scrim b { font-size: 1.45rem; -webkit-text-stroke-width: 0.16rem; }
 /* a card that stands for a fortnight, or a day at the camp: a tag on the corner, and the camp's sunset frame */
 .pgc-when { position: absolute; top: -0.5rem; right: -0.35rem; z-index: 2; padding: 0.05rem 0.4rem; font-family: var(--display); font-weight: 400; font-size: var(--fs-xs); line-height: 1.3; white-space: nowrap; color: var(--ink); background: var(--yellow); border: 0.12rem solid var(--ink); transform: rotate(6deg); box-shadow: 0.12rem 0.12rem 0 var(--ink); }
 .fx-when { margin-left: 0.4rem; padding: 0 0.35rem; font-style: normal; font-size: var(--fs-xs); color: var(--ink); background: var(--yellow); }
@@ -529,7 +532,15 @@ html.en .pg-menu .btn-face { padding: 0 0.6rem; font-size: var(--fs-xs); }
 
 /* the game in English: the words the styles write themselves */
 html.en .cal-day.is-today .cal-mark::after { content: 'Practice'; }
-html.en .cal-day.is-span.is-today .cal-mark::after { content: 'Block of days'; }
+html.en .cal-day.is-span.is-today .cal-mark::after { content: 'Block'; }
 html.en .cal-day.is-camp.is-today .cal-mark::after { content: 'Camp'; }
 html.en .ev-choice.is-off .ev-face::before { content: 'Not enough funds'; }
 html.en .cal-day.is-today .cal-full { font-size: var(--fs-xs); }
+
+/* English: the match-day panel keeps its three parts side by side (the school's name is longer than in Japanese,
+   and the aces' plays are words that break at their spaces, not letter by letter) */
+html.en .pg-vs { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto; gap: 1rem; }
+html.en .vs-name h3 { font-size: var(--fs-xl); white-space: normal; }
+html.en .ace-text b { overflow-wrap: break-word; margin-left: 0; }
+html.en .cal-day.is-span .cal-date b { font-size: var(--fs-xs); letter-spacing: 0; }
+html.en .pgc.is-scrim .pgc-name { font-size: 0.85rem; letter-spacing: -0.05em; }

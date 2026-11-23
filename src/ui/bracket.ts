@@ -41,9 +41,12 @@ const nameOf = (id: number): string => (id === CLUB ? TEAM_SHORT : SCHOOLS[id]!.
 const fullOf = (id: number): string => (id === CLUB ? 'マイクリ学園' : SCHOOLS[id]!.name);
 /** the name on a plate: the full name when it fits (in English, the full name made smaller to fit) */
 const plateName = (id: number): string => (isEn() ? tr(fullOf(id)) : fullOf(id).length > 7 ? nameOf(id) : fullOf(id));
-const plateFont = (id: number): string => {
-  const n = plateName(id).length;
-  return isEn() && n > 13 ? `font-size: ${Math.max(16, Math.floor((25 * 13) / n))}px` : '';
+// (the plate's display letters are about 0.76 of their size wide, and the plate has room for about 190 of the
+// board's units: at 25 a name of 10 letters fills it)
+// All the plates of a board take the size the longest name needs, so they read as one list.
+const plateFont = (ids: readonly number[]): string => {
+  const n = Math.max(...ids.map((id) => plateName(id).length));
+  return isEn() && n > 10 ? `font-size: ${Math.max(12, Math.floor(250 / n))}px` : '';
 };
 const colorOf = (id: number): string => (id === CLUB ? TEAM_COLOR : SCHOOLS[id]!.color);
 
@@ -105,6 +108,7 @@ export function bracketBoard(b: Bracket, opts: BracketOpts = {}): SVGSVGElement 
   });
 
   // the teams
+  const font = plateFont(b.field);
   b.field.forEach((id, i) => {
     const [ex, ey] = entryAt(i);
     const left = i < 4;
@@ -122,7 +126,7 @@ export function bracketBoard(b: Bracket, opts: BracketOpts = {}): SVGSVGElement 
     },
     svg('rect', { width: ENTRY_W, height: ENTRY_H, class: 'bk-box' }),
     svg('rect', { x: left ? 0 : ENTRY_W - 14, width: 14, height: ENTRY_H, class: 'bk-chip' }),
-    svg('text', { x: left ? 26 : ENTRY_W - 26, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}`, style: plateFont(id) }, plateName(id)));
+    svg('text', { x: left ? 26 : ENTRY_W - 26, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}`, style: font }, plateName(id)));
     root.append(g);
   });
 

@@ -820,6 +820,16 @@ export class Stadium {
     }
   }
 
+  /** Is this hero one of those on the practice ground (a big club shows only some of its members)? */
+  onGround(id: number): boolean {
+    return this.groundOn && !!this.find(0, id);
+  }
+
+  /** How many heroes the practice ground shows at most. */
+  get groundRoom(): number {
+    return STATIONS.length;
+  }
+
   /** Where a hero currently is on screen in CSS px relative to the canvas (feet); null if not on field. `scale` is CSS px per sprite pixel, `h` the sprite's height. */
   screenPos(team: 0 | 1, heroId: number): { x: number; y: number; scale: number; h: number } | null {
     const ac = this.actors.find((a) => a.team === team && a.id === heroId);

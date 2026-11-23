@@ -3,6 +3,7 @@
 // today is the big tile next to it, and the rest of the strip is what is coming: the days ahead, as far as fits.
 // When a day passes the strip slides one tile and the ball rolls on.
 
+import { isEn } from '../../core/i18n';
 import { h } from '../../core/dom';
 import { SCHOOLS } from '../../game/teams';
 import { DOW, SCHEDULE, daysTo, inSummit, isTrip, tripSchool, nextMatch, plan, roundOf, schoolAt, spanText, undecided, weeksOf, type Season } from '../../game/season';
@@ -28,7 +29,7 @@ export function calendar(s: Season): Calendar {
       h('span.cal-full', spanText(d)),
       d.t === 'match'
         ? h('span.cal-flag', d.cup ? h('i.cal-hot') : null, roundOf(d))
-        : d.scrim ? h('span.cal-flag', '紅白戦') : h('i.cal-mark'),
+        : d.scrim ? h('span.cal-flag', isEn() ? 'Red/White' : '紅白戦') : h('i.cal-mark'),
       h('span.cal-note'));
   });
   const ball = h('i.fball.cal-ball');

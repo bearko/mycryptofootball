@@ -5,6 +5,7 @@
 // tactic practice, red and white for the camp's scrimmage. Between the tournaments a card stands for a fortnight
 // (a "2週間" tag), at the camp it says so (a "合宿" tag): its effect is bigger, the picture the same.
 
+import { isEn } from '../../core/i18n';
 import catalog from '../../generated/catalog.json';
 import { h } from '../../core/dom';
 import { hero, recruit, talentOf } from '../../game/heroes';
@@ -61,7 +62,8 @@ export function practiceCard(s: Season, card: PracticeCard, index: number): HTML
     cls = 'is-scrim';
     inner.append(
       h('span.pgc-art.is-scrim', h('b.pgc-red', '紅'), h('b.pgc-white', '白')),
-      h('span.pgc-name', info.name));
+      // (in English the name is short enough for the card: "Red vs White")
+      h('span.pgc-name', isEn() ? 'Red vs White' : info.name));
   } else if (card.kind === 'tactic') {
     const t = tacticOf(s) ?? 'speed';
     const lv = clubTacticLv(s);

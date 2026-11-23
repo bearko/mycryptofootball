@@ -35,7 +35,14 @@ const exact = new Map<string, string>();
 const patterns: { re: RegExp; to: string; key: string; open: boolean }[] = [];
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-for (const [k, v] of Object.entries((catalog as { en?: Record<string, string> }).en ?? {})) exact.set(k, v);
+/** names of the asset database made of several words ("サトシ・ナカモト ALPHA CC"): put in whole, before a line is cut at its dots and spaces */
+const COMPOUND: [string, string][] = [];
+// (an English name in the asset database may keep a Japanese dot: "SATOSHI・NAKAMOTO")
+for (const [k, v] of Object.entries((catalog as { en?: Record<string, string> }).en ?? {})) {
+  exact.set(k, v.replace(/・/g, ' '));
+  if (/[・ ]/.test(k)) COMPOUND.push([k, v.replace(/・/g, ' ')]);
+}
+COMPOUND.sort((a, b) => b[0].length - a[0].length);
 for (const [k, v] of Object.entries(en as Record<string, string>)) {
   if (!v) continue;
   if (k.includes('{}')) {
@@ -172,6 +179,12 @@ function translateRaw(text: string, depth: number): string {
       return translate(m[i] ?? '', depth + 1);
     });
     if (consider(out)) return out;
+  }
+  for (const [ja, en] of COMPOUND) {
+    if (!text.includes(ja) || text === ja) continue;
+    const out = translate(text.split(ja).join(en), depth + 1);
+    if (consider(out)) return out;
+    break;
   }
   for (const [sep, join] of SEPS) {
     if (!text.includes(sep)) continue;

@@ -15,7 +15,7 @@ import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, campOf, campOpen, clubSize, clubTacticLv, hasTactic, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, campOf, campOpen, clubSize, clubTacticLv, hasTactic, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TEAM_SHORT, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
@@ -123,14 +123,18 @@ function contextLine(s: Season): Line {
   const next = nextMatch(s);
   const until = next ? daysTo(s, next) : 0;
   if (next && until <= 1) return [`あしたは${shortLabel(next)}！ 仕上げの1枚をえらびましょう。`, 'cheer'];
-  const vsName = next && !undecided(s, next) ? `${schoolAt(s, next.m).name}との` : '';
-  if (p.days > 1) return [next ? `${vsName}${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！` : 'この2週間の1枚をどうぞ！', 'smile'];
+  // the school, once it is known (the lines are whole sentences each, so that they can be put into English)
+  const vs = next && !undecided(s, next) ? schoolAt(s, next.m).name : null;
+  if (p.days > 1) {
+    if (!next) return ['この2週間の1枚をどうぞ！', 'smile'];
+    return [vs ? `${vs}との${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！` : `${shortLabel(next)}まで、あと${until}日。この2週間の1枚をどうぞ！`, 'smile'];
+  }
   if (p.stage === 'camp') return ['合宿の1日をえらびましょう！ バテたら「休養」も忘れずに。', 'smile'];
   const near = s.members.filter((m) => !learned(m)).sort((a, b) => b.trust - a.trust)[0];
   if (near && TRUST_LEARN - near.trust <= 12) {
     return [`${shortName(near.id)}はあと信頼${TRUST_LEARN - near.trust}で特別作戦を覚えます。マンツーマンのカードが近道ですよ。`, 'point'];
   }
-  if (next) return [`${vsName}${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！`, 'smile'];
+  if (next) return [vs ? `${vs}との${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！` : `${shortLabel(next)}まで、あと${until}日。きょうの1枚をどうぞ！`, 'smile'];
   return ['きょうの1枚をえらびましょう！', 'smile'];
 }
 
@@ -228,7 +232,7 @@ export function clubScreen(): [HTMLElement, () => void] {
   };
   drawObBtn();
   const top = h('header.pg-top',
-    h('div.pg-school', h('b', TEAM_NAME), standingChip(s)),
+    h('div.pg-school', h('b', isEn() ? TEAM_SHORT : TEAM_NAME), standingChip(s)),
     cal.el,
     h('nav.pg-menu',
       button('編成', () => show(lineupScreen(() => show(...clubScreen()))), 'alt'),
