@@ -3695,13 +3695,14 @@ export class Stadium {
       if (!star) alpha = sat((ac.sd - 6) / 7) ** 1.4;
     }
     // face to face: nobody stands between the lens and the two
-    if (this.camMode === 'face' && this.duel && this.duel.phase < 3 && !this.groundOn) {
+    if (this.camMode === 'face' && this.duel && (this.duel.phase === 1 || this.duel.phase === 2) && !this.groundOn) {
       const du = this.duel;
       const one = (r: Ref): boolean => r.team === ac.team && r.id === ac.id;
       if (!one(du.who) && !one(du.foe)) {
         const a = this.actor(du.who);
         const near = a ? a.sd : this.subjectDepth;
-        if (ac.sd < near - 0.6) alpha = 0;
+        // (and everybody else steps back: half there, so that the two are what the eye goes to)
+        alpha = ac.sd < near - 0.6 ? 0 : Math.min(alpha, du.phase === 1 ? lerp(1, 0.26, sat((this.clock - du.t0) / 0.15)) : lerp(0.26, 1, sat((this.clock - du.t0 - 0.45) / 0.4)));
       }
     }
     if (alpha < 0.02) return;
