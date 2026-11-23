@@ -418,3 +418,28 @@ img { -webkit-user-drag: none; }
 .grade { display: inline-block; font-style: normal; font-family: var(--display); font-size: 0.78em; line-height: 1.35; padding: 0 0.3em; color: var(--chalk); background: #3a3f8c; white-space: nowrap; vertical-align: middle; }
 .grade.is-last { color: var(--ink); background: var(--pink); }
 .gen { display: inline-block; font-style: normal; font-family: var(--display); font-size: 0.72em; line-height: 1.35; padding: 0 0.35em; color: var(--ink); background: var(--cyan); white-space: nowrap; vertical-align: middle; }
+
+/* a new version was just put in by itself (core/update.ts): a word at the top that goes away, nothing to press */
+.update-note {
+  position: fixed;
+  top: 0.8rem;
+  left: 50%;
+  z-index: 9999;
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
+  background: rgba(9, 13, 36, 0.92);
+  border: 1px solid rgba(120, 220, 255, 0.55);
+  color: #e8f6ff;
+  font-size: 0.95rem;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: update-note 3.2s ease both;
+}
+@keyframes update-note {
+  0% { opacity: 0; transform: translate(-50%, -0.6rem); }
+  12%, 80% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -0.3rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-note { animation: none; }
+}

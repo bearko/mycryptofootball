@@ -1,0 +1,18 @@
+# Pages and the service worker are asked for again each time, so a new version is picked up at once
+# (the hashed files under /assets/ never change: they can be kept). See src/core/update.ts.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/en/
+  Cache-Control: no-cache
+/en/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-store
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
