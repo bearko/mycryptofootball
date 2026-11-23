@@ -7,11 +7,16 @@
 
 import type { Season } from './season';
 
-export type Scene = 'recruit' | 'club' | 'lineup' | 'match' | 'after';
-export const SCENES: readonly Scene[] = ['recruit', 'club', 'lineup', 'match', 'after'];
+export type Scene = 'recruit' | 'club' | 'lineup' | 'match' | 'after' | 'eleven';
+export const SCENES: readonly Scene[] = ['recruit', 'club', 'lineup', 'match', 'after', 'eleven'];
 export const SCENE_NAME: Record<Scene, string> = {
-  recruit: '入部説明会', club: '練習グラウンド', lineup: '編成', match: 'はじめての試合', after: '試合のあと',
+  recruit: '入部説明会', club: '練習グラウンド', lineup: '編成', match: 'はじめての試合', after: '試合のあと', eleven: '11人制になったら',
 };
+/**
+ * The scenes of the first week (given once, to a club founded from the title). The others are news: what changes
+ * later on (the first match eleven a side), told once to any club when the time comes (Season.told).
+ */
+export const FIRST_WEEK: readonly Scene[] = ['recruit', 'club', 'lineup', 'match', 'after'];
 
 export const TALK_MAX = 60;
 export const GIST_MAX = 28;
@@ -183,6 +188,38 @@ export const LESSONS: readonly Lesson[] = [
       { text: 'めざすはマイクリボウル！ 説明は[[設定]]から、いつでも見直せます。', pose: 'sparkle', top: true },
     ],
   },
+  // ---------------------------------------------------------------- eleven a side (news: Season.told)
+  {
+    id: 'e1', scene: 'eleven',
+    pages: [
+      { text: '監督、部の格が上がって、ここからは[[11人制]]の試合です！', pose: 'cheer' },
+      { text: '攻撃も守備も11人ずつ。人数が足りないうちは、攻撃と守備を[[かけもち]]します。', pose: 'point' },
+      { text: 'チームの[[色]]（戦術の型）も決まりました。勝つほど、戦術練習をするほど[[練度]]が上がります。', pose: 'smile' },
+    ],
+  },
+  {
+    id: 'e4', scene: 'eleven',
+    pages: [
+      { text: '作戦カードは[[ブラスト]]や[[ブリッツ]]のような本格的なプレーになり、練度が上がると増えます。', pose: 'sparkle' },
+      { text: 'まずは上の[[編成]]で、11人の並びを見てみましょう！', pose: 'point', look: '.pg-menu .btn' },
+    ],
+    goal: '「編成」を押す', look: '.pg-menu .btn',
+  },
+  {
+    id: 'e2', scene: 'eleven',
+    pages: [
+      { text: 'これが[[11人]]の並びです。[[TE]]・[[CB]]・[[S]]などの場所が増えました。', pose: 'point' },
+      { text: '[[エース]]を決めると、試合で相手のエースと[[対決]]します。迷ったら[[おまかせ]]で大丈夫です。', pose: 'smile', look: '.lu-aces' },
+    ],
+  },
+  {
+    id: 'e3', scene: 'eleven',
+    pages: [
+      { text: '11人制の作戦カードは[[プレーの名前]]です。下の小さな字が、何の作戦かを表します。', pose: 'point', top: true, look: '.hand-cards' },
+      { text: '練度2で[[ドロー]]や[[スクリーンパス]]、練度3で[[プレイアクション]]と、プレーが増えていきます。', pose: 'sparkle', top: true },
+      { text: '練度3からは、手札も[[1枚]]増えます。相手の守りを読んで、いろいろ試してみましょう！', pose: 'cheer', top: true },
+    ],
+  },
 ];
 
 /** A picture beside a line of a gist: a button as it looks in the game, a play card, a small mark. */
@@ -215,6 +252,13 @@ export const GISTS: Record<Scene, Gist[]> = {
     { text: 'キックが決まると3点', pic: { mark: '3点' } },
     { text: '相手のゴールまで運ぶとタッチダウン、6点', pic: { mark: '6点' } },
   ],
+  eleven: [
+    { text: '弱小から試合は11人制。足りないうちは攻守かけもち', pic: { mark: '11人' } },
+    { text: 'チームの色の練度は、勝利と戦術練習で上がる', pic: { mark: '練度' } },
+    { text: '作戦カードは本格的なプレー。練度で増える', pic: { mark: 'Lv' } },
+    { text: '練度3から手札が1枚増える', pic: { mark: '＋1' } },
+    { text: 'エースを決めると、相手のエースと対決', pic: { mark: '対決' } },
+  ],
   after: [
     { text: '試合に勝つと、部の格のゲージがたまる', pic: { mark: '格' } },
     { text: '1回戦に勝てば同好会。部員が増える', pic: { mark: '部員＋' } },
@@ -229,20 +273,41 @@ export const plain = (text: string): string => text.replace(/\[\[|\]\]/g, '');
 
 /** Is the manager still teaching this club? (Only a club founded from the title, in its first year, until the last lesson.) */
 export const tutorOn = (s: Season | null | undefined): boolean => !!s && !!s.tut && s.year === 1 && !s.tut.includes(END);
-/** Is this lesson still to come? */
-export const lessonDue = (s: Season | null | undefined, id: string): boolean => tutorOn(s) && !s!.tut!.includes(id);
+/** Is this lesson still to come? (A first-week lesson while the teaching lasts; news until it has been told.) */
+export function lessonDue(s: Season | null | undefined, id: string): boolean {
+  const l = lessonOf(id);
+  if (!s || !l) return false;
+  if (!FIRST_WEEK.includes(l.scene)) return !(s.told ?? []).includes(id);
+  return tutorOn(s) && !s.tut!.includes(id);
+}
+/** A piece of news has been told. */
+export function tell(s: Season, id: string): void {
+  if (!(s.told ??= []).includes(id)) s.told.push(id);
+}
+
+/** the last lesson of the first week (it ends the teaching) */
+const LAST_FIRST_WEEK = 'a1';
 
 /** The lesson has been given (the last one ends the teaching). */
 export function markLesson(s: Season, id: string): void {
+  const l = lessonOf(id);
+  if (l && !FIRST_WEEK.includes(l.scene)) {
+    tell(s, id);
+    return;
+  }
   if (!s.tut || s.tut.includes(id)) return;
   s.tut.push(id);
-  if (id === LESSONS[LESSONS.length - 1]!.id) endLessons(s);
+  if (id === LAST_FIRST_WEEK) endLessons(s);
 }
 /** The coach skipped a scene: none of its lessons will be given (skipping the last scene ends the teaching). */
 export function skipScene(s: Season, scene: Scene): void {
+  if (!FIRST_WEEK.includes(scene)) {
+    for (const l of LESSONS) if (l.scene === scene) tell(s, l.id);
+    return;
+  }
   if (!s.tut) return;
   for (const l of LESSONS) if (l.scene === scene && !s.tut.includes(l.id)) s.tut.push(l.id);
-  if (scene === SCENES[SCENES.length - 1]) endLessons(s);
+  if (scene === FIRST_WEEK[FIRST_WEEK.length - 1]) endLessons(s);
 }
 /** No more lessons, whatever is left. */
 export function endLessons(s: Season): void {

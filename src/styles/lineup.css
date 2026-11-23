@@ -216,3 +216,10 @@
 .lu-board.is-eleven .lu-grade { transform: scale(0.8); transform-origin: 100% 0; }
 .lu-board.is-eleven .lu-star { transform: rotate(-9deg) scale(0.75); transform-origin: 0 0; }
 .lu-board.is-eleven .lu-key { display: none; }
+
+/* how many a side: a plate beside the title */
+.lu-size { flex: none; display: inline-flex; align-items: baseline; gap: 0.5rem; padding: 0.15rem 0.9rem; color: var(--ink); background: var(--chalk); clip-path: polygon(0.5rem 0, 100% 0, calc(100% - 0.5rem) 100%, 0 100%); }
+.lu-size b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); line-height: 1.2; }
+.lu-size small { font-size: var(--fs-s); }
+.lu-size.is-eleven { color: var(--chalk); background: var(--orange); animation: lu-size-in 0.6s var(--spring) 0.3s backwards; }
+@keyframes lu-size-in { from { transform: scale(1.6) rotate(-6deg); opacity: 0; } }

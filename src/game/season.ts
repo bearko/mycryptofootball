@@ -530,6 +530,10 @@ export interface Season {
    * Missing: this club gets no lessons (an old save, a test, a debug jump)
    */
   tut?: string[];
+  /** the manager's news already told (game/tutorial.ts: what changes later, e.g. eleven a side) */
+  told?: string[];
+  /** the level of the colour whose new plays the manager has told about */
+  playLv?: number;
   event: WeekEvent | null;
   /** events already seen */
   seen: string[];

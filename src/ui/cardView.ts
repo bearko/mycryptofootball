@@ -10,6 +10,7 @@ import { hero } from '../game/heroes';
 import type { Pick } from '../game/match';
 import { ROLE_LABEL } from '../game/model';
 import { TACTIC } from '../game/tactics';
+import { familyOf, goodBad, playInfo } from '../game/playbook';
 import { kick, tilt } from './fx';
 import { stars } from './kit';
 
@@ -111,7 +112,19 @@ export interface CardOpts {
 export const cardName = (pick: Pick, side: 'off' | 'def'): string =>
   pick.special ? pick.special.name
     : isKick(pick.type) ? KICK_INFO[pick.type].name
-      : side === 'off' ? OFF_INFO[pick.type as OffType].name : DEF_INFO[pick.type as DefType].name;
+      : basicInfo(pick, side).name;
+
+/**
+ * What a basic card says: its name, what it does, what it is good and bad against. Eleven a side it is a named play
+ * of the playbook (game/playbook.ts); `family` is then the plain name of what it is run as ("中央ラン").
+ */
+export function basicInfo(pick: Pick, side: 'off' | 'def'): { name: string; text: string; good: string; bad: string; family?: string; lv?: number } {
+  if (pick.play) {
+    const p = playInfo(pick.play);
+    return { name: p.name, text: p.text, ...goodBad(pick.play), family: familyOf(pick.play), lv: p.lv };
+  }
+  return side === 'off' ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
+}
 
 export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): HTMLButtonElement {
   const sp = pick.special;
@@ -153,13 +166,16 @@ export function playCard(pick: Pick, side: 'off' | 'def', opts: CardOpts = {}): 
     );
     if (opts.blocked) inner.append(h('span.card-why', opts.blocked));
   } else {
-    const info = side === 'off' ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
+    const info = basicInfo(pick, side);
+    const long = info.name.length > 7 ? 'span.card-name.long.xlong' : info.name.length > 6 ? 'span.card-name.long' : 'span.card-name';
     inner.append(
-      h('span.card-band', h('span.card-name', info.name), stars(pick.star)),
+      h('span.card-band', h(long, info.name), stars(pick.star)),
       diagram(pick.type as OffType | DefType, side),
       h('span.card-vs', h('i.good', h('u', '◎'), info.good), h('i.bad', h('u', '×'), info.bad)),
-      h('span.card-kind', kind === 'run' ? 'ラン' : kind === 'pass' ? 'パス' : '守備'),
+      // eleven a side: what the play is run as, and a mark on the plays that came with the colour's level
+      h('span.card-kind', info.family ?? (kind === 'run' ? 'ラン' : kind === 'pass' ? 'パス' : '守備'), info.lv && info.lv > 1 ? h('b.card-lv', `Lv${info.lv}`) : null),
     );
+    if (info.lv && info.lv > 1) btn.classList.add('is-adv');
   }
   inner.append(h('span.card-glare'));
   if (opts.ev !== undefined && opts.ev !== null) {

@@ -815,7 +815,10 @@ export function lineupScreen(back: () => void): HTMLElement {
     aceEls ? h('div.lu-aces', aceEls.off, aceEls.def) : null, note);
   const root = h('div.screen.lineup',
     backdrop(['FORMATION', '作戦ボード'], ['#0f4a4a', '#090d24', '#37e3ff']),
-    h('header.head.pad', h('h2', '編成'), hint),
+    h('header.head.pad', h('h2', '編成'),
+      // how many a side this year (eleven from the prefecture's tournament): said plainly at the top of the board
+      h('span.lu-size', { class: size === 11 ? 'is-eleven' : '', title: size === 11 ? '攻撃も守備も11人' : '攻撃も守備も6人' }, h('b', `${size}人制`), h('small', `攻撃${size}・守備${size}`)),
+      hint),
     h('main.lu-body.pad', { class: benches.length > 2 ? 'has-many' : '' }, board, side),
     h('footer.foot.pad', mgr.el, h('div.row', auto, ok)));
 
@@ -850,7 +853,10 @@ export function lineupScreen(back: () => void): HTMLElement {
       syncMeters(false);
       advise();
       // the first visit of a new coach: the manager says what this board is
-      void teach(s, 'l1');
+      void teach(s, 'l1').then((how) => {
+        // the first time eleven a side: the manager shows what is new on the board
+        if (how === 'none' && size === 11 && root.isConnected) void teach(s, 'e2');
+      });
     }, 450);
   };
   root.addEventListener('shown', enter);
