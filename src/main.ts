@@ -126,6 +126,11 @@ function jump(to: string): void {
   }
   s.hand = [];
   startDay(s);
+  // (a day's start clears the event: the asked-for one comes after it)
+  if (debug.event && s.members.length > 1) {
+    s.event = { key: debug.event, a: s.members[0]!.id, b: s.members[1]!.id };
+    s.told = ['e1', 'e2', 'e3', 'e4'];
+  }
   if (s.phase === 'recruit') show(recruitScreen());
   else if (to === 'lineup') show(lineupScreen(() => open(clubScreen())));
   else if (to === 'match' && SCHEDULE[s.day]!.t === 'match') show(...matchScreen());
