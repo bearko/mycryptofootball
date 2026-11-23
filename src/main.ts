@@ -37,14 +37,23 @@ import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
 import { languageScreen } from './ui/language';
 import { localize, setLang } from './core/i18n';
-import { prefs } from './core/save';
+import { commit, prefs } from './core/save';
 
 // Sound needs a gesture, and on a phone only a lifted finger counts as one: listen to all of them, every time
 // (unlockAudio retries whatever the browser refused so far, and is cheap once the music plays).
 for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const) {
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
 }
-// the language: English is laid over the Japanese pages as they appear (core/i18n.ts)
+// the language: English is laid over the Japanese pages as they appear (core/i18n.ts). The English address (/en/)
+// opens the game with ?hl=en: kept as the player's language unless they have chosen one already.
+{
+  const hl = new URLSearchParams(location.search).get('hl');
+  if ((hl === 'en' || hl === 'ja') && !prefs().lang) {
+    prefs().lang = hl;
+    commit();
+  }
+  if (hl) history.replaceState(null, '', location.pathname + location.search.replace(/[?&]hl=[a-z]+/, '').replace(/^&/, '?') + location.hash);
+}
 setLang(debug.lang === 'en' || debug.lang === 'ja' ? debug.lang : prefs().lang ?? 'ja');
 localize();
 applyPrefs();
