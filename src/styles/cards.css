@@ -112,3 +112,9 @@
 .card.kick .card-vs i:last-child { color: var(--ink); }
 .card-name.long { font-size: calc(var(--fs-s) * 0.74); letter-spacing: -0.08em; }
 .card-name.xlong { font-size: calc(var(--fs-s) * 0.62); letter-spacing: -0.1em; }
+
+/* eleven a side: a play that came with the colour's level carries its level beside the family's name */
+.card-lv { margin-left: 0.3rem; padding: 0 0.3rem; font-family: var(--display); font-weight: 400; font-size: 0.8rem; color: var(--chalk); background: var(--ink); border-radius: 0.2rem; }
+.card.is-adv .card-band { box-shadow: inset 0 -0.25rem 0 var(--yellow); }
+/* the family's name sits over the drawing: a backing keeps it readable */
+.card:not(.kick) .card-kind { padding: 0 0.25rem; background: rgba(255, 255, 255, 0.82); border-radius: 0.2rem; z-index: 1; }

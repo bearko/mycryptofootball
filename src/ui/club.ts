@@ -9,11 +9,12 @@ import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
 import { commit, prefs, save, storeMatch } from '../core/save';
 import { TACTIC, TACTIC_PLAYS, edgeOf, type Tactic } from '../game/tactics';
+import { playInfo, playsOfLevel } from '../game/playbook';
 import { hero } from '../game/heroes';
 import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
-  ROUND_NAME, SCHEDULE, campOf, campOpen, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
+  ROUND_NAME, SCHEDULE, campOf, campOpen, clubSize, clubTacticLv, hasTactic, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
   previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
@@ -146,6 +147,12 @@ const prizesOf = (changes: Change[]): [number, Prize][] => changes.flatMap((c): 
 ]);
 
 // ------------------------------------------------------------------ the screen
+
+/** What the manager says when the colour reaches a level: the plays of the playbook and of the colour it brings. */
+function levelNews(t: Tactic, lv: number): string {
+  const fresh = [...playsOfLevel(lv).map((k) => playInfo(k).name), ...TACTIC_PLAYS[t].filter((p) => p.from === lv).map((p) => p.name)].map((n) => `「${n}」`);
+  return `${TACTIC[t].name}の練度が${lv}に上がりました！${fresh.length ? ` 新しく${fresh.join('')}が使えます。` : ' 作戦のキレが増します。'}${lv === 3 ? ' 試合の手札も1枚増えます。' : ''}`;
+}
 
 export function clubScreen(): [HTMLElement, () => void] {
   const s = save().season!;
@@ -774,10 +781,10 @@ export function clubScreen(): [HTMLElement, () => void] {
     if (report.tacticUp) {
       // the colour took a step: say so, and name the play it brings, if any
       const t = tacticOf(s)!;
-      const fresh = TACTIC_PLAYS[t].filter((p) => p.from === report.tacticUp).map((p) => `「${p.name}」`);
       sfx.learn();
       burst(spot.x, spot.y, { count: 22, color: [TACTIC[t].color, '#fffbe8', '#ffe14a'], shape: ['star', 'rect'] });
-      coach.say(`${TACTIC[t].name}の練度が${report.tacticUp}に上がりました！${fresh.length ? ` 試合で${fresh.join('と')}が使えます。` : ' 作戦のキレが増します。'}`, 'cheer');
+      coach.say(levelNews(t, report.tacticUp), 'cheer');
+      s.playLv = report.tacticUp;
     }
     veil.remove();
     skipNow = null;
@@ -823,6 +830,8 @@ export function clubScreen(): [HTMLElement, () => void] {
   }
   /** The manager's lesson that is due on arriving at the ground, if any (the first week of a new coach). */
   const lessonNow = (): string | null => {
+    // news: the first time the club plays eleven a side, the manager says what has changed
+    if (s.phase === 'club' && clubSize(s) === 11) for (const id of ['e1', 'e4']) if (lessonDue(s, id)) return id;
     if (!tutorOn(s)) return null;
     const due = (id: string): boolean => lessonDue(s, id);
     if (s.results.length) return due('a1') ? 'a1' : null;
@@ -904,6 +913,15 @@ export function clubScreen(): [HTMLElement, () => void] {
           coach.say(k === 'school' ? '学校で合宿ですね！ 費用はかかりません。さあ、7月の1枚を！' : `${CAMP_SITE[k].name}で合宿ですね！ 楽しみです。さあ、7月の1枚を！`, 'sparkle');
         });
       }, first ? 650 : 350);
+      return;
+    }
+    // the colour grew with a win: the plays it brings (said once)
+    const lv = hasTactic(s) && clubSize(s) === 11 ? clubTacticLv(s) : 0;
+    if (lv > 1 && lv > (s.playLv ?? 1)) {
+      s.playLv = lv;
+      commit();
+      sfx.learn();
+      coach.say(levelNews(tacticOf(s)!, lv), 'cheer');
       return;
     }
     coach.say(...contextLine(s));

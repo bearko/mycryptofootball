@@ -22,6 +22,7 @@ import {
   type DefKind, type DefType, type KickType, type OffKind, type OffType, type SpecialCard,
 } from './cards';
 import { edgeOf, tacticPower, type Tactic } from './tactics';
+import { handAt, playShift, playsAt, type PlayKey } from './playbook';
 import { defPos, fit, kickFit, offPos, roleOf, sizeOf, type DefPos, type Lineup, type OffPos, type Player, type Role } from './model';
 import { tally, type Box } from './boxscore';
 import { BEAST_RUN, DUEL_SWING, duelOdds, meets, offPosOf, setupDuels, skillOf, type Aces, type Duel } from './duel';
@@ -72,6 +73,8 @@ export interface Pick {
   type: OffType | DefType | KickType;
   star: number;
   special?: SpecialCard;
+  /** eleven a side: the named play of the playbook it is (game/playbook.ts); run as its family, `type` */
+  play?: PlayKey;
   /** chosen after looking at the other side's card */
   peeked?: boolean;
 }
@@ -273,10 +276,20 @@ export function deal(st: MatchState): void {
     };
     return;
   }
-  st.hand = {
-    off: st.rng.shuffle(OFF_TYPES).slice(0, 3).map((type) => ({ type, star: star(st.rng) })),
-    def: st.rng.shuffle(DEF_TYPES).slice(0, 3).map((type) => ({ type, star: star(st.rng) })),
-  };
+  if (isEleven(st)) {
+    // eleven a side: named plays from each team's playbook (more of them, and one card more, as its colour grows)
+    const lvOf = (t: 0 | 1): number => st.teams[t].tacticLv ?? 1;
+    const pickOf = (side: 'off' | 'def', lv: number): Pick[] => {
+      const families = st.rng.shuffle<OffType | DefType>(side === 'off' ? OFF_TYPES : DEF_TYPES).slice(0, handAt(lv));
+      return families.map((type) => ({ type, star: star(st.rng), play: st.rng.pick(playsAt(side, lv, type)) }));
+    };
+    st.hand = { off: pickOf('off', lvOf(st.poss)), def: pickOf('def', lvOf((1 - st.poss) as 0 | 1)) };
+  } else {
+    st.hand = {
+      off: st.rng.shuffle(OFF_TYPES).slice(0, 3).map((type) => ({ type, star: star(st.rng) })),
+      def: st.rng.shuffle(DEF_TYPES).slice(0, 3).map((type) => ({ type, star: star(st.rng) })),
+    };
+  }
   st.hand.off.sort((a, b) => OFF_TYPES.indexOf(a.type as OffType) - OFF_TYPES.indexOf(b.type as OffType));
   st.hand.def.sort((a, b) => DEF_TYPES.indexOf(a.type as DefType) - DEF_TYPES.indexOf(b.type as DefType));
 }
@@ -603,7 +616,7 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     let sum = 0;
     let hit = 0;
     for (const d of DEF_TYPES) {
-      let m = MATCH[type][d];
+      let m = MATCH[type][d] + playShift(sp ? undefined : pick.play, undefined, type, d);
       if (kind === 'trick' || kind === 'reverse') m = Math.max(m, m + (1 - m) * Math.min(1, pot));
       const flea = kind === 'flea' ? (['stuff', 'contain', 'blitz'].includes(d) ? 1.6 : 0.4) : 0;
       for (const [z, w] of BELL) {
@@ -628,7 +641,7 @@ export function outlook(st: MatchState, t: 0 | 1, pick: Pick): number | null {
     const share = (isRun(type) ? opp.runBias : 1 - opp.runBias) / 2;
     const adv = (offRating(opp, type) - defRating(me, type)) / ADV_SCALE + colourQ(colourOf(st, (1 - t) as 0 | 1), colourOf(st, t), type)
       + duelLean(st, (1 - t) as 0 | 1, type, undefined, sp);
-    let m = kind && kind !== 'peekDef' ? DEF_SPECIAL_MATCH[kind][type] : MATCH[type][call];
+    let m = kind && kind !== 'peekDef' ? DEF_SPECIAL_MATCH[kind][type] : MATCH[type][call] + playShift(undefined, pick.play, type, call);
     if (kind === 'roar') m -= 1.6 * pot;
     if (kind === 'rush' && type !== 'outside') m -= 0.9 * pot;
     if (kind === 'wall' && type !== 'long') m -= 0.8 * pot;
@@ -1313,6 +1326,8 @@ function resolveScrimmage(st: MatchState, offPick: Pick, defPick: Pick): PlayRes
 
   // quality of the play
   let m = dk && dk !== 'peekDef' ? DEF_SPECIAL_MATCH[dk][type] : MATCH[type][defPick.type as DefType];
+  // eleven a side: the named plays shift the match-up of their families a little
+  m += playShift(osp ? undefined : offPick.play, dsp ? undefined : defPick.play, type, defPick.type as DefType);
   if (ok === 'trick' || ok === 'reverse') m = Math.max(m, m + (1.0 - m) * Math.min(1, op));
   let edge: PlayResult['edge'] = m <= -1 ? 'def' : m >= 0.8 ? 'off' : 'even';
   const adv = (offRating(O, type, isRun(type) ? undefined : targetPos) - defRating(D, type)) / ADV_SCALE;

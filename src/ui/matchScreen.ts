@@ -12,7 +12,7 @@ import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, loadMatch, prefs, save, storeMatch } from '../core/save';
 import {
-  DEF_INFO, DEF_TYPES, KICK_INFO, KIND, OFF_INFO, OFF_TYPES, READ_LABEL, isKick, isRun, type DefType, type OffType, type SpecialCard,
+  DEF_TYPES, KICK_INFO, KIND, OFF_TYPES, READ_LABEL, isKick, isRun, type OffType, type SpecialCard,
 } from '../game/cards';
 import { callFor, type Beat, type Call, type CallNames } from '../game/calls';
 import { fullNames, hush, prefetchVoice, speak, warmVoice } from '../core/voice/voice';
@@ -25,7 +25,7 @@ import {
 } from '../game/match';
 import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } from '../game/model';
 import { clubSheet, finishMatch, labelOf, opponentFor, plan } from '../game/season';
-import { cardBack, cardName, playCard } from './cardView';
+import { basicInfo, cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, motion, pop, shake, sparks } from './fx';
 import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
 import { route } from './nav';
@@ -610,8 +610,8 @@ export function matchScreen(): [HTMLElement, () => void] {
       if (pick.special) booth.say(`${hero(pick.special.owner).name}の「${pick.special.name}」！ ${KIND[pick.special.kind].text}`, 'sparkle');
       else if (isKick(pick.type)) booth.say(`${KICK_INFO[pick.type].name}。${KICK_INFO[pick.type].text}`, 'idle');
       else {
-        const info = onOffense ? OFF_INFO[pick.type as OffType] : DEF_INFO[pick.type as DefType];
-        booth.say(`${info.name}。${info.text}`, 'idle');
+        const info = basicInfo(pick, onOffense ? 'off' : 'def');
+        booth.say(`${info.name}${info.family ? `（${info.family}）` : ''}。${info.text}`, 'idle');
       }
     };
     unconsider = () => consider(null);
@@ -718,6 +718,17 @@ export function matchScreen(): [HTMLElement, () => void] {
     prompt();
     setTimeout(() => alive && !busy && showHuddle(), 500);
     busy = false;
+    // the first match eleven a side: the manager says what the cards are now (the playbook), then the coach plays
+    if (!step && s && isEleven(st) && !ko && lessonDue(s, 'e3')) {
+      busy = true;
+      setTimeout(() => {
+        if (!alive) return;
+        void teach(s, 'e3').then(() => {
+          if (alive) busy = false;
+        });
+      }, 700);
+      return;
+    }
     // the told story: the cards are on the table, the manager says what they are, then the coach plays
     if (step && lessonDue(s, step.lesson)) {
       busy = true;
