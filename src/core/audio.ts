@@ -492,6 +492,10 @@ export const sfx = {
   momentum: play(1, 50, R.momentum),
   specialReady: play(2, 150, R.specialReady),
   specialCutin: play(2, 300, R.specialCutin),
+  // the day's duel: the banner, the slow motion before it is decided, and the moment itself
+  duelBanner: play(2, 300, R.duelBanner),
+  duelFocus: play(2, 300, R.duelFocus),
+  duelDecide: play(2, 120, R.duelDecide),
   quarter: play(2, 300, R.quarter),
   halftime: play(2, 300, R.halftime),
   win: play(2, 500, R.win),

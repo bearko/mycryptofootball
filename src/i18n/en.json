@@ -1730,5 +1730,12 @@
  "{}との{}まで、あと{}日。この2週間の1枚をどうぞ！": "Facing {} ({}) in {} days. Pick the card for these two weeks!",
  "{}まで、あと{}日。この2週間の1枚をどうぞ！": "{} in {} days. Pick the card for these two weeks!",
  "{}との{}まで、あと{}日。きょうの1枚をどうぞ！": "Facing {} ({}) in {} days. Pick today's card!",
- "{}まで、あと{}日。きょうの1枚をどうぞ！": "{} in {} days. Pick today's card!"
+ "{}まで、あと{}日。きょうの1枚をどうぞ！": "{} in {} days. Pick today's card!",
+ "攻撃のエース": "Offense Ace",
+ "守備のエース": "Defense Ace",
+ "抜いたッ！！": "BREAKS FREE!!",
+ "捕ったッ！！": "CAUGHT IT!!",
+ "止めたッ！！": "STOPPED!!",
+ "はじいたッ！！": "DENIED!!",
+ "奪ったッ！！": "TAKEN AWAY!!"
 }

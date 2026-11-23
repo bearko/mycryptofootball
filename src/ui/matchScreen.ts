@@ -8,7 +8,7 @@
 // in chalk and names the heroes it is about; a click, or a second tap on the same card, plays it.
 
 import { isEn, nameParts, tr } from '../core/i18n';
-import { crowd, duck, playBgm, sfx, vibrate } from '../core/audio';
+import { crowd, duck, playBgm, setMuffled, sfx, vibrate } from '../core/audio';
 import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, loadMatch, prefs, save, storeMatch } from '../core/save';
@@ -39,7 +39,7 @@ import { guideEvent } from './platform';
 import { clearGoal, teach } from './tutor';
 import { factsOf, heroCard } from './heroCard';
 import { showBracket } from './bracket';
-import { duelCut, duelScore, duelTag, showDuels } from './duelView';
+import { duelCut, duelEnd, duelScore, duelTag, duelWord, showDuels } from './duelView';
 import { beasts, clubRecord, heroRecord } from '../game/duel';
 
 const BLOCK_TEXT = { side: '', bench: '控えにいる', position: '位置が合わない', momentum: '流れ不足', fourth: '4回目だけ' } as const;
@@ -810,6 +810,14 @@ export function matchScreen(): [HTMLElement, () => void] {
     flowBar.classList.toggle('on', quick);
     const before = snap();
     const res: PlayResult = resolvePlay(st, off, def);
+    if (debug.duel && !res.duel && !res.kick && !res.tfp && st.duels) {
+      // (for looking at the show: this play is staged as the day's duel, with the defender it needs)
+      const i = st.duels.findIndex((x) => x.side === res.off);
+      if (i >= 0) {
+        res.duel = { i, win: res.td || (res.outcome === 'gain' && res.yards >= 3), p: 0.5 };
+        res.defender = st.duels[i]!.foe;
+      }
+    }
     // what will be said about it is known now: its pieces are made ready while the cards are shown
     prefetchVoice((['snap', 'handoff', 'throw', 'catch', 'drop', 'break', 'steal', 'touchdown', 'kick', 'end'] as Beat[])
       .map((b) => callFor(b, res, names)).filter((c): c is Call => !!c).map(lineOf));
@@ -894,16 +902,35 @@ export function matchScreen(): [HTMLElement, () => void] {
     if (!alive) return;
     // ---- the day's duel: the two meet on this play
     const cut = duelCut(st, res);
-    if (cut) {
-      const du = st.duels![res.duel!.i]!;
-      sfx.specialCutin(du.side === 0);
-      flash('#ff5a2e', 200, 0.35);
-      vibrate(24);
+    const du = res.duel ? st.duels?.[res.duel.i] : undefined;
+    if (cut && du) {
+      // their first meeting today takes its time; after that the panel is over quickly
+      // (the book already counts this one: resolvePlay has run)
+      const first = du.w + du.l <= 1;
+      const brief = quick || !first;
+      cut.classList.toggle('is-brief', brief);
+      sfx.duelBanner(!!du.rival);
+      flash('#ffffff', 160, 0.5);
+      vibrate([20, 60, 20, 120, 50]);
+      // (with the hand of cards still up, the panel keeps to the part of the screen above it)
+      const room = hand.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+      const above = room < stage.getBoundingClientRect().height - 8 ? `${Math.max(0, room)}px` : '';
+      cut.style.height = above;
+      cut.style.bottom = above ? 'auto' : '';
       stage.append(cut);
+      // the hits land with the picture: the two panels, then the burst between them
+      setTimeout(() => alive && shake(0.5, 160, stage), 110);
+      setTimeout(() => alive && shake(0.5, 160, stage), 280);
+      setTimeout(() => {
+        if (!alive) return;
+        shake(0.9, 260, stage);
+        flash(du.rival ? '#ff3a3a' : '#ffe14a', 200, 0.4);
+      }, 500);
       shout({ head: du.rival ?? '対決！', tail: `${hero(du.ace).name}対${hero(du.foe).name}！`, side: 'none', hot: !!du.rival }, res.off);
-      await pause(quick ? 950 : 1500);
+      await pause(brief ? 1250 : 2300);
       cut.classList.add('out');
-      await pause(180);
+      flash('#ffffff', 140, 0.45);
+      await pause(200);
       cut.remove();
       if (!alive) return;
     }
@@ -966,6 +993,31 @@ export function matchScreen(): [HTMLElement, () => void] {
         crowd.roar(mineOff ? 0.75 : 0.35);
         call('break');
       },
+      // ---- the day's duel: the world slows down a moment before it is decided ...
+      onDuelFocus: () => {
+        // (as long as the stadium's slow motion: stadium.ts DUEL_LEAD / DUEL_SLOW)
+        const secs = 0.34 / 0.14 / (speed() * (quick ? 1.7 : 1));
+        sfx.duelFocus(secs);
+        setMuffled(true);
+        root.classList.add('duel-slow');
+        vibrate(14);
+      },
+      // ... and then it is: the word, the hit, the stand
+      onDuelDecide: () => {
+        setMuffled(false);
+        root.classList.remove('duel-slow');
+        const end = duelEnd(res);
+        if (!end) return;
+        const offWon = end === 'through' || end === 'catch';
+        sfx.duelDecide(end === 'steal' ? 'deny' : end);
+        flash(offWon === mineOff ? '#ffe14a' : '#ffffff', 220, 0.55);
+        shake(0.9, 300);
+        vibrate([40, 30, 80]);
+        crowd.roar(offWon === mineOff ? 1 : 0.5);
+        const word = duelWord(st, res, end);
+        stage.append(word);
+        setTimeout(() => word.remove(), 1250);
+      },
       onTouchdown: () => {
         sfx.touchdown(scorer === 0);
         crowd.roar(scorer === 0 ? 1 : 0.5);
@@ -973,7 +1025,9 @@ export function matchScreen(): [HTMLElement, () => void] {
         vibrate([30, 40, 30, 40, 80]);
         call('touchdown');
       },
-    });
+    }, du && res.duel ? { ace: du.ace, foe: du.foe, win: res.duel.win } : undefined);
+    setMuffled(false);
+    root.classList.remove('duel-slow');
     if (!alive) return;
     call('end');
     // the stand answers the big stops as loudly as the scores

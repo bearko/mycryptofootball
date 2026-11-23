@@ -28,19 +28,85 @@
 @keyframes duel-row-in { from { opacity: 0; transform: scale(1.25); } }
 @keyframes duel-vs { from { opacity: 0; transform: rotate(-8deg) scale(2.4); } }
 
-/* the moment two heroes meet on a play */
-.duel-cut { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem; pointer-events: none; }
-.duel-cut-band { position: absolute; left: -10%; right: -10%; top: 22%; height: 56%; transform: skewY(-4deg); background: linear-gradient(90deg, rgba(255, 90, 46, 0.85), rgba(11, 15, 46, 0.92) 45%, rgba(11, 15, 46, 0.92) 55%, rgba(80, 60, 200, 0.85)); border-top: 0.5rem solid var(--ink); border-bottom: 0.5rem solid var(--ink); animation: band-in 0.25s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
-.duel-cut.is-rival .duel-cut-band { background: linear-gradient(90deg, rgba(200, 30, 30, 0.9), rgba(30, 6, 12, 0.95) 45%, rgba(30, 6, 12, 0.95) 55%, rgba(200, 30, 30, 0.9)); }
-.duel-cut-head { position: relative; font-family: var(--display); font-size: 3.6rem; line-height: 1.1; color: var(--chalk); -webkit-text-stroke: 0.5rem var(--ink); paint-order: stroke fill; transform: rotate(-4deg); }
-.duel-cut .duel-row { position: relative; width: min(94%, 60rem); animation: none; }
-.duel-cut .duel-kind { display: none; }
-.duel-cut .duel-face.mine { animation: duel-slide-l 0.35s cubic-bezier(0.1, 1.2, 0.3, 1) backwards; }
-.duel-cut .duel-face.theirs { animation: duel-slide-r 0.35s cubic-bezier(0.1, 1.2, 0.3, 1) backwards; }
-.duel-cut .duel-vs { animation-delay: 0.2s; --i: 0; }
-.duel-cut.out { transform: scaleY(0); transition: transform 0.18s cubic-bezier(0.6, 0, 1, 0.4); }
-@keyframes duel-slide-l { from { transform: translateX(-60%); opacity: 0; } }
-@keyframes duel-slide-r { from { transform: translateX(60%); opacity: 0; } }
+/* ---- the moment two heroes meet on a play: a panel of a comic across the screen (duelView.ts duelCut) */
+.duel-cut { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.duel-cut::before { content: ''; position: absolute; inset: -10%; background: radial-gradient(ellipse at center, rgba(6, 8, 26, 0.35), rgba(6, 8, 26, 0.86)); animation: fade-in 0.2s both; }
+.dc-band { position: relative; width: 112%; height: min(70%, 23rem); transform: rotate(-3deg); background: var(--ink); border-top: 0.55rem solid var(--ink); border-bottom: 0.55rem solid var(--ink); outline: 0.3rem solid var(--chalk); box-shadow: 0 1.2rem 0 rgba(4, 6, 20, 0.45); animation: dc-band 0.22s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.dc-half { position: absolute; top: 0; bottom: 0; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--team) 82%, #fff), color-mix(in srgb, var(--team) 70%, #0b0f2e) 62%, color-mix(in srgb, var(--team) 38%, #0b0f2e)); }
+.dc-half.is-left { left: 0; right: 0; clip-path: polygon(0 0, calc(54% - 0.35rem) 0, calc(46% - 0.35rem) 100%, 0 100%); animation: dc-slam-l 0.26s cubic-bezier(0.15, 1.25, 0.3, 1) both; }
+.dc-half.is-right { left: 0; right: 0; clip-path: polygon(calc(54% + 0.35rem) 0, 100% 0, 100% 100%, calc(46% + 0.35rem) 100%); animation: dc-slam-r 0.26s 0.17s cubic-bezier(0.15, 1.25, 0.3, 1) both; }
+/* screen tone: dots that thin out toward the middle of the panel */
+.dc-tone { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(6, 8, 28, 0.42) 28%, transparent 30%); background-size: 0.62rem 0.62rem; -webkit-mask-image: linear-gradient(90deg, #000, transparent 46%); mask-image: linear-gradient(90deg, #000, transparent 46%); }
+.dc-half.is-right .dc-tone { -webkit-mask-image: linear-gradient(270deg, #000, transparent 46%); mask-image: linear-gradient(270deg, #000, transparent 46%); }
+/* the air streaking past: toward the other hero, two layers at two speeds */
+.dc-air { position: absolute; inset: 0; background-image: var(--streaks); background-size: 56rem 100%; animation: dc-air-l 0.42s linear infinite; }
+.dc-air.is-far { opacity: 0.55; background-size: 84rem 100%; animation-duration: 0.95s; transform: scaleY(-1); }
+.dc-half.is-right .dc-air { animation-name: dc-air-r; }
+.dc-hero { position: absolute; bottom: -6%; height: 124%; aspect-ratio: 1; left: 19%; animation: dc-hero-l 2.6s 0.05s cubic-bezier(0.1, 1.3, 0.3, 1) both; }
+.dc-half.is-right .dc-hero { left: auto; right: 19%; animation-name: dc-hero-r; animation-delay: 0.22s; }
+.dc-hero img { width: 100%; height: 100%; image-rendering: pixelated; filter: drop-shadow(0.5rem 0.4rem 0 rgba(6, 8, 28, 0.85)); animation: dc-white 0.2s 0.05s steps(2) both; }
+.dc-half.is-left .dc-hero img { transform: scaleX(-1); }
+.dc-half.is-right .dc-hero img { animation-delay: 0.22s; }
+.dc-who { position: absolute; bottom: 4%; left: 7%; width: 38%; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; transform: rotate(-2deg); animation: dc-who 0.3s 0.3s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.dc-half.is-right .dc-who { left: auto; right: 7%; align-items: flex-end; animation-delay: 0.45s; }
+.dc-tag { display: inline-flex; align-items: center; font-family: var(--display); font-size: var(--fs-xs); line-height: 1.5; color: var(--chalk); background: var(--ink); padding-right: 0.6rem; clip-path: polygon(0 0, 100% 0, calc(100% - 0.4rem) 100%, 0 100%); }
+.dc-tag b { font-weight: 400; color: var(--ink); background: var(--yellow); padding: 0 0.5rem; margin-right: 0.45rem; }
+.dc-tag em { font-style: normal; }
+.dc-name { font-family: var(--display); font-size: min(4.4rem, calc(19rem / var(--n, 4))); line-height: 1.02; white-space: nowrap; }
+/* letters like a sound effect: white, a fat ink outline, each tipped a little */
+.dc-letters { --n: 4; display: inline-flex; align-items: baseline; }
+.dc-letters i { display: inline-block; font-style: normal; color: #fff; -webkit-text-stroke: 0.2em var(--ink); paint-order: stroke fill; text-shadow: 0.07em 0.09em 0 var(--ink); transform: translateY(var(--y)) rotate(var(--r)) skewX(-7deg); margin: 0 -0.015em; }
+.dc-name .dc-letters { --n: inherit; }
+.dc-name .dc-letters i { animation: dc-letter 0.24s calc(0.34s + var(--d) * 0.035s) cubic-bezier(0.2, 1.8, 0.4, 1) both; }
+.dc-half.is-right .dc-name .dc-letters i { animation-delay: calc(0.5s + var(--d) * 0.035s); }
+.dc-skill { font-family: var(--display); font-size: var(--fs-s); color: var(--yellow); -webkit-text-stroke: 0.28rem var(--ink); paint-order: stroke fill; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.dc-gutter { position: absolute; inset: 0; background: var(--chalk); clip-path: polygon(calc(54% - 0.12rem) 0, calc(54% + 0.12rem) 0, calc(46% + 0.12rem) 100%, calc(46% - 0.12rem) 100%); animation: fade-in 0.1s 0.4s both; }
+/* the burst between them */
+.dc-vs { position: absolute; width: 13.5rem; height: 13.5rem; display: grid; place-items: center; transform: rotate(-9deg); animation: dc-vs 0.34s 0.5s cubic-bezier(0.2, 1.9, 0.4, 1) both; }
+.dc-vs i { position: absolute; inset: 0; }
+.dc-vs-ink { background: var(--ink); clip-path: var(--burst); transform: scale(1.09); }
+.dc-vs-paper { clip-path: var(--burst2); background-color: #fff; background-image: radial-gradient(circle, rgba(6, 8, 28, 0.5) 30%, transparent 33%); background-size: 0.5rem 0.5rem; animation: dc-pop 0.5s 0.5s steps(3) both; }
+.dc-vs b { position: relative; font-family: var(--display); font-weight: 400; font-style: italic; font-size: 5.2rem; line-height: 1; letter-spacing: -0.04em; color: #fff; -webkit-text-stroke: 1rem var(--ink); paint-order: stroke fill; text-shadow: 0.3rem 0.35rem 0 var(--ink); transform: skewX(-6deg); }
+.duel-cut.is-rival .dc-vs-paper { background-color: #ff3a3a; }
+.dc-head { position: absolute; top: 3%; left: 4%; max-width: 92%; font-family: var(--display); font-size: min(3rem, calc(52rem / var(--n, 4))); line-height: 1.05; white-space: nowrap; transform: rotate(-6deg); animation: dc-who 0.3s 0.62s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.dc-head .dc-letters { --n: inherit; }
+.dc-head .dc-letters i { color: var(--yellow); }
+.duel-cut.is-rival .dc-head .dc-letters i { color: #ff6a4a; }
+/* later meetings: the same panel, over sooner */
+.duel-cut.is-brief .dc-hero { animation-duration: 1.4s; }
+.duel-cut.out .dc-half.is-left { transform: translateX(-70%); transition: transform 0.2s cubic-bezier(0.6, 0, 1, 0.5); }
+.duel-cut.out .dc-half.is-right { transform: translateX(70%); transition: transform 0.2s cubic-bezier(0.6, 0, 1, 0.5); }
+.duel-cut.out .dc-vs, .duel-cut.out .dc-head, .duel-cut.out .dc-gutter { opacity: 0; transform: scale(2.2); transition: opacity 0.14s, transform 0.14s; }
+.duel-cut.out .dc-band { background: transparent; border-color: transparent; outline-color: transparent; box-shadow: none; transition: all 0.12s; }
+.duel-cut.out::before { opacity: 0; transition: opacity 0.2s; }
+@keyframes dc-band { from { transform: rotate(-3deg) scaleY(0); } }
+@keyframes dc-slam-l { from { transform: translateX(-100%); } }
+@keyframes dc-slam-r { from { transform: translateX(100%); } }
+@keyframes dc-air-l { from { background-position-x: 0; } to { background-position-x: 56rem; } }
+@keyframes dc-air-r { from { background-position-x: 0; } to { background-position-x: -56rem; } }
+/* the hero comes in hard, then keeps leaning toward the other one */
+@keyframes dc-hero-l { 0% { transform: translateX(-90%) scale(1.25); } 12% { transform: translateX(4%) scale(1); } 100% { transform: translateX(14%) scale(1.05); } }
+@keyframes dc-hero-r { 0% { transform: translateX(90%) scale(1.25); } 12% { transform: translateX(-4%) scale(1); } 100% { transform: translateX(-14%) scale(1.05); } }
+@keyframes dc-white { from { filter: brightness(0) invert(1); } }
+@keyframes dc-who { from { opacity: 0; transform: rotate(-2deg) scale(1.9); } }
+@keyframes dc-letter { from { opacity: 0; transform: translateY(-0.5em) rotate(calc(var(--r) * 4)) scale(1.7); } }
+@keyframes dc-vs { 0% { opacity: 0; transform: rotate(40deg) scale(3.4); } 60% { opacity: 1; } }
+@keyframes dc-pop { 0% { filter: brightness(3); } }
+
+/* the word thrown onto the screen as the duel is decided */
+.duel-word { position: absolute; top: 9%; left: 50%; display: grid; place-items: center; padding: 1.4rem 3.2rem; font-family: var(--display); font-size: min(5rem, calc(38rem / 5)); line-height: 1; white-space: nowrap; pointer-events: none; transform: translateX(-50%) rotate(-7deg); animation: dw-in 0.3s cubic-bezier(0.2, 1.9, 0.4, 1) both, dw-out 0.22s 0.95s ease-in forwards; }
+.duel-word .dw-burst { position: absolute; inset: -38% -12%; background: var(--ink); clip-path: var(--burst); }
+.duel-word .dw-burst::after { content: ''; position: absolute; inset: 3.5%; clip-path: var(--burst); background-color: color-mix(in srgb, var(--team) 70%, #fff); background-image: radial-gradient(circle, rgba(6, 8, 28, 0.35) 30%, transparent 33%); background-size: 0.55rem 0.55rem; }
+.duel-word .dc-letters { position: relative; }
+.duel-word .dc-letters i { animation: dc-letter 0.2s calc(0.04s + var(--d) * 0.03s) cubic-bezier(0.2, 1.8, 0.4, 1) both; }
+.duel-word.is-def .dc-letters i { color: #dff6ff; }
+@keyframes dw-in { from { opacity: 0; transform: translateX(-50%) rotate(-7deg) scale(3); } }
+@keyframes dw-out { to { opacity: 0; transform: translateX(-50%) rotate(-7deg) scale(1.4); } }
+/* the stadium's own slow motion needs room: the cards and the boards step back for the moment */
+.match.duel-slow .call, .match.duel-slow .booth { opacity: 0.25; transition: opacity 0.15s; }
+@media (prefers-reduced-motion: reduce) {
+  .dc-air, .dc-hero, .dc-hero img { animation: none; }
+}
 
 /* what came of it, under the telop */
 .telop-duel { position: absolute; left: 50%; top: calc(100% + 3.4rem); display: flex; align-items: center; gap: 0.5rem; padding: 0.1rem 1rem 0.1rem 0.4rem; font-family: var(--display); font-size: var(--fs-m); line-height: 1.4; white-space: nowrap; color: var(--chalk); background: #1d2a6e; border: 0.18rem solid var(--ink); box-shadow: 0.25rem 0.25rem 0 var(--ink); transform: translateX(-50%) rotate(2deg); animation: mom-tag-in 0.45s 0.55s var(--spring) backwards; }
@@ -79,3 +145,7 @@
 .lu-ace small { color: var(--yellow); }
 
 html.en .ace-opt.is-on::after { content: 'Ace'; }
+
+/* English: names and words are longer */
+html.en .dc-name { font-size: min(4rem, calc(30rem / var(--n, 4))); }
+html.en .duel-word { font-size: min(4.2rem, calc(52rem / 12)); }

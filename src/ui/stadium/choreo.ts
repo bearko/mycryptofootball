@@ -49,6 +49,8 @@ export type Cue = { t: number } & (
   | { c: 'impact'; x: number; z: number; power: number; victim: Ref | null; hitter: Ref | null; back: boolean }
   | { c: 'steal'; who: Ref }
   | { c: 'break' }
+  /** the day's duel, a run: the ace steps around the defender who came to stop him (side: which way across the field) */
+  | { c: 'juke'; who: Ref; foe: Ref; side: number }
   | { c: 'td'; who: Ref }
   | { c: 'celebrate'; team: 0 | 1 }
   | { c: 'ignite'; who: Ref }
@@ -82,6 +84,11 @@ export interface PlaySpec {
    * kicked from (in that team's yards), `carrier` who gets the ball, `defender` who of the kicking team gets to him
    */
   kick?: { type: KickType; good: boolean; dist: number; kicker?: number; ret?: number };
+  /**
+   * the day's duel is fought on this play (game/duel.ts): the attacking ace, the defender he meets, and who wins.
+   * The picture is built around the moment the two meet (Script.tDuel)
+   */
+  duel?: { ace: number; foe: number; win: boolean };
 }
 
 /**
@@ -193,6 +200,10 @@ export interface Script {
   design: Design[];
   /** the route the pass went to (missing for a run, a kick or a sack before the throw) */
   route?: RouteName;
+  /** the moment the day's duel is decided: the step around the defender, the hit, the catch (-1: no duel in this play) */
+  tDuel: number;
+  /** who of the offense is at that moment (the runner, the receiver, the quarterback who is sacked) */
+  duelWho: Ref;
 }
 
 export function specOf(res: PlayResult): PlaySpec {
@@ -575,7 +586,7 @@ function buildKickoff(teams: [TeamSheet, TeamSheet], sp: PlaySpec, where: (team:
   cues.sort((p, q) => p.t - q.t);
   return {
     spec: sp, dir, losX: X(los), dur: endT + (fast ? 0.08 : 0.5), snap: s, tHand: -1, tThrow: tK, tCatch, tEnd, tTD, plans, ball, cues, star,
-    pass: true, long: true, endX: X(endU), endZ: endV, spotX: X(clamp(spotU, 0, FIELD)), spotZ: spotV, design: [],
+    pass: true, long: true, endX: X(endU), endZ: endV, spotX: X(clamp(spotU, 0, FIELD)), spotZ: spotV, design: [], tDuel: -1, duelWho: star,
   };
 }
 
@@ -709,6 +720,10 @@ export function buildScript(
   let spotU = end;
   let spotV = 12;
   let route: RouteName | undefined;
+  /** the day's duel: the defender is the one the ace meets, and the play has a moment of its own */
+  const duel = sp.duel && sp.duel.foe === sp.defender ? sp.duel : null;
+  let tDuel = -1;
+  let duelWho: Ref = ref(carrier);
   const moved = new Set<Plan>();
   /** the earliest the tackler can be at a spot without flying there */
   const needT = (u: number, v: number): number => {
@@ -824,8 +839,10 @@ export function buildScript(
     const hitU = sp.td ? stopU : back ? stopU + 0.7 : stopU - 0.6;
     tHand = s + (inside ? 0.34 : 0.3);
     // the run as drawn up: through the hole and on, as far as the goal line allows
-    if (inside) draw(rb, 'run', [base.off.RB, [los - 5.4, 12.2], [los - 0.8, lane], [Math.min(los + 9, FIELD + 2), lane]]);
-    else draw(rb, 'run', [base.off.RB, [los - 7.7, lerp(12.8, lane, 0.3)], [los - 3.6, lane], [Math.min(los + 11, FIELD + 2), lane + (lane < 12 ? 0.9 : -0.9)]]);
+    // (in the day's duel the ace sees his way all the way to the goal line)
+    const far = duel && duel.ace === rb.id ? FIELD + 1.5 : 0;
+    if (inside) draw(rb, 'run', [base.off.RB, [los - 5.4, 12.2], [los - 0.8, lane], [far || Math.min(los + 9, FIELD + 2), lane]]);
+    else draw(rb, 'run', [base.off.RB, [los - 7.7, lerp(12.8, lane, 0.3)], [los - 3.6, lane], [far || Math.min(los + 11, FIELD + 2), lane + (lane < 12 ? 0.9 : -0.9)]]);
     go(qb, s + 0.3, los - 5.9, inside ? 12.5 : 12 + (lane < 12 ? -0.9 : 0.9));
     go(qb, s + 1.2, los - 5.5, 12.4);
     let fromU: number;
@@ -880,18 +897,66 @@ export function buildScript(
     cut(defender);
     moved.add(defender);
     const lz = V(rb);
+    // ---- the day's duel, won by the runner: the defender comes up to meet him, and he steps around him. The
+    // defender is turned round (and brings him down from behind in the end), or dives at nothing when it is a score
+    let juked = false;
+    if (duel?.win && !fumble && duel.ace === rb.id) {
+      const tFin = sp.td ? tAt(FIELD + 0.4) : tEnd;
+      const at = { x: 0, z: 0 };
+      const uOf = (x: number): number => (x - X(0)) * dir;
+      let tJ = tA + (tFin - tA) * 0.34;
+      evalKeys(rb.keys, tJ, at);
+      // the defender has to be able to get there
+      const need = needT(uOf(at.x) + 0.6, at.z);
+      if (need > tJ) {
+        tJ = need;
+        evalKeys(rb.keys, tJ, at);
+      }
+      if (tJ > tA + 0.12 && tFin - tJ >= (sp.td ? 0.3 : 0.8)) {
+        juked = true;
+        const uJ = uOf(at.x);
+        const zJ = at.z;
+        const side = Math.abs(zJ - 12) < 1.5 ? (sp.n % 2 ? 1 : -1) : zJ < 12 ? 1 : -1;
+        // the step: plant, cut across, and back onto the way
+        const pre = { x: 0, z: 0 };
+        const post = { x: 0, z: 0 };
+        evalKeys(rb.keys, tJ - 0.16, pre);
+        evalKeys(rb.keys, tJ + 0.24, post);
+        const weave: Key[] = [
+          { t: tJ - 0.16, x: pre.x, z: pre.z },
+          { t: tJ, x: at.x, z: clamp(zJ + side * 1.7, 0.6, WIDTH - 0.6), hard: true },
+          { t: tJ + 0.24, x: post.x, z: clamp(post.z + side * 1.0, 0.6, WIDTH - 0.6), hard: true },
+        ];
+        rb.keys = [...rb.keys.filter((k) => k.t < tJ - 0.17 || k.t > tJ + 0.25), ...weave].sort((p, q) => p.t - q.t);
+        go(defender, Math.max(s + 0.1, tJ - 0.3), uJ + 2.6, zJ);
+        go(defender, tJ, uJ + 0.55, zJ, true);
+        go(defender, tJ + (sp.td ? 0.3 : 0.16), uJ + (sp.td ? 0.2 : 0.9), zJ - side * 0.4);
+        cues.push({ t: tJ, c: 'juke', who: ref(rb), foe: ref(defender), side });
+        if (sp.td) cues.push({ t: tJ - 0.04, c: 'dive', who: ref(defender), dir: -1 });
+        tDuel = tJ;
+      }
+    }
+    if (duel && tDuel < 0 && !sp.td) tDuel = tEnd;
+    duelWho = ref(rb);
     if (sp.td) {
       tTD = tAt(FIELD + 0.4);
       const du = Math.min(FIELD - 0.8, reach(defender, tTD));
-      go(defender, tTD, du, lz + (lz < 12 ? 1.6 : -1.6), true);
-      if (du > FIELD - 3.5) cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
+      if (!juked) {
+        go(defender, tTD, du, lz + (lz < 12 ? 1.6 : -1.6), true);
+        if (du > FIELD - 3.5) cues.push({ t: tTD - 0.08, c: 'dive', who: ref(defender), dir: 1 });
+      }
       cues.push({ t: tTD, c: 'td', who: ref(rb) });
       cues.push({ t: tEnd + 0.1, c: 'celebrate', team: o });
       ball.push({ t0: tHand + (inside ? 0 : 0.04), t1: 99, kind: 'held', team: o, id: rb.id });
       endT = Math.max(tTD + 1.5, tEnd + 0.9);
     } else {
-      go(defender, s + 0.22 + (tEnd - s - 0.22) * 0.62, lerp(U(defender), hitU + 2.6, 0.6), lerp(V(defender), lz, 0.7));
-      go(defender, tEnd, hitU + 0.85, lz, true);
+      if (juked) {
+        // turned round, he runs the ace down from behind
+        go(defender, tEnd, hitU - 0.8, lz, true);
+      } else {
+        go(defender, s + 0.22 + (tEnd - s - 0.22) * 0.62, lerp(U(defender), hitU + 2.6, 0.6), lerp(V(defender), lz, 0.7));
+        go(defender, tEnd, hitU + 0.85, lz, true);
+      }
       if (fumble) {
         const lu = hitU + 1.7;
         const lv = lz + (lz < 12 ? 1.3 : -1.3);
@@ -920,7 +985,7 @@ export function buildScript(
         }
       } else {
         go(rb, tEnd + 0.32, stopU, lz);
-        go(defender, tEnd + 0.32, stopU + 0.9, lz + 0.2);
+        go(defender, tEnd + 0.32, juked ? stopU - 0.7 : stopU + 0.9, lz + 0.2);
         const power = clamp((back ? 0.82 : 0.55 + Math.min(0.25, sp.yards * 0.012)) + (sp.defStar !== null ? 0.15 : 0), 0.3, 1);
         cues.push({ t: tEnd, c: 'impact', x: X(hitU + 0.4), z: lz, power, victim: ref(rb), hitter: ref(defender), back });
         ball.push({ t0: tHand + (inside ? 0 : 0.04), t1: 99, kind: 'held', team: o, id: rb.id });
@@ -1036,6 +1101,10 @@ export function buildScript(
       ball.push({ t0: 0, t1: 99, kind: 'held', team: o, id: qb.id });
       cues.push({ t: tSack, c: 'impact', x: X(dropU + 0.3), z: 12.2, power: 0.95, victim: ref(qb), hitter: ref(defender), back: true });
       tEnd = tSack;
+      if (duel) {
+        tDuel = tSack;
+        duelWho = ref(qb);
+      }
       tThrow = -1;
       tCatch = -1;
       route = undefined;
@@ -1048,6 +1117,10 @@ export function buildScript(
       go(qb, tThrow, dropU - 0.1, 12);
       go(qb, tThrow + 0.25, dropU + 0.8, 12);
       go(recv, tCatch, spotU, rv, caught);
+      if (duel) {
+        tDuel = tCatch;
+        duelWho = ref(recv);
+      }
       const handX = X(dropU + 0.5);
       ball.push({ t0: 0, t1: tThrow, kind: 'held', team: o, id: qb.id });
       cues.push({ t: tThrow - 0.16, c: 'jump', who: ref(qb), h: 0.35, dur: 0.3 });
@@ -1059,6 +1132,8 @@ export function buildScript(
         ball.push({ t0: tCatch, t1: 99, kind: 'held', team: o, id: recv.id });
         cues.push({ t: tCatch - 0.2, c: 'jump', who: ref(recv), h: jumpH, dur: 0.42 });
         cues.push({ t: tCatch, c: 'catch', who: ref(recv), long });
+        // (the day's duel: the defender goes up for it too)
+        if (duel) cues.push({ t: tCatch - 0.2, c: 'jump', who: ref(defender), h: jumpH * 0.8, dur: 0.42 });
         const stopU = sp.td ? Math.max(FIELD + 2.8, spotU + 0.7) : end;
         const rac = stopU - spotU;
         const back = !sp.td && rac < 1;
@@ -1138,7 +1213,7 @@ export function buildScript(
         endV = rv + inward * 1.3;
         star = ref(defender);
       } else {
-        const swat = sp.n % 2 === 0;
+        const swat = sp.n % 2 === 0 || !!duel;
         go(defender, s + (tCatch - s) * 0.6, los + depth * 0.6 + 2.4, lerp(V(defender), rv, 0.6));
         go(defender, tCatch, spotU + 0.7, rv + inward * 0.4);
         go(recv, tCatch + 0.4, spotU + 1.1, rv);
@@ -1189,6 +1264,7 @@ export function buildScript(
   return {
     spec: sp, dir, losX: X(los), dur, snap: s, tHand, tThrow, tCatch, tEnd, tTD, plans, ball, cues, star,
     pass: !isRun(type), long: type === 'long', endX: X(endU), endZ: endV, spotX: X(spotU), spotZ: spotV, design, route,
+    tDuel: fast ? -1 : tDuel, duelWho,
   };
 }
 
