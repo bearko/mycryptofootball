@@ -7,6 +7,7 @@
 //               ?go=recruit&tier=2 opens the briefing of a later year
 //   ?tactic=air&tlv=5  with ?go= and an eleven-a-side ?tier=: the club's colour, at that level (1 to 5)
 //   ?ob=200     with ?go=: the club has that many OB points (and as many medals) for the alumni's room
+//   ?event=gift with ?go=club: that club event waits on the ground (season.ts EVENTS' keys)
 //   ?go=club    open a screen directly with a ready-made season (recruit, club, training, lineup, match, end, champion);
 //               combines with ?day= and ?trust=. Nothing is written to the real save until the game itself saves
 
@@ -23,6 +24,7 @@ export const debug = {
   tactic: params.get('tactic'),
   tlv: num('tlv'),
   ob: num('ob'),
+  event: params.get('event'),
 };
 
 /** A fresh seed, or the fixed one from the URL. */

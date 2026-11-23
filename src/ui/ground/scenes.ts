@@ -68,7 +68,9 @@ export function eventScene(s: Season, after: (changes: Change[], label: string) 
   const scene = h('div.ev', { data: { key: e.key } },
     h('div.ev-head', icon(EVENT_ICON[e.key] ?? EVENT_ICON.idea!, 'ev-icon'), h('span.label.hot', 'きょうのできごと'), h('h2', kinetic(def.title))),
     h('div.ev-body', { class: `cast${Math.min(cast.length, 3)}` },
-      h('div.ev-cast', cast.map((id, i) => portrait(id, { cls: i % 2 ? 'is-turned' : '', color: i % 2 ? '#37e3ff' : '#ffe14a', delay: i * 0.23 }))),
+      // the whole team: a few of them stand for it (a line of 24 would push the paper into a sliver), and the rest is a count
+      h('div.ev-cast', cast.slice(0, CAST_MAX).map((id, i) => portrait(id, { cls: i % 2 ? 'is-turned' : '', color: i % 2 ? '#37e3ff' : '#ffe14a', delay: i * 0.23 })),
+        cast.length > CAST_MAX ? h('span.ev-more', `ほか${cast.length - CAST_MAX}人`) : null),
       paper),
     choices);
   modal(scene, { sticky: true, cls: 'scene', quiet: true });
@@ -76,6 +78,9 @@ export function eventScene(s: Season, after: (changes: Change[], label: string) 
   const typing = typewriter(line, text, { cps: 30, onTick: () => sfx.typeTick() });
   paper.addEventListener('click', () => typing.skip());
 }
+
+/** the most heroes an event shows (the rest of the team is a count beside them) */
+const CAST_MAX = 5;
 
 const CAMP_ICON = '<path d="M3 20h18M5 20l7-14 7 14M12 6v14M9 20l3-5 3 5"/>';
 

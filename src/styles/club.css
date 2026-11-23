@@ -520,3 +520,6 @@
 .vs-trip .vs-call { min-width: 0; min-height: max(44px, 3rem); flex-direction: column; gap: 0; line-height: 1.15; padding: 0.15rem 0.8rem; }
 .vs-trip .vs-call span { font-size: var(--fs-xs); opacity: 0.85; }
 .vs-trip .vs-call.is-short:not([aria-pressed='true']) { opacity: 0.5; }
+/* the whole team in an event: five of them and a count; the cast never takes the paper's room */
+.ev-cast { min-width: 0; max-width: 32rem; }
+.ev-more { flex: none; align-self: center; margin-left: 0.6rem; padding: 0.2rem 0.7rem; font-size: var(--fs-s); font-weight: 900; color: var(--ink); background: var(--chalk); border-radius: 1rem; white-space: nowrap; }
