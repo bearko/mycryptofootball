@@ -1,7 +1,9 @@
 // Packs the announcer's recorded pieces into one file the game reads (public/voice.bin) and the table that says
 // which words each piece says and where it lies (src/core/voice/pieces.ts).
 //
-//   node scripts/pack-voice.mjs <manifest.tsv>
+//   node scripts/pack-voice.mjs <manifest.tsv> [--en]
+//
+// --en packs the English announcer: public/voice-en.bin and src/core/voice/pieces-en.ts.
 //
 // The manifest has one piece a line: the words it says, a tab, and the path of its mp3 (relative to the manifest).
 // A piece is a short, trimmed mp3 (mono). The pieces are not kept in the repository one by one: only the packed
@@ -10,7 +12,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-const manifest = process.argv[2];
+const EN = process.argv.includes('--en');
+const manifest = process.argv.slice(2).find((a) => a !== '--en');
 if (!manifest) {
   console.error('usage: node scripts/pack-voice.mjs <manifest.tsv>');
   process.exit(1);
@@ -40,14 +43,17 @@ for (const b of parts) {
   p += b.length;
 }
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
-writeFileSync(join(root, 'public/voice.bin'), out);
-writeFileSync(join(root, 'src/core/voice/pieces.ts'), [
+const S = EN ? '_EN' : '';
+writeFileSync(join(root, EN ? 'public/voice-en.bin' : 'public/voice.bin'), out);
+writeFileSync(join(root, EN ? 'src/core/voice/pieces-en.ts' : 'src/core/voice/pieces.ts'), [
   '// Made by scripts/pack-voice.mjs: do not edit by hand.',
-  '// Every recorded piece of the announcer: the words it says, and where it lies in public/voice.bin (offset, length).',
+  EN
+    ? '// Every recorded piece of the English announcer: the words it says, and where it lies in public/voice-en.bin (offset, length).'
+    : '// Every recorded piece of the announcer: the words it says, and where it lies in public/voice.bin (offset, length).',
   '',
-  `export const VOICE_BYTES = ${at};`,
+  `export const VOICE_BYTES${S} = ${at};`,
   '',
-  'export const PIECES: readonly (readonly [text: string, offset: number, length: number])[] = [',
+  `export const PIECES${S}: readonly (readonly [text: string, offset: number, length: number])[] = [`,
   ...table.map(([t, o, n]) => `  [${JSON.stringify(t)}, ${o}, ${n}],`),
   '];',
   '',

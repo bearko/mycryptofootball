@@ -149,10 +149,20 @@ const prizesOf = (changes: Change[]): [number, Prize][] => changes.flatMap((c): 
 
 // ------------------------------------------------------------------ the screen
 
+/** how many letters of play names the manager's bubble has room for (Japanese, English) */
+const NEWS_ROOM = 20;
+const NEWS_ROOM_EN = 34;
+
 /** What the manager says when the colour reaches a level: the plays of the playbook and of the colour it brings. */
 function levelNews(t: Tactic, lv: number): string {
-  const fresh = [...playsOfLevel(lv).map((k) => playInfo(k).name), ...TACTIC_PLAYS[t].filter((p) => p.from === lv).map((p) => p.name)].map((n) => (isEn() ? `"${tr(n)}"` : `「${n}」`));
-  return `${TACTIC[t].name}の練度が${lv}に上がりました！${fresh.length ? ` 新しく${fresh.join(isEn() ? ', ' : '')}が使えます。` : ' 作戦のキレが増します。'}${lv === 3 ? ' 試合の手札も1枚増えます。' : ''}`;
+  const names = [...playsOfLevel(lv).map((k) => playInfo(k).name), ...TACTIC_PLAYS[t].filter((p) => p.from === lv).map((p) => p.name)].map((n) => (isEn() ? `"${tr(n)}"` : `「${n}」`));
+  // the names that fit the manager's bubble; the rest are "等" (etc.)
+  const room = isEn() ? NEWS_ROOM_EN : NEWS_ROOM;
+  const shown: string[] = [];
+  for (const n of names) if (!shown.length || shown.join('').length + n.length <= room) shown.push(n); else break;
+  const more = shown.length < names.length;
+  const list = isEn() ? `${shown.join(', ')}${more ? ', etc.' : ''}` : `${shown.join('')}${more ? '等' : ''}`;
+  return `${TACTIC[t].name}の練度が${lv}に上がりました！${names.length ? ` 新しく${list}が使えます。` : ' 作戦のキレが増します。'}${lv === 3 ? ' 試合の手札も1枚増えます。' : ''}`;
 }
 
 export function clubScreen(): [HTMLElement, () => void] {
