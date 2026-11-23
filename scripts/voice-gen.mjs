@@ -6,7 +6,7 @@
 //   node scripts/pack-voice.mjs <dir>/manifest.tsv
 //
 // With --en, the English announcer (his own voice; pieces-en.ts, voice-readings-en.json, packed by pack-voice --en):
-// a shout is given to the generator with a tag for how it is said ("!!" shouted, "!" excited).
+// a shout is given to the generator with a tag for how it is said ("!!" shouted, everything else excited).
 //
 // The pieces are those of src/core/voice/pieces.ts, then the lines of extra.txt (words not said yet; one a line).
 // A name the generator could read wrong is given to it in kana (scripts/voice-readings.json); a piece whose words or
@@ -34,8 +34,8 @@ const known = [...src.matchAll(/^ {2}\[(".*?"), \d+, \d+\],$/gm)].map((m) => JSO
 const extra = extraFile ? readFileSync(extraFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean) : [];
 const all = [...new Set([...known, ...extra])];
 const READ = JSON.parse(readFileSync(join(root, EN ? 'scripts/voice-readings-en.json' : 'scripts/voice-readings.json'), 'utf8'));
-/** how an English piece is said: a shout shouted, an exclamation excited, the rest (names, numbers, the middle of a line) plainly */
-const tone = (text) => (text.endsWith('!!') ? `[shouting] ${text}` : text.endsWith('!') ? `[excited] ${text}` : text);
+/** how an English piece is said: a shout shouted, everything else (names and numbers too) as excited as the rest of the call */
+const tone = (text) => (text.endsWith('!!') ? `[shouting] ${text}` : `[excited] ${text}`);
 /** what the generator is given for a piece (a piece that begins with a comma is said without it) */
 const spokenOf = (text) => READ[text] ?? (EN ? tone(text) : text.replace(/^[、。]+/, ''));
 

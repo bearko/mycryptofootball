@@ -164,6 +164,9 @@ const GAP = 0.03;
 const JOIN = -0.06;
 const GOES_ON = /^[にがのをはへとでもや]/;
 const ENDS = /[！？、。…]$/;
+/** an English piece that does not end a sentence: the next one comes in a little before its end */
+const EN_JOIN = -0.05;
+const EN_ENDS = /[!?.,]$/;
 /** a line that waits longer than this for its pieces has missed its moment */
 const TOO_LATE = 0.9;
 /** a line comes after the one being said if that one ends within this */
@@ -241,6 +244,8 @@ export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {
       const start = t;
       (bufs as AudioBuffer[]).forEach((b, i) => {
         if (i > 0 && !isEn() && GOES_ON.test(table[pieces[i]!]![0]) && !ENDS.test(table[pieces[i - 1]!]![0])) t += JOIN - GAP;
+        // English words in the middle of a sentence run on into each other ("Returned" "18 yards!")
+        if (i > 0 && isEn() && !EN_ENDS.test(table[pieces[i - 1]!]![0])) t += EN_JOIN - GAP;
         const src = ctx.createBufferSource();
         src.buffer = b;
         src.connect(out.node);
