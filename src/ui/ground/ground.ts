@@ -89,11 +89,25 @@ export function makeGround(s: Season): Ground {
       st = made;
       made.setMotion(prefs().motion);
       made.ground!({ heroes: ids, day: s.day, color: TEAM_COLOR, posts: postsOf(s) });
+      // the heroes on the ground; a card about one who is not (a big club's bench) brings them on, in the place of
+      // the last one there, so the drill and the camera are about the hero on the card
+      let shown = ids.slice(0, made.groundRoom);
+      const bring = (lead: number | undefined): void => {
+        if (lead === undefined || made.onGround(lead) || !s.members.some((m) => m.id === lead)) return;
+        shown = [...shown.filter((x) => x !== lead).slice(0, made.groundRoom - 1), lead];
+        made.ground!({ heroes: shown, day: s.day, color: TEAM_COLOR, posts: postsOf(s) });
+      };
       return {
         el: canvas,
         real: true,
-        drill: (kind, opts, hooks) => made.drill!(kind, opts, hooks),
-        hint: (kind, lead) => made.hintDrill?.(kind, lead),
+        drill: (kind, opts, hooks) => {
+          bring(opts?.lead);
+          return made.drill!(kind, opts, hooks);
+        },
+        hint: (kind, lead) => {
+          if (kind) bring(lead);
+          made.hintDrill?.(kind, lead);
+        },
         pos: (id) => made.screenPos(0, id),
         safe: (top, bottom) => made.setSafeArea(top, bottom),
         destroy: () => made.destroy(),
