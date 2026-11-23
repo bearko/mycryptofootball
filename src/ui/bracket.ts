@@ -4,6 +4,7 @@
 // Both are shows, not pop-ups: they go on by themselves, and a tap goes on at once. From the practice ground the
 // bracket can be looked at any time while a tournament is on.
 
+import { isEn, tr } from '../core/i18n';
 import { sfx } from '../core/audio';
 import { h } from '../core/dom';
 import { CLUB, clubReach, freshGames, markSeen, pairOf, type Bracket } from '../game/bracket';
@@ -38,6 +39,12 @@ const nodeAt = (n: number): [number, number] => (n < 8 ? entryAt(n) : GAME[n - 8
 
 const nameOf = (id: number): string => (id === CLUB ? TEAM_SHORT : SCHOOLS[id]!.short);
 const fullOf = (id: number): string => (id === CLUB ? 'マイクリ学園' : SCHOOLS[id]!.name);
+/** the name on a plate: the full name when it fits (in English, the full name made smaller to fit) */
+const plateName = (id: number): string => (isEn() ? tr(fullOf(id)) : fullOf(id).length > 7 ? nameOf(id) : fullOf(id));
+const plateFont = (id: number): string => {
+  const n = plateName(id).length;
+  return isEn() && n > 13 ? `font-size: ${Math.max(16, Math.floor((25 * 13) / n))}px` : '';
+};
 const colorOf = (id: number): string => (id === CLUB ? TEAM_COLOR : SCHOOLS[id]!.color);
 
 /** the team that went through a place (an entry, or an earlier game's winner) */
@@ -115,7 +122,7 @@ export function bracketBoard(b: Bracket, opts: BracketOpts = {}): SVGSVGElement 
     },
     svg('rect', { width: ENTRY_W, height: ENTRY_H, class: 'bk-box' }),
     svg('rect', { x: left ? 0 : ENTRY_W - 14, width: 14, height: ENTRY_H, class: 'bk-chip' }),
-    svg('text', { x: left ? 26 : ENTRY_W - 26, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}` }, fullOf(id).length > 7 ? nameOf(id) : fullOf(id)));
+    svg('text', { x: left ? 26 : ENTRY_W - 26, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}`, style: plateFont(id) }, plateName(id)));
     root.append(g);
   });
 

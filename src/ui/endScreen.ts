@@ -1,5 +1,6 @@
 // The end of a season: a champion's night, or the long walk back to the club room.
 
+import { isEn } from '../core/i18n';
 import { crowd, playBgm, sfx } from '../core/audio';
 import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
@@ -66,7 +67,7 @@ export function endScreen(): [HTMLElement, () => void] {
   const team = h(s.members.length > 8 ? 'div.end-team.is-many' : 'div.end-team', s.members.map((m, i) => {
     const el = h('button.end-hero', { type: 'button', class: `${learned(m) ? 'on' : ''} ${m.grade >= GRADES ? 'is-grad' : ''}`, style: { '--i': String(i) } },
       portrait(m.id, { color: TALENT_COLOR[talentOf(m.stats).best] }), h('span', hero(m.id).name), m.captain ? h('i.label.hot', '主将') : null,
-      m.grade >= GRADES ? h('i.end-grad', '卒業') : null);
+      m.grade >= GRADES ? h('i.end-grad', isEn() ? 'Grad' : '卒業') : null);
     el.addEventListener('click', () => {
       sfx.tap();
       el.querySelector('.portrait')?.classList.remove('hop');

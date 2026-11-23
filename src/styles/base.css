@@ -70,6 +70,9 @@ img { -webkit-user-drag: none; }
 @media (orientation: portrait) and (max-width: 900px) {
   .rotate { display: grid; place-items: center; position: fixed; inset: 0; z-index: 200; background: var(--night); text-align: center; font-size: 5vw; padding: 8vw; }
   .rotate b { display: block; font-size: 16vw; animation: tip 1.6s var(--spring) infinite; }
+  /* before a language is chosen the message is in both; in English the Japanese line is English already */
+  .rotate small { display: block; margin-top: 3vw; font-size: 3.6vw; opacity: .75; }
+  html.en .rotate small { display: none; }
 }
 @keyframes tip { 0%, 40% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
 

@@ -1,6 +1,7 @@
 // Play cards as things you can hold: they lean under the pointer, the chalk play draws itself when picked,
 // special plays are foil cards with their hero on them.
 
+import { orList } from '../core/i18n';
 import { h } from '../core/dom';
 import { sfx } from '../core/audio';
 import {
@@ -196,7 +197,7 @@ export function cardBack(small = true): HTMLElement {
 /** What a special play does, in words, with where its owner has to line up. */
 export function specialText(sp: SpecialCard): string {
   const info = KIND[sp.kind];
-  const where = info.fourth ? '4回目だけ使える' : info.roles ? `${info.roles.map((r) => ROLE_LABEL[r]).join('か')}で出場中に使える` : '出場していれば使える';
+  const where = info.fourth ? '4回目だけ使える' : info.roles ? `${orList(info.roles.map((r) => ROLE_LABEL[r]))}で出場中に使える` : '出場していれば使える';
   const colour = sp.tactic ? `／${TACTIC[sp.tactic].name}の作戦（練度${sp.lv ?? 1}）` : '';
   return `${info.text}。${info.side === 'off' ? '攻撃' : '守備'}の作戦／流れ${info.cost}／${where}${colour}`;
 }

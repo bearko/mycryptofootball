@@ -3,6 +3,7 @@
 // The stage is the broadcast side (spotlight, LED counter, lamps); the scouting memo is the playbook side
 // (cream paper on a clipboard, tape, a rubber stamp). The first hero signed becomes captain.
 
+import { isEn, tr } from '../core/i18n';
 import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { commit, save } from '../core/save';
@@ -27,7 +28,7 @@ const BACK_ROW = 5;
 
 /** A name that may wrap after each "・" (and nowhere else, if it fits). */
 const nameNodes = (name: string): (string | Node)[] =>
-  name.split('・').flatMap((part, i, all) => (i < all.length - 1 ? [`${part}・`, h('wbr')] : [part]));
+  isEn() ? [tr(name)] : name.split('・').flatMap((part, i, all) => (i < all.length - 1 ? [`${part}・`, h('wbr')] : [part]));
 
 const JERSEY = 'M9,2 L15,2 Q20,8 25,2 L31,2 L39,10 L34,17 L30,14 L30,36 L10,36 L10,14 L6,17 L1,10 Z';
 /** Pennants strung across the top of the stage. */

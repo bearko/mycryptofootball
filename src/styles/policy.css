@@ -82,3 +82,5 @@ button.pol-tac-btn:hover:not(.is-on) { transform: translateY(-0.15rem); }
 .pol-group .is-mixed { color: var(--dim); }
 .pol-group.is-set { border-color: var(--cyan); }
 .pol-group:hover { border-color: var(--chalk); }
+
+html.en .pol-stat.is-on::after { content: 'Plan'; }

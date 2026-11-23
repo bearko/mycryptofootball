@@ -43,6 +43,11 @@ const RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
 // Originals only (replicas and collaboration entries are left out).
 // The name of each hero's passive skill becomes the name of that hero's special play.
 const heroes = {};
+// the English names of what the game shows from the database (src/core/i18n.ts): Japanese → English
+const en = {};
+const toEn = (o) => {
+  if (o?.ja && o?.en && o.ja !== o.en) en[o.ja] = o.en;
+};
 for (const h of readJson('Data/Heroes/heroes.json')) {
   if (h.category !== 'original' || !RARITIES.includes(h.rarity?.name)) continue;
   if (!existsSync(join(src, h.image_file_path))) continue;
@@ -54,6 +59,9 @@ for (const h of readJson('Data/Heroes/heroes.json')) {
     passive: h.passive?.name?.ja ?? '',
     img: use(h.image_file_path),
   };
+  toEn(h.name);
+  toEn(h.passive?.name);
+  toEn(h.faction?.name);
 }
 
 // ---------------------------------------------------------------- guide characters (every frame, keyed by file name)
@@ -82,6 +90,7 @@ for (const [key, base] of Object.entries(DRILL_ART)) {
   drills[key] = [0, 1000, 2000, 3000, 4000].map((step) => {
     const e = extById.get(base + step) ?? extById.get(base);
     if (!e) throw new Error(`missing extension ${base}`);
+    toEn(e.name);
     return { name: e.name.ja, img: use(e.image_file_path) };
   });
 }
@@ -90,6 +99,7 @@ for (const [key, base] of Object.entries(DRILL_ART)) {
 const ext = (id) => {
   const e = extById.get(id);
   if (!e) throw new Error(`missing extension ${id}`);
+  toEn(e.name);
   return { name: e.name.ja, img: use(e.image_file_path) };
 };
 const items = {
@@ -116,5 +126,5 @@ const se = {
 };
 
 mkdirSync(dirname(outCatalog), { recursive: true });
-writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, items, bgm, se }, null, 1)}\n`);
+writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, items, bgm, se, en }, null, 1)}\n`);
 console.log(`[sync-assets] ${Object.keys(heroes).length} heroes, ${copied} files → public/mch`);

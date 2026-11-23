@@ -35,12 +35,18 @@ import { startPlatform } from './ui/platform';
 import { recruitScreen } from './ui/recruit';
 import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
+import { languageScreen } from './ui/language';
+import { localize, setLang } from './core/i18n';
+import { prefs } from './core/save';
 
 // Sound needs a gesture, and on a phone only a lifted finger counts as one: listen to all of them, every time
 // (unlockAudio retries whatever the browser refused so far, and is cheap once the music plays).
 for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const) {
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
 }
+// the language: English is laid over the Japanese pages as they appear (core/i18n.ts)
+setLang(debug.lang === 'en' || debug.lang === 'ja' ? debug.lang : prefs().lang ?? 'ja');
+localize();
 applyPrefs();
 wireHover();
 startPlatform();
@@ -149,4 +155,5 @@ function jump(to: string): void {
 
 // Always open on the title screen; "つづきから" resumes the season.
 if (debug.go) jump(debug.go);
+else if (!prefs().lang && !debug.lang) show(languageScreen(() => show(...titleScreen())));
 else show(...titleScreen());

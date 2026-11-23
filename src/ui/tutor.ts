@@ -3,6 +3,7 @@
 // What she says is game/tutorial.ts. A scene can be skipped (its gist is shown instead), and every scene can be
 // heard again from the settings.
 
+import { tr } from '../core/i18n';
 import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { commit, save } from '../core/save';
@@ -93,7 +94,7 @@ let talking: { close: () => void } | null = null;
 function letters(text: string): { nodes: Node[]; chars: HTMLElement[] } {
   const nodes: Node[] = [];
   const chars: HTMLElement[] = [];
-  for (const part of text.split(/(\[\[.*?\]\])/)) {
+  for (const part of tr(text).split(/(\[\[.*?\]\])/)) {
     const key = part.startsWith('[[');
     const made = [...(key ? part.slice(2, -2) : part)].map((ch) => h('i', ch));
     chars.push(...made);

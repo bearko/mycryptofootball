@@ -5,6 +5,7 @@ import { applyVolumes, sfx } from '../core/audio';
 import { h } from '../core/dom';
 import { canFullscreen, goFullscreen, installWay, onInstallChange, promptInstall } from '../core/install';
 import { commit, prefs, save } from '../core/save';
+import { lang, type Lang } from '../core/i18n';
 import { speak } from '../core/voice/voice';
 import { hero, recruit, specialOf, talentOf } from '../game/heroes';
 import { isStarter } from '../game/lineup';
@@ -155,6 +156,13 @@ export function settingsModal(): void {
   const row = (name: string, note: string, control: HTMLElement): HTMLElement => h('div.set-row', h('span', name, h('small', note)), control);
   const draw = (): void => {
     const rows: (HTMLElement | null)[] = [
+      row('Language / 言語', '', seg<Lang>(lang(), [['ja', '日本語'], ['en', 'English']], (v) => {
+        if (v === lang()) return;
+        p.lang = v;
+        commit();
+        // the pages are built anew in the other language
+        location.reload();
+      })),
       row('チュートリアル', '説明をもう一度', h('div.seg', h('button', { type: 'button', onclick: lessonsModal }, '場面をえらぶ'))),
       row('音楽', '', slider(p.bgm, (v) => { p.bgm = v; }, () => undefined)),
       row('効果音', '歓声もふくむ', slider(p.se, (v) => { p.se = v; }, () => sfx.cardConfirm())),

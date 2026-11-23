@@ -8,6 +8,7 @@
 // and only a big moment cuts in. Nothing here may throw: before the sound is unlocked, in tests, muted, or with the
 // voice turned down to 0, nothing is said.
 
+import { isEn } from '../i18n';
 import { voiceOut } from '../audio';
 import { PIECES, VOICE_BYTES } from './pieces';
 
@@ -176,6 +177,8 @@ export function hush(): void {
  * free (the booth's lines between plays).
  */
 export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {}): void {
+  // (the announcer speaks Japanese only, for now)
+  if (isEn()) return;
   try {
     const out = voiceOut();
     if (!out) return;

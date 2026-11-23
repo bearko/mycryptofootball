@@ -14,3 +14,15 @@
 .title-menu .btn.go { animation: menu-in 0.5s var(--spring) backwards, throb 0.9s ease-in-out 2s infinite; animation-delay: calc(1.3s + var(--i) * 90ms), 2s; }
 @keyframes menu-in { from { transform: translateX(-140%) skewX(20deg); opacity: 0; } }
 .title > .ticker { position: relative; z-index: 2; }
+
+/* the language picker (the very first screen) */
+.lang { display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #1b2a6b, #05070f 70%); }
+.lang-box { display: flex; flex-direction: column; align-items: center; gap: 1.6rem; padding: 2rem; text-align: center; }
+.lang h1 { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; font-family: var(--display); font-weight: 400; color: var(--chalk); transform: skewX(-8deg); }
+.lang h1 span { font-size: 3.4rem; line-height: 1; text-shadow: 0.3rem 0.3rem 0 var(--ink); }
+.lang h1 small { font-size: 1.6rem; color: var(--yellow); }
+.lang-picks { display: flex; gap: 1.6rem; flex-wrap: wrap; justify-content: center; }
+.lang-pick { min-width: 15rem; min-height: 5.6rem; padding: 0.8rem 2rem; font-family: var(--display); font-size: 2rem; color: var(--ink); background: var(--yellow); border: 0.3rem solid var(--ink); clip-path: polygon(1rem 0, 100% 0, calc(100% - 1rem) 100%, 0 100%); cursor: pointer; transition: transform 0.15s var(--spring); }
+.lang-pick:hover, .lang-pick:focus-visible { transform: translateY(-0.3rem) scale(1.04); }
+.lang-pick + .lang-pick { background: var(--chalk); }
+.lang-note { margin: 0; color: rgba(255, 255, 255, 0.72); font-size: var(--fs-s); }

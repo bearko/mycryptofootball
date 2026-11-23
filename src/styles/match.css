@@ -43,6 +43,8 @@
 .plays.is-long i { width: 0.4rem; }
 .bug-down { display: flex; align-items: baseline; gap: 0.5rem; font-size: var(--fs-xs); white-space: nowrap; justify-self: end; }
 .bug-down b { font-family: var(--display); font-weight: 400; font-size: var(--fs-l); color: var(--yellow); line-height: 1.1; }
+/* English words run longer than the Japanese */
+html.en .bug-down b { font-size: var(--fs-s); }
 .downs { display: inline-flex; gap: 0.2rem; align-self: center; }
 .downs i { font-style: normal; font-family: var(--display); font-size: 0.85rem; width: 1.5rem; line-height: 1.5rem; text-align: center; background: #23285c; color: var(--dim); transform: skewX(-12deg); }
 .downs i.used { background: #3a3f80; color: #7379b8; text-decoration: line-through; }

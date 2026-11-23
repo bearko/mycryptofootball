@@ -3,6 +3,8 @@
 // play both ways); everybody who is on neither board sits on the bench.
 // Drag a magnet (or tap it, then tap a spot): while a hero is held, every spot shows the grade that hero would have there.
 
+import { orList } from '../core/i18n';
+import { nameParts } from '../core/i18n';
 import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { commit, save } from '../core/save';
@@ -72,7 +74,7 @@ interface Slot {
 interface Was { key: string; unit: Unit | 'bench'; id: number; rect: DOMRect }
 
 /** The name on a magnet: the last part of a name written with "・" (like the back of a uniform). */
-const shortName = (name: string): string => name.split('・').pop() ?? name;
+const shortName = (name: string): string => nameParts(name).pop() ?? name;
 
 /** A chalk line with an arrow head, as SVG paths. `d` must end at (x, y) coming from (px, py). */
 function arrow(cls: string, d: string, px: number, py: number, x: number, y: number, size: number): string {
@@ -393,7 +395,7 @@ export function lineupScreen(back: () => void): HTMLElement {
       // (a hero who only plays on the other unit cannot call it either)
       const slot = slots.find((x) => x.unit === info.side && heroAt(x) === m.id);
       if (!slot || starAt(m.id, slot) === false) {
-        const where = info.roles ? `${UNIT_LABEL[info.side]}で${info.roles.map((r) => ROLE_LABEL[r]).join('か')}に置くと` : `${UNIT_LABEL[info.side]}に出すと`;
+        const where = info.roles ? `${UNIT_LABEL[info.side]}で${orList(info.roles.map((r) => ROLE_LABEL[r]))}に置くと` : `${UNIT_LABEL[info.side]}に出すと`;
         tell(`${hero(m.id).name}の特別作戦は、${where}使えます${slot ? '（いまは★×）' : ''}。`, 'point');
         return;
       }

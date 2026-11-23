@@ -74,6 +74,8 @@
 @media (hover: hover) { .rc-cand:hover { transform: translateY(-0.35rem); } }
 .rc-cand:active { transform: scale(0.93, 0.9); }
 .rc-cand.focus { transform: translateY(-0.3rem) scale(1.1); z-index: 3; }
+/* English names break at their spaces, within the width of their portrait */
+html.en .rc-name { max-width: 6.2rem; font-size: 0.8rem; line-height: 1.05; }
 .rc-cand.focus .rc-name { background: var(--chalk); color: var(--ink); }
 .rc-cand.in .portrait::before { box-shadow: 0 0 0 0.25rem var(--ink), 0 0 0 0.55rem var(--yellow), 0 0 0 0.75rem var(--ink); }
 .rc-cand.in .rc-name { background: var(--yellow); color: var(--ink); }

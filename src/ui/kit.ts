@@ -1,6 +1,7 @@
 // The parts every screen is built from: slanted buttons, hero portraits, ability icons and the radar,
 // gauges, the talking manager, pop-ups, the ticker and the living background.
 
+import { isEn, tr } from '../core/i18n';
 import catalog from '../generated/catalog.json';
 import { setMuffled, sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
@@ -82,7 +83,7 @@ export const rankChip = (v: number): HTMLElement => h('i.rank', { class: `r-${ra
 
 /** A hero's school year as a small chip ("3年"; the last year stands out: this hero leaves when it is over). */
 export const gradeChip = (grade: number): HTMLElement =>
-  h('i.grade', { class: grade >= GRADES ? 'is-last' : '', title: grade >= GRADES ? `${grade}年生（今年で卒業）` : `${grade}年生` }, `${grade}年`);
+  h('i.grade', { class: grade >= GRADES ? 'is-last' : '', title: grade >= GRADES ? `${grade}年生（今年で卒業）` : `${grade}年生` }, isEn() ? `Yr ${grade}` : `${grade}年`);
 /** "2代目": the hero carries on the name of one who graduated from this club. Nothing for the first of the name. */
 export const genChip = (gen: number | undefined): HTMLElement | null => (gen && gen > 1 ? h('i.gen', { title: `この部で${gen}人目の同じ名前のヒーロー` }, `${gen}代目`) : null);
 
@@ -212,7 +213,7 @@ export function speech(who: Who = 'manager', first?: string, pose = 'idle'): Spe
   const say = (line: string, p = 'idle'): Typing => {
     typing?.skip();
     clearInterval(timer);
-    ghost.textContent = line;
+    ghost.textContent = tr(line);
     kick(bubble, 'grow');
     const rest = CHARS[REST[who][p] ?? REST[who].idle!] ?? '';
     const frames = TALK[who].map((k) => CHARS[k] ?? rest);

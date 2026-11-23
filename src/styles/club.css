@@ -89,6 +89,9 @@
 .pg-school span { font-size: var(--fs-xs); }
 .pg-menu { flex: none; display: flex; gap: 0.45rem; margin-top: 1.1rem; }
 .pg-menu .btn-face { padding: 0 0.95rem; font-size: var(--fs-s); }
+/* the English words are longer: the menu keeps to its room beside the calendar */
+html.en .pg-menu { gap: 0.3rem; }
+html.en .pg-menu .btn-face { padding: 0 0.6rem; font-size: var(--fs-xs); }
 .pg-policy { position: relative; display: inline-flex; }
 .pg-policy .btn.is-open { animation: throb 0.8s ease-in-out infinite; }
 .pg-policy .btn.is-open .btn-face { background: var(--orange); color: var(--chalk); }
@@ -523,3 +526,10 @@
 /* the whole team in an event: five of them and a count; the cast never takes the paper's room */
 .ev-cast { min-width: 0; max-width: 32rem; }
 .ev-more { flex: none; align-self: center; margin-left: 0.6rem; padding: 0.2rem 0.7rem; font-size: var(--fs-s); font-weight: 900; color: var(--ink); background: var(--chalk); border-radius: 1rem; white-space: nowrap; }
+
+/* the game in English: the words the styles write themselves */
+html.en .cal-day.is-today .cal-mark::after { content: 'Practice'; }
+html.en .cal-day.is-span.is-today .cal-mark::after { content: 'Block of days'; }
+html.en .cal-day.is-camp.is-today .cal-mark::after { content: 'Camp'; }
+html.en .ev-choice.is-off .ev-face::before { content: 'Not enough funds'; }
+html.en .cal-day.is-today .cal-full { font-size: var(--fs-xs); }

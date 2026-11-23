@@ -2,6 +2,7 @@
 // the screen-change wipe, text that slams or types itself in, counting numbers, cards that tilt under the pointer.
 // All of it respects the "演出" setting: with motion off there is no shake, no flash and transitions are short.
 
+import { tr } from '../core/i18n';
 import { h } from '../core/dom';
 import { prefs } from '../core/save';
 
@@ -299,14 +300,17 @@ export async function wipe(swap: () => void): Promise<void> {
 // ------------------------------------------------------------------ text
 
 /** Text whose characters arrive one by one (CSS does the motion; each span gets its index in --i). */
-export function kinetic(text: string, cls = ''): HTMLElement {
+export function kinetic(line: string, cls = ''): HTMLElement {
+  const text = tr(line);
   return h('span.kinetic', { class: cls, 'aria-label': text },
     [...text].map((ch, i) => h('span', { 'aria-hidden': 'true', style: { '--i': String(i) } }, ch === ' ' ? ' ' : ch)));
 }
 
 export interface Typing { done: Promise<void>; skip: () => void }
 /** Types text into an element. onTick fires per visible character (for a sound). */
-export function typewriter(el: HTMLElement, text: string, opts: { cps?: number; onTick?: (i: number) => void } = {}): Typing {
+export function typewriter(el: HTMLElement, line: string, opts: { cps?: number; onTick?: (i: number) => void } = {}): Typing {
+  // (typed out whole: the English of the line, not of its first letters)
+  const text = tr(line);
   let i = 0;
   let stopped = false;
   let finish: () => void = () => undefined;

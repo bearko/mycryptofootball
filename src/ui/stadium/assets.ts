@@ -1,6 +1,7 @@
 // Everything the stadium pre-renders once: the painted turf, the pixel crowd, the LED ribbon,
 // soft light sprites and the lit / silhouette versions of each hero sprite.
 
+import { tr } from '../../core/i18n';
 import { hero } from '../../game/heroes';
 import { FIELD, type TeamSheet } from '../../game/match';
 import { TAU, css, hash, lerp, luma, mix, rgbOf, scale, seeded, type RGB } from './math';
@@ -135,7 +136,8 @@ export function bakeField(teams: [TeamSheet, TeamSheet]): FieldArt {
     d.textAlign = 'center';
     d.textBaseline = 'middle';
     const light = luma(col) > 0.55;
-    const chars = [...team.short];
+    // (in English, the school's name letter by letter)
+    const chars = [...tr(team.short)];
     const step = Math.min(DPY * 5.2, (h * 0.86) / Math.max(1, chars.length));
     chars.forEach((ch, i) => {
       const x = (i - (chars.length - 1) / 2) * step;
