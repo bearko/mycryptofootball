@@ -318,6 +318,101 @@ export const R = {
     bell(e, t + 0.42, hi(hi(hi(C))), 0.46, 0.7);
     tom(e, t + 0.3, C, 0.36, 0.6);
   },
+  /**
+   * The day's duel is on: the two panels slam in from the sides, one after the other, and the "V.S." lands between
+   * them on the downbeat. `rival`: two heroes with a history (lower, darker).
+   */
+  duelBanner(e: Engine, t: number, rival: boolean): void {
+    duckMusic(e, 0.8, 2300);
+    // the first panel, the second panel
+    for (const [at, pitch] of [[0, 1], [0.17, 0.82]] as const) {
+      whoosh(e, t + at, 0.16, 0.7);
+      thud(e, t + at + 0.1, 0.86);
+      snare(e, t + at + 0.1, 0.55);
+      tone(e, { t: t + at + 0.1, f: 196 * pitch, f2: 70 * pitch, dur: 0.22, peak: 0.32, type: 'sawtooth', a: 0.002 });
+    }
+    // the breath, then the hit
+    swell(e, t + 0.3, 0.2, 1);
+    const hit = t + 0.5;
+    bass(e, hit, 1, true);
+    flam(e, hit - 0.03, 0.9);
+    cymbal(e, hit, 1, 1.8);
+    thud(e, hit, 1);
+    if (rival) {
+      brass(e, hit, [lo(lo(C)), lo(C), lo(G), Eb], 0.22, 0.9, { bright: 0.8 });
+      brass(e, hit + 0.26, [lo(lo(Ab)), lo(Ab), C, Eb], 0.75, 0.9, { bright: 0.75, verb: 0.3 });
+    } else {
+      brass(e, hit, [lo(C), lo(G), C, G], 0.14, 0.9);
+      brass(e, hit + 0.18, [lo(C), lo(G), C, G], 0.1, 0.8);
+      brass(e, hit + 0.32, [lo(C), C, Eb, G, hi(C)], 0.7, 0.95, { vib: true, verb: 0.3 });
+    }
+    roll(e, hit + 0.32, 0.7, 0.5, 0.06);
+    // electricity between the two
+    noise(e, { t: hit, f: 5200, type: 'highpass', q: 0.8, dur: 0.5, peak: 0.16, a: 0.001, src: 'metal' });
+  },
+  /**
+   * The moment before the duel is decided: the world slows down. The air drops away, a heart beats, and a high
+   * line climbs toward the moment. `dur`: how long the slow motion lasts.
+   */
+  duelFocus(e: Engine, t: number, dur: number): void {
+    const d = clamp(dur, 0.7, 3.2);
+    duckMusic(e, 0.85, d * 1000 + 300);
+    // time winds down
+    noise(e, { t, f: 3200, sweep: [[1, 180]], q: 1.4, dur: 0.5, peak: 0.42, a: 0.005 });
+    tone(e, { t, f: 220, f2: 44, dur: 0.6, peak: 0.36, a: 0.004 });
+    tone(e, { t, f: 880, f2: 220, dur: 0.4, peak: 0.1, type: 'triangle', a: 0.004 });
+    // the heart: two beats, and again, closer to the moment
+    const beat = (at: number, v: number): void => {
+      tone(e, { t: at, f: 74, f2: 46, dur: 0.16, peak: 0.5 * v, a: 0.004 });
+      tone(e, { t: at + 0.13, f: 62, f2: 40, dur: 0.2, peak: 0.36 * v, a: 0.004 });
+      noise(e, { t: at, f: 180, type: 'lowpass', q: 0.7, dur: 0.1, peak: 0.25 * v, a: 0.003, src: 'pink' });
+    };
+    for (let at = 0.32; at < d - 0.2; at += Math.max(0.42, 0.62 - at * 0.12)) beat(t + at, 0.7 + 0.3 * (at / d));
+    // the climb: a held breath that ends exactly at the moment
+    swell(e, t + Math.max(0, d - 1.1), Math.min(1.1, d), 1);
+    tone(e, { t: t + d * 0.25, f: 523, f2: 1046, dur: d * 0.75, peak: 0.07, type: 'triangle', a: d * 0.5 });
+    tone(e, { t: t + d * 0.25, f: 784, f2: 1568, dur: d * 0.75, peak: 0.05, type: 'sine', a: d * 0.5 });
+  },
+  /**
+   * The duel is decided. `how`: 'through' the runner is past, 'catch' the ball is caught, 'stop' the runner is
+   * hit, 'deny' the ball is knocked away or taken.
+   */
+  duelDecide(e: Engine, t: number, how: 'through' | 'catch' | 'stop' | 'deny'): void {
+    // the cut: one bright stroke, the same for every ending
+    noise(e, { t, f: 6200, type: 'highpass', q: 0.7, dur: 0.09, peak: 0.5, a: 0.0005, src: 'metal' });
+    tone(e, { t, f: 2600, f2: 900, dur: 0.12, peak: 0.2, type: 'triangle', a: 0.0005 });
+    bass(e, t, 1, true);
+    if (how === 'through') {
+      swish(e, t, 1, true, 0.2);
+      whoosh(e, t + 0.02, 0.5, 0.9);
+      cymbal(e, t, 0.9, 1.2);
+      brass(e, t + 0.05, [lo(G), C, G], 0.09, 0.85);
+      brass(e, t + 0.17, [C, E, G, hi(C), hi(E)], 0.5, 0.95, { vib: true, verb: 0.28 });
+      bell(e, t + 0.17, hi(hi(G)), 0.5, 0.6);
+    } else if (how === 'catch') {
+      pop(e, t, 1, 0.9);
+      cymbal(e, t, 0.8, 1.1);
+      brass(e, t + 0.05, [C, G], 0.08, 0.8);
+      brass(e, t + 0.16, [C, E, G, hi(C)], 0.45, 0.9, { vib: true, verb: 0.28 });
+      bell(e, t + 0.16, hi(hi(C)), 0.6, 0.7);
+      bell(e, t + 0.28, hi(hi(E)), 0.5, 0.6);
+    } else if (how === 'stop') {
+      thud(e, t, 1);
+      thud(e, t + 0.03, 0.9);
+      snare(e, t, 0.9);
+      cymbal(e, t, 0.9, 0, true);
+      tone(e, { t, f: 96, f2: 34, dur: 0.6, peak: 0.42, a: 0.003 });
+      brass(e, t + 0.06, [lo(lo(C)), lo(C), lo(G)], 0.16, 0.9, { bright: 0.8 });
+      brass(e, t + 0.26, [lo(lo(C)), lo(C), lo(G), C], 0.5, 0.9, { bright: 0.7, verb: 0.25 });
+    } else {
+      slap(e, t, 1, true);
+      pop(e, t + 0.01, 0.9, 1.3);
+      cymbal(e, t, 0.9, 0, true);
+      snare(e, t + 0.02, 0.8);
+      brass(e, t + 0.06, [lo(G), Eb], 0.12, 0.85, { bright: 0.85 });
+      brass(e, t + 0.22, [lo(C), lo(G), C, Eb], 0.45, 0.9, { bright: 0.75, verb: 0.25 });
+    }
+  },
   specialCutin(e: Engine, t: number, mine: boolean): void {
     duckMusic(e, 0.75, mine ? 2400 : 1500);
     // a stick click right now, the breath of a reversed cymbal, then the hit

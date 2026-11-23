@@ -26,6 +26,8 @@ export const debug = {
   tlv: num('tlv'),
   ob: num('ob'),
   event: params.get('event'),
+  /** ?duel=1: every play is shown as the day's duel (the picture only: the result is what the play gave) */
+  duel: params.get('duel') === '1',
   lang: params.get('lang'),
 };
 

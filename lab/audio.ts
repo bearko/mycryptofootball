@@ -166,6 +166,13 @@ function matchSection(): HTMLElement {
       btn('特別作戦が使える', 'specialReady', () => sfx.specialReady()),
       btn('特別作戦：自分', 'specialCutin(true)', () => sfx.specialCutin(true), 'hot'),
       btn('特別作戦：相手', 'specialCutin(false)', () => sfx.specialCutin(false), 'cold'),
+      btn('対決の帯', 'duelBanner(false)', () => sfx.duelBanner(false), 'hot'),
+      btn('対決の帯：因縁', 'duelBanner(true)', () => sfx.duelBanner(true), 'cold'),
+      btn('対決：スロー', 'duelFocus(2.3)', () => sfx.duelFocus(2.3), 'hot'),
+      btn('対決：抜いた', "duelDecide('through')", () => sfx.duelDecide('through'), 'hot'),
+      btn('対決：捕った', "duelDecide('catch')", () => sfx.duelDecide('catch'), 'hot'),
+      btn('対決：止めた', "duelDecide('stop')", () => sfx.duelDecide('stop'), 'cold'),
+      btn('対決：はじいた', "duelDecide('deny')", () => sfx.duelDecide('deny'), 'cold'),
     ),
     row(
       btn('クォーター終了', 'quarter', () => sfx.quarter()),

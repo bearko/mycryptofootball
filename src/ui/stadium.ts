@@ -53,6 +53,10 @@ export interface PlayHooks {
   onTouchdown?(): void;
   /** play is dead, picture settles */
   onEnd?(): void;
+  /** the day's duel: the picture slows down and turns to the two heroes, a moment before it is decided */
+  onDuelFocus?(): void;
+  /** ... and the moment itself (the step around the defender, the hit, the catch or the hand on the ball) */
+  onDuelDecide?(): void;
 }
 
 /** Numbers for the lab page: milliseconds per frame over the last few seconds. */
@@ -195,6 +199,8 @@ interface Actor extends Ref {
   /** seconds of white hit flash left */
   flash: number;
   aura: boolean;
+  /** leaves after-images behind (the two heroes of the day's duel, at its moment) */
+  ghost: boolean;
   trail: number[];
   trailT: number;
   // practice ground
@@ -218,7 +224,11 @@ interface Actor extends Ref {
   sx: number; sy: number; ss: number; sd: number; vis: boolean;
 }
 
-type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract' | 'replay' | 'side';
+type CamMode = 'ground' | 'establish' | 'calm' | 'track' | 'low' | 'sky' | 'qb' | 'ball' | 'chase' | 'whip' | 'orbit' | 'attract' | 'replay' | 'side' | 'duel' | 'face';
+
+/** The day's duel: how long before its moment the picture slows (seconds of the play), and how slow it goes. */
+const DUEL_LEAD = 0.34;
+const DUEL_SLOW = 0.14;
 
 interface ChalkLine {
   /** x,y,z triples */
@@ -375,6 +385,12 @@ export class Stadium {
   private camFrom = 0;
   /** the runner has broken free in this play */
   private broke = false;
+  /**
+   * The day's duel in the play that is running: the ace and the defender, who of the offense is at its moment, when
+   * that is, and how far the show has got (0: behind the ace's shoulder, 1: slowed down, face to face, 2: decided,
+   * 3: back to the play). `t0`: the clock when the phase began
+   */
+  private duel: { ace: Ref; foe: Ref; who: Ref; win: boolean; t: number; phase: 0 | 1 | 2 | 3; t0: number } | null = null;
   private sEx = new Spring(25); private sEy = new Spring(15); private sEz = new Spring(46);
   private sTx = new Spring(25); private sTy = new Spring(1); private sTz = new Spring(11);
   private sFov = new Spring(0.56);
@@ -557,7 +573,7 @@ export class Stadium {
   }
 
   /** Plays the play back with camera work. speed 1 = normal, 2 = fast, 12 = debug bot. Resolves when the picture has settled. */
-  play(res: PlayResult, speed: number, hooks?: PlayHooks): Promise<void> {
+  play(res: PlayResult, speed: number, hooks?: PlayHooks, duel?: PlaySpec['duel']): Promise<void> {
     this.endPlay(true);
     this.leaveGround();
     this.attractOn = false;
@@ -572,7 +588,8 @@ export class Stadium {
       const sheet: TeamSheet = { ...t, lineup: { ...t.lineup, off } };
       this.teams = res.off === 0 ? [sheet, this.teams[1]] : [this.teams[0], sheet];
     }
-    return this.run(specOf(res), speed, hooks, false);
+    // the day's duel is fought on this play: the picture is built around the moment the two meet
+    return this.run(duel ? { ...specOf(res), duel } : specOf(res), speed, hooks, false);
   }
 
   /**
@@ -1031,7 +1048,7 @@ export class Stadium {
       face: team === 0 ? 1 : -1, look: team === 0 ? 1 : -1,
       keys: null, goalX: x, goalZ: z, hasGoal: false, crouchTo: 0, crouch: 0,
       jumpT0: -9, jumpDur: 0.4, jumpH: 0, tumT0: -1, tumDur: 0.5, tumDir: 1, downUntil: 0,
-      celebrate: false, celT0: 0, flash: 0, aura: false, trail: [], trailT: 0,
+      celebrate: false, celT0: 0, flash: 0, aura: false, ghost: false, trail: [], trailT: 0,
       station: 0, carry: false, jog: 0, faceLock: 0, ring: null, wave: false, flipT0: -9, rt: 0,
       sx: 0, sy: 0, ss: 0, sd: 0, vis: false,
     };
@@ -1105,6 +1122,7 @@ export class Stadium {
       ac.keys = plan ? plan.keys : null;
       ac.hasGoal = false;
       ac.aura = !!plan && plan.star;
+      ac.ghost = false;
       ac.celebrate = false;
       ac.crouchTo = this.playFast ? 0 : 1;
       ac.trail.length = 0;
@@ -1143,6 +1161,10 @@ export class Stadium {
     this.endFired = false;
     this.speedLines = 0;
     this.broke = false;
+    const du = spec.duel;
+    this.duel = du && script.tDuel > 0 && this.motion && !cinematic && !replay && !this.playFast
+      ? { ace: { team: spec.off, id: du.ace }, foe: { team: (1 - spec.off) as 0 | 1, id: du.foe }, who: script.duelWho, win: du.win, t: script.tDuel, phase: 0, t0: this.clock }
+      : null;
     this.ballTrail.length = 0;
     if (replay) {
       this.camSide = spec.n % 2 ? 1 : -1;
@@ -1177,6 +1199,10 @@ export class Stadium {
       }
       this.hitStop = 0;
       this.slowLeft = 0;
+    }
+    if (this.duel) {
+      this.duel = null;
+      for (const ac of this.actors) ac.ghost = false;
     }
     if (!this.endFired) {
       this.endFired = true;
@@ -1349,6 +1375,25 @@ export class Stadium {
         this.safe(() => hooks?.onSteal?.());
         break;
       }
+      case 'juke': {
+        const ac = this.actor(c.who);
+        const foe = this.actor(c.foe);
+        if (ac) {
+          this.rings.push({ x: ac.x, z: ac.z, t: this.clock, dur: 0.5, r: 5, color: css(mix(this.col[ac.team], [255, 255, 255], 0.6)) });
+          this.glints(ac.x, 1.6, ac.z, 8, 1.6);
+          this.dust(ac.x, ac.z, 8, 3, true);
+        }
+        if (foe) {
+          foe.flash = 0.08;
+          // wrong-footed: a stumble on the spot
+          foe.jumpT0 = this.sim;
+          foe.jumpDur = 0.3;
+          foe.jumpH = 0.3;
+        }
+        this.excBoost = Math.max(this.excBoost, 0.9);
+        if (fancy) this.speedLines = 1;
+        break;
+      }
       case 'break': {
         this.excBoost = Math.max(this.excBoost, 0.8);
         if (fancy) {
@@ -1413,6 +1458,56 @@ export class Stadium {
     ac.tumDir = s;
     ac.downUntil = this.sim + dur + down;
     ac.celebrate = false;
+  }
+
+  /** The day's duel: from behind the ace's shoulder, to the two face to face in slow motion, to the play again. */
+  private stepDuel(): void {
+    const du = this.duel;
+    const sc = this.script;
+    if (!du || !this.playing || !sc) return;
+    const hooks = this.hooks;
+    if (du.phase === 0 && this.playT > sc.snap) {
+      // the ace with the ball, coming: the air rushes past
+      const me = this.actor(du.ace);
+      if (me && this.ballHeld === me && me.speed > 5) this.speedLines = Math.max(this.speedLines, 0.6);
+    }
+    if (du.phase === 0 && this.playT >= du.t - DUEL_LEAD) {
+      du.phase = 1;
+      du.t0 = this.clock;
+      for (const r of [du.who, du.foe]) {
+        const ac = this.actor(r);
+        if (ac) {
+          ac.ghost = true;
+          ac.trail.length = 0;
+          ac.trailT = 0;
+        }
+      }
+      this.camSide = 1;
+      this.setCam('face', 0, true);
+      this.flash = Math.max(this.flash, 0.4);
+      this.punch = 0.6;
+      this.safe(() => hooks?.onDuelFocus?.());
+    } else if (du.phase === 1 && this.playT >= du.t) {
+      du.phase = 2;
+      du.t0 = this.clock;
+      this.hitStop = Math.max(this.hitStop, 0.13);
+      this.flash = Math.max(this.flash, 0.45);
+      this.trauma = Math.max(this.trauma, 0.55);
+      this.punch = 1;
+      this.excBoost = 1;
+      this.flashStorm = Math.max(this.flashStorm, 1.2);
+      const who = this.actor(du.who);
+      if (who) this.bursts.push({ x: who.x, y: 1.5, z: who.z, t: this.clock, dur: 0.3, size: 3.2, seed: sc.spec.n });
+      this.safe(() => hooks?.onDuelDecide?.());
+    } else if (du.phase === 2 && this.clock - du.t0 > 0.85) {
+      du.phase = 3;
+      for (const ac of this.actors) ac.ghost = false;
+      // back to the play: after the runner who got through, or simply watching what is left
+      if (this.camMode === 'face') {
+        if (sc.tTD < 0 || this.playT < sc.tTD) this.setCam(sc.pass ? 'chase' : 'track', sc.spec.n % 2, false);
+        if (du.win && !sc.pass) this.broke = true;
+      }
+    }
   }
 
   private slow(scaleTo: number, seconds: number): void {
@@ -1645,9 +1740,16 @@ export class Stadium {
     this.clock += dt;
     // picture time
     let sdt = dt;
+    this.stepDuel();
+    const duel = this.duel;
     if (this.hitStop > 0) {
       this.hitStop -= dt;
       sdt = 0;
+    } else if (duel && duel.phase === 1) {
+      // the moment before the duel is decided, drawn out
+      sdt = dt * lerp(1, DUEL_SLOW, sat((this.clock - duel.t0) / 0.1));
+    } else if (duel && duel.phase === 2) {
+      sdt = dt * lerp(0.3, 1, sat((this.clock - duel.t0 - 0.2) / 0.45));
     } else if (this.slowLeft > 0) {
       this.slowLeft -= dt;
       const k = this.slowLeft < 0.15 ? lerp(1, this.slowAmt, sat(this.slowLeft / 0.15)) : this.slowAmt;
@@ -1690,7 +1792,7 @@ export class Stadium {
           where: (r) => this.find(r.team, r.id),
         });
         // the road to the goal is lit: look down it from behind the runner
-        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit' && this.camMode !== 'side' && !this.replaying) this.setCam('chase', this.camVar, false);
+        if (guide.takeRoad() && this.motion && this.camMode !== 'orbit' && this.camMode !== 'side' && !this.replaying && !(this.duel && this.duel.phase < 3)) this.setCam('chase', this.camVar, false);
       } else guide.tick(this.clock);
       if (guide.dead) this.guide = null;
     }
@@ -1774,18 +1876,21 @@ export class Stadium {
           p.drag = 2;
         }
         if (this.beasts.has(ac.team * 100000 + ac.id) && Math.random() < pdt * 30) this.beastFlame(ac);
-        if (ac.aura) {
-          if (Math.random() < pdt * 22) this.auraSpark(ac, 1);
+        if (ac.aura && Math.random() < pdt * 22) this.auraSpark(ac, 1);
+        if (ac.aura || ac.ghost) {
+          // (the after-images of the duel stand closer together and reach further back)
+          const every = ac.ghost ? 0.03 : 0.045;
+          const most = ac.ghost ? 39 : 15;
           ac.trailT -= pdt;
           if (ac.trailT <= 0 && ac.speed > 3) {
-            ac.trailT = 0.045;
+            ac.trailT = every;
             ac.trail.push(ac.x, ac.y, ac.z);
-            if (ac.trail.length > 15) ac.trail.splice(0, 3);
+            if (ac.trail.length > most) ac.trail.splice(0, 3);
           } else if (ac.speed <= 3 && ac.trail.length && ac.trailT <= 0) {
-            ac.trailT = 0.045;
+            ac.trailT = every;
             ac.trail.splice(0, 3);
           }
-        }
+        } else if (ac.trail.length) ac.trail.length = 0;
       }
       ac.flash = Math.max(0, ac.flash - dt);
     }
@@ -1846,6 +1951,7 @@ export class Stadium {
    */
   private trySideline(sc: Script): void {
     if (!this.motion || this.playFast || this.cinematic || this.replaying || this.camMode === 'orbit' || this.camMode === 'whip') return;
+    if (this.duel && this.duel.phase < 3) return;
     const got = sc.pass ? sc.tCatch : sc.tHand;
     const h = this.ballHeld;
     if (got <= 0 || this.playT < got + 0.1 || !h || h.team !== sc.spec.off || !h.keys) return;
@@ -1871,6 +1977,11 @@ export class Stadium {
     this.camSide = n % 2 ? 1 : -1;
     if (!this.motion || this.playFast) {
       this.setCam('calm', 0, false);
+      return;
+    }
+    if (this.duel) {
+      // the day's duel: over the ace's shoulder, looking at the one who waits for him
+      this.setCam('duel', 0, false);
       return;
     }
     const type: OffType = sc.spec.type;
@@ -1999,6 +2110,53 @@ export class Stadium {
         // the thief runs the other way: get low on the sideline in front of him
         ex = fx - dir * 7.5; ey = 3; ez = Math.min(fz + 13.5, AZ1 - 1.3);
         tx = fx - dir * 0.5; ty = 1.8; tz = fz - 0.5; fov = 0.56; om = 9;
+        break;
+      }
+      case 'duel': {
+        // third person: behind the ace and a little to one side, the defender ahead of him in the picture
+        const du = this.duel;
+        const me = du ? this.actor(du.ace) : null;
+        const foe = du ? this.actor(du.foe) : null;
+        const px = me ? me.x : fx;
+        const pz = me ? me.z : fz;
+        const ax = foe ? lerp(px + dir * 12, foe.x, 0.5) : px + dir * 12;
+        const az = foe ? lerp(pz, foe.z, 0.55) : pz;
+        const off = foe && foe.z > pz ? -1.7 : 1.7;
+        ex = px - dir * 7.4; ey = 3.5 + (me ? me.y * 0.4 : 0); ez = pz + off;
+        tx = ax; ty = 1.5; tz = az; fov = 0.76; om = 7.5;
+        break;
+      }
+      case 'face': {
+        // the two of them, face to face: low, from the side of the line between them, drifting round
+        const du = this.duel;
+        const a = du ? this.actor(du.who) : null;
+        const b = du ? this.actor(du.foe) : null;
+        const ax = a ? a.x : fx;
+        const az = a ? a.z : fz;
+        const bx = b ? b.x : fx + dir * 3;
+        const bz = b ? b.z : fz;
+        const mx = (ax + bx) / 2;
+        const mz = (az + bz) / 2;
+        const sep = Math.hypot(bx - ax, bz - az);
+        let vx = sep > 0.4 ? (bx - ax) / sep : dir;
+        let vz = sep > 0.4 ? (bz - az) / sep : 0;
+        // look across the play, never along it: the line between them leans toward the play's direction
+        vx = lerp(vx, dir, 0.5);
+        const vl = Math.hypot(vx, vz) || 1;
+        vx /= vl; vz /= vl;
+        let nx = -vz;
+        let nz = vx;
+        if (nz < 0) { nx = -nx; nz = -nz; }
+        const th = (t - 0.6) * 0.2;
+        const cs = Math.cos(th);
+        const sn = Math.sin(th);
+        const rx = nx * cs - nz * sn;
+        const rz = nx * sn + nz * cs;
+        // (far enough back that both stand whole in the band of the screen the interface leaves open)
+        const open = clamp((this.H - this.insTop - this.insBot) / Math.max(1, this.H), 0.45, 1);
+        const dist = (9.6 + sep * 0.6) / open;
+        ex = mx + rx * dist; ey = 1.9; ez = mz + rz * dist;
+        tx = mx; ty = 1.5 + Math.max(a ? a.y : 0, b ? b.y : 0) * 0.5; tz = mz; fov = 0.5 - 0.03 * sat(t / 2); om = 9;
         break;
       }
       case 'orbit': {
@@ -2854,6 +3012,7 @@ export class Stadium {
     if (this.speedLines > 0.01) this.drawSpeedLines();
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
+    if (this.duel) this.drawDuelInk();
     // the evening light lies over everything on the practice ground
     if (ground) ground.wash(this.painter);
 
@@ -3513,7 +3672,7 @@ export class Stadium {
         for (let i = 0; i < n; i += 1) {
           if (!cam.project(ac.trail[i * 3]!, 0, ac.trail[i * 3 + 2]!)) continue;
           const s2 = (this.heroH * cam.ss) / ART;
-          ctx.globalAlpha = 0.07 + 0.3 * ((i + 1) / n);
+          ctx.globalAlpha = ac.ghost ? 0.1 + 0.5 * ((i + 1) / n) ** 1.5 : 0.07 + 0.3 * ((i + 1) / n);
           ctx.setTransform(-look * s2, 0, 0, s2, cam.sx, cam.sy - ac.trail[i * 3 + 1]! * cam.ss);
           ctx.drawImage(tint, -ART / 2, -art.foot);
         }
@@ -3529,8 +3688,21 @@ export class Stadium {
       alpha = sat((ac.sd - 2.2) / 2.5);
     } else if (ac.sd < 13 && ac.sd < this.subjectDepth - 1.5 && this.ballHeld !== ac && !(this.camMode === 'qb' && ac.pos === 'QB')) {
       const sc = this.script;
-      const star = sc && sc.star.team === ac.team && sc.star.id === ac.id;
+      const du = this.duel;
+      // (the heroes of the day's duel are what the picture is about, however near the lens)
+      const star = (sc && sc.star.team === ac.team && sc.star.id === ac.id)
+        || (!!du && du.phase < 3 && ((du.ace.team === ac.team && du.ace.id === ac.id) || (du.who.team === ac.team && du.who.id === ac.id) || (du.foe.team === ac.team && du.foe.id === ac.id)));
       if (!star) alpha = sat((ac.sd - 6) / 7) ** 1.4;
+    }
+    // face to face: nobody stands between the lens and the two
+    if (this.camMode === 'face' && this.duel && this.duel.phase < 3 && !this.groundOn) {
+      const du = this.duel;
+      const one = (r: Ref): boolean => r.team === ac.team && r.id === ac.id;
+      if (!one(du.who) && !one(du.foe)) {
+        const a = this.actor(du.who);
+        const near = a ? a.sd : this.subjectDepth;
+        if (ac.sd < near - 0.6) alpha = 0;
+      }
     }
     if (alpha < 0.02) return;
     ctx.globalAlpha = alpha;
@@ -3797,7 +3969,10 @@ export class Stadium {
     const a = this.speedLines;
     let cx = W / 2;
     let cy = H / 2;
-    if (cam.project(this.bx, this.by + 0.5, this.bz)) {
+    // around the ball; in the day's duel, around the ace
+    const du = this.duel;
+    const hero = du && du.phase < 3 ? this.actor(du.who) : null;
+    if (hero ? cam.project(hero.x, 1.4, hero.z) : cam.project(this.bx, this.by + 0.5, this.bz)) {
       cx = clamp(cam.sx, W * 0.15, W * 0.85);
       cy = clamp(cam.sy, H * 0.2, H * 0.8);
     }
@@ -3823,6 +3998,53 @@ export class Stadium {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The moment of the day's duel, drawn like a panel of a comic: ink lines rushing in on the two heroes from every
+   * side (black and white by turns, new ones a dozen times a second) and the edges of the picture gone dark.
+   */
+  private drawDuelInk(): void {
+    const du = this.duel;
+    if (!du || du.phase === 0 || du.phase === 3) return;
+    const since = this.clock - du.t0;
+    const k = du.phase === 1 ? sat(since / 0.12) : 1 - sat((since - 0.25) / 0.5);
+    if (k <= 0.01) return;
+    const ctx = this.ctx;
+    const cam = this.cam;
+    const W = this.W;
+    const H = this.H;
+    const a = this.actor(du.who);
+    const b = this.actor(du.foe);
+    let cx = W / 2;
+    let cy = H / 2;
+    if (a && b && cam.project((a.x + b.x) / 2, 1.4, (a.z + b.z) / 2)) {
+      cx = clamp(cam.sx, W * 0.2, W * 0.8);
+      cy = clamp(cam.sy, H * 0.25, H * 0.75);
+    }
+    // dark edges
+    const g = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.3, cx, cy, Math.hypot(W, H) * 0.62);
+    g.addColorStop(0, 'rgba(4,6,24,0)');
+    g.addColorStop(1, `rgba(4,6,24,${0.72 * k})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    const tick = Math.floor(this.clock * 12);
+    const far = Math.hypot(W, H);
+    const N = 54;
+    for (let i = 0; i < N; i += 1) {
+      const h1 = hash(i * 5.1 + tick * 2.3);
+      const h2 = hash(i * 9.7 + tick * 4.1);
+      const ang = (i / N) * TAU + h1 * 0.09;
+      const r0 = Math.min(W, H) * (0.3 + 0.34 * h2) * (du.phase === 2 ? 1 + since * 1.6 : 1);
+      const wdt = 0.004 + 0.011 * h1;
+      ctx.fillStyle = i % 2 ? `rgba(6,8,28,${(0.5 + 0.4 * h2) * k})` : `rgba(255,255,255,${(0.35 + 0.45 * h1) * k})`;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0 * 0.72);
+      ctx.lineTo(cx + Math.cos(ang - wdt) * far, cy + Math.sin(ang - wdt) * far);
+      ctx.lineTo(cx + Math.cos(ang + wdt) * far, cy + Math.sin(ang + wdt) * far);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // ------------------------------------------------------------------ chalk preview

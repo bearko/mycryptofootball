@@ -267,7 +267,12 @@ export class Guide {
   private cx = 0;
   private cz = 0;
 
+  /** the day's duel: the ace whose way is drawn as a shining road (null: no duel in this play) */
+  private ace: Ref | null;
+
   constructor(private script: Script, team: RGB, clock: number) {
+    const du = script.spec.duel;
+    this.ace = du && script.tDuel > 0 ? { team: script.spec.off, id: du.ace } : null;
     this.col = team;
     this.bright = mix(team, WHITE, 0.45);
     this.chalk = mix(team, WHITE, 0.82);
@@ -420,6 +425,10 @@ export class Guide {
         const main = ln.kind !== 'decoy';
         const shown = w.total * easeOut((since - li * 0.07) / 0.42);
         if (shown < 0.6) return;
+        if (main && this.ace && ln.who.team === this.ace.team && ln.who.id === this.ace.id) {
+          this.shine(p, ln, w.total * easeOut(since / 0.7), planFade);
+          return;
+        }
         const a = planFade * (main ? 1 : 0.7);
         const half = main ? 0.32 : 0.22;
         const glow = (n: number): void => {
@@ -621,6 +630,71 @@ export class Guide {
   }
 
   /** A ring painted on the turf. */
+  /**
+   * The ace's way in the day's duel: a road of light from his feet to where it leads (a run: the goal line), white
+   * hot in the middle, with crackling edges that never hold still and arrowheads racing down it.
+   */
+  private shine(p: Painter, ln: Line, shown: number, a: number): void {
+    const ctx = p.ctx;
+    const w = ln.way;
+    const clock = this.clock;
+    const s0 = Math.min(ln.done, shown);
+    const n = cut(w, s0, shown);
+    if (n < 2) return;
+    const pulse = 0.82 + 0.18 * Math.sin(clock * 11);
+    const hot = mix(this.col, WHITE, 0.55);
+    // the dark bed that makes the light read on bright turf
+    band(p, n, 1.7, `${INK}${0.42 * a})`);
+    ctx.globalCompositeOperation = 'lighter';
+    band(p, n, 3.4, css(this.col, 0.16 * a * pulse));
+    band(p, n, 2.1, css(hot, 0.3 * a * pulse));
+    ctx.globalCompositeOperation = 'source-over';
+    band(p, n, 0.95, css(WHITE, 0.96 * a), 0, 0.5);
+    // the crackle: two jagged lines along the edges, drawn anew a dozen times a second
+    const tick = Math.floor(clock * 13);
+    const kept = cutPts.slice(0, n * 2);
+    for (let side = -1; side <= 1; side += 2) {
+      const jag: number[] = [];
+      for (let i = 0; i < n; i += 1) {
+        const i0 = Math.max(0, i - 1);
+        const i1 = Math.min(n - 1, i + 1);
+        let tx = kept[i1 * 2]! - kept[i0 * 2]!;
+        let tz = kept[i1 * 2 + 1]! - kept[i0 * 2 + 1]!;
+        const l = Math.hypot(tx, tz) || 1;
+        tx /= l; tz /= l;
+        const h = Math.abs(Math.sin((i + tick * 3 + (side > 0 ? 5 : 0)) * 12.9898) * 43758.5453) % 1;
+        const off = side * (1.25 + (i % 2 ? 0.95 : 0.1) * (0.5 + h));
+        jag.push(kept[i * 2]! - tz * off, kept[i * 2 + 1]! + tx * off);
+      }
+      cutPts.length = 0;
+      for (const v of jag) cutPts.push(v);
+      hair(p, n, 5, `${INK}${0.5 * a})`);
+      hair(p, n, 2.4, css(mix(GOLD, WHITE, 0.5), 0.95 * a));
+    }
+    cutPts.length = 0;
+    for (const v of kept) cutPts.push(v);
+    hair(p, n, 3.4, css(WHITE, a));
+    // arrowheads racing down the road
+    const gap = 2.6;
+    const flow = (clock * 17) % gap;
+    for (let s = s0 + flow; s < shown - 0.3; s += gap) {
+      const edge = Math.min(sat((s - s0) / 1), sat((shown - s) / 1));
+      if (edge <= 0.05) continue;
+      along(w, s);
+      chevron(p, 1.75, 1.05, `${INK}${0.5 * a * edge})`);
+      chevron(p, 1.45, 0.72, css(mix(GOLD, WHITE, 0.25), a * edge));
+    }
+    // where it leads
+    if (shown >= w.total - 0.2) {
+      along(w, w.total);
+      const r = 1.6 + 0.3 * Math.sin(clock * 8);
+      ctx.globalCompositeOperation = 'lighter';
+      this.ring(p, at.x, at.z, r * 1.5, css(hot, 0.4 * a), 0.5);
+      ctx.globalCompositeOperation = 'source-over';
+      this.ring(p, at.x, at.z, r, css(WHITE, 0.95 * a), 0.2);
+    }
+  }
+
   private ring(p: Painter, x: number, z: number, r: number, style: string, thick: number): void {
     const N = 22;
     poly.length = 0;

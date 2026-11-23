@@ -240,7 +240,10 @@ async function next(kind?: string): Promise<void> {
   phase = 'play';
   applySafe(phase);
   stadium.setExcitement(res.before.pos > 35 ? 0.7 : 0.3);
-  await stadium.play(res, speed, hooks);
+  // ?duel=win|lose: the play is the day's duel between its carrier and its defender
+  const duel = q.get('duel');
+  if (duel) log.push(`duel ${duel}`);
+  await stadium.play(res, speed, { ...hooks, onDuelFocus: () => log.push('duel focus'), onDuelDecide: () => log.push('duel decide') }, duel ? { ace: res.carrier, foe: res.defender, win: duel === 'win' } : undefined);
   if (res.td) {
     stadium.celebrate('td', res.off);
     stadium.setExcitement(1);
