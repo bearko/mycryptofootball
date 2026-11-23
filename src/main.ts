@@ -29,7 +29,7 @@ import { clubScreen } from './ui/club';
 import { endScreen } from './ui/endScreen';
 import { wireHover } from './ui/kit';
 import { matchScreen } from './ui/matchScreen';
-import { setRouter, show } from './ui/nav';
+import { route, setRouter, show } from './ui/nav';
 import { lineupScreen } from './ui/lineupScreen';
 import { startPlatform } from './ui/platform';
 import { recruitScreen } from './ui/recruit';
@@ -38,6 +38,8 @@ import { titleScreen } from './ui/title';
 import { languageScreen } from './ui/language';
 import { localize, setLang } from './core/i18n';
 import { commit, prefs } from './core/save';
+import { resumedFromUpdate, watchUpdates } from './core/update';
+import { h } from './core/dom';
 
 // Sound needs a gesture, and on a phone only a lifted finger counts as one: listen to all of them, every time
 // (unlockAudio retries whatever the browser refused so far, and is cheap once the music plays).
@@ -162,7 +164,22 @@ function jump(to: string): void {
   } else open(clubScreen());
 }
 
+// an installed copy picks up a new version by itself when it comes back on screen (core/update.ts)
+watchUpdates(commit);
+
+/** A small word that the game was just brought up to date (goes by itself, nothing to press). */
+function updatedNote(): void {
+  const note = h('div.update-note', '新しいバージョンになりました');
+  document.body.append(note);
+  setTimeout(() => note.remove(), 3200);
+}
+
 // Always open on the title screen; "つづきから" resumes the season.
+// (an update's reload goes straight back to where the player was)
 if (debug.go) jump(debug.go);
+else if (resumedFromUpdate() && save().season) {
+  route();
+  updatedNote();
+}
 else if (!prefs().lang && !debug.lang) show(languageScreen(() => show(...titleScreen())));
 else show(...titleScreen());

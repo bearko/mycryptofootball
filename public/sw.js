@@ -1,5 +1,6 @@
 // A small service worker: lets the game be installed as an app and opened without a connection.
 // Network first (so a new version always wins), the last good copy as the fallback.
+// `version.json` (which build is out: src/core/update.ts) always goes to the network and is never kept.
 const CACHE = 'mcf-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -13,7 +14,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || req.headers.has('range')) return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname.endsWith('/version.json')) return;
   event.respondWith(
     fetch(req)
       .then((res) => {
