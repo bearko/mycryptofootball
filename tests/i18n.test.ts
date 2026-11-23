@@ -76,6 +76,13 @@ const SAMPLES = [
   '空中戦の練度が3に上がりました！ 新しく"Counter", "Play Action"が使えます。 試合の手札も1枚増えます。',
 ];
 
+describe('one yard', () => {
+  it('is said in the singular, and only one', () => {
+    expect(tr('あと1ヤード、ここが大事！')).toBe('1 yard to go, a big one!');
+    expect(tr('あと11ヤード、ここが大事！')).toBe('11 yards to go, a big one!');
+  });
+});
+
 describe('texts put together by the screens', () => {
   it('come out in English', () => {
     const left = SAMPLES.map((s) => [s, tr(s)]).filter(([, t]) => hasJa(t!));

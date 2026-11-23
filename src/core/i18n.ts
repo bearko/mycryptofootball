@@ -64,7 +64,8 @@ export function tr(text: string): string {
   if (current !== 'en' || !text || !hasJa(text)) return text;
   const hit = cache.get(text);
   if (hit !== undefined) return hit;
-  const out = translate(text, 0);
+  // one yard is a yard (the dictionary says "{} yards" for any number)
+  const out = translate(text, 0).replace(/\b1 yards\b/g, '1 yard');
   if (cache.size > 5000) cache.clear();
   cache.set(text, out);
   // what was made is not put through again (a text node the page changed to it comes back to the watcher)

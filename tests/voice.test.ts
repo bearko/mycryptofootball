@@ -39,6 +39,8 @@ describe("the announcer's voice", () => {
     const said = (t: string): string[] | undefined => cut(t, true)?.map((p) => PIECES_EN[p]![0]);
     expect(said('Touchdown!! Sarutobi Sasuke scores!')).toEqual(['Touchdown!!', 'Sarutobi Sasuke', 'scores!']);
     expect(said('7 yards to go! MyCrypto Academy goes for it!')).toEqual(['7', 'yards to go!', 'MyCrypto Academy', 'goes for it!']);
+    expect(said('Returned 1 yard! Benkei makes the stop at the 20')).toEqual(['Returned', '1 yard!', 'Benkei', 'makes the stop at the', '20']);
+    expect(said('1 yard to go, a big one!')).toEqual(['1', 'yard to go, a big one!']);
     // a word is not made of the start of another ("Kick" is no part of "Kickoff!")
     expect(cut('Hello there', true)).toBeNull();
     let at = 0;

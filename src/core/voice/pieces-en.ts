@@ -1,7 +1,7 @@
 // Made by scripts/pack-voice.mjs: do not edit by hand.
 // Every recorded piece of the English announcer: the words it says, and where it lies in public/voice-en.bin (offset, length).
 
-export const VOICE_BYTES_EN = 4924677;
+export const VOICE_BYTES_EN = 4976259;
 
 export const PIECES_EN: readonly (readonly [text: string, offset: number, length: number])[] = [
   ["Brother against brother!", 0, 9597],
@@ -685,4 +685,10 @@ export const PIECES_EN: readonly (readonly [text: string, offset: number, length
   ["97 yards!!", 4896486, 9717],
   ["98 yards!!", 4906203, 9237],
   ["99 yards!!", 4915440, 9237],
+  ["1 yard!", 4924677, 6357],
+  ["yard to go!", 4931034, 7797],
+  ["yard out, can they punch it in!", 4938831, 11757],
+  ["yard to go, a big one!", 4950588, 11757],
+  ["yard, first down!", 4962345, 9477],
+  ["yard", 4971822, 4437],
 ];
