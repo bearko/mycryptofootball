@@ -7,7 +7,7 @@
 // Choosing is two steps: looking at a card (the mouse over it, or a first tap) runs the play through on the turf
 // in chalk and names the heroes it is about; a click, or a second tap on the same card, plays it.
 
-import { nameParts } from '../core/i18n';
+import { isEn, nameParts, tr } from '../core/i18n';
 import { crowd, duck, playBgm, sfx, vibrate } from '../core/audio';
 import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
@@ -125,7 +125,10 @@ export function matchScreen(): [HTMLElement, () => void] {
   /** the play being shown runs itself (called for the coach): only its big moments are spoken */
   let quickPlay = false;
   /** a call as it is spoken: head and tail, and the schools by their full names */
-  const lineOf = (c: Call): string => fullNames(c.tail ? `${c.head} ${c.tail}` : c.head, [home, away]);
+  // what the announcer says: the shout and what follows it (in English, each put into English as the screen shows it)
+  const lineOf = (c: Call): string => (isEn()
+    ? [c.head, c.tail].filter((t): t is string => !!t).map((t) => tr(fullNames(t, [home, away]))).join(' ')
+    : fullNames(c.tail ? `${c.head} ${c.tail}` : c.head, [home, away]));
   const shout = (c: Call | null, off: 0 | 1): void => {
     if (!c) return;
     if (!debug.bot && (!quickPlay || c.hot)) speak(lineOf(c), { hot: c.hot });

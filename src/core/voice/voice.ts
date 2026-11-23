@@ -8,9 +8,10 @@
 // and only a big moment cuts in. Nothing here may throw: before the sound is unlocked, in tests, muted, or with the
 // voice turned down to 0, nothing is said.
 
-import { isEn } from '../i18n';
 import { voiceOut } from '../audio';
 import { PIECES, VOICE_BYTES } from './pieces';
+import { PIECES_EN, VOICE_BYTES_EN } from './pieces-en';
+import { isEn, tr } from '../i18n';
 
 /** The bytes of the packed file are scrambled; this turns them back (and is its own inverse). `at`: offset in the file. */
 export function scramble(bytes: Uint8Array, at: number): Uint8Array {
@@ -20,23 +21,38 @@ export function scramble(bytes: Uint8Array, at: number): Uint8Array {
 
 // ------------------------------------------------------------------ cutting a line into pieces
 
+type Table = readonly (readonly [text: string, offset: number, length: number])[];
+
 /** the pieces that start with each character, longest first */
-const BY_FIRST = new Map<string, number[]>();
-PIECES.forEach(([text], i) => {
-  const c = text[0]!;
-  const list = BY_FIRST.get(c) ?? [];
-  list.push(i);
-  BY_FIRST.set(c, list);
-});
-for (const list of BY_FIRST.values()) list.sort((a, b) => PIECES[b]![0].length - PIECES[a]![0].length);
+function byFirst(table: Table): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  table.forEach(([text], i) => {
+    const c = text[0]!;
+    const list = map.get(c) ?? [];
+    list.push(i);
+    map.set(c, list);
+  });
+  for (const list of map.values()) list.sort((a, b) => table[b]![0].length - table[a]![0].length);
+  return map;
+}
+const JA_FIRST = byFirst(PIECES);
+const EN_FIRST = byFirst(PIECES_EN);
 
 /** said as nothing */
 const SPACE = /\s/;
 /** may be left out (a short pause), at a price: a line made of whole pieces is better */
 const MARK = /[、。！？…・]/;
+const MARK_EN = /[,.!?…:;"'\u2019\u2014\u2013-]/;
+/** a letter of a word (an English piece begins and ends at the edges of words) */
+const WORD = /[A-Za-z0-9]/;
 
 /** The pieces a line is made of (fewest pieces first), or null when it cannot be made of pieces. */
-export function cut(text: string): number[] | null {
+export function cut(text: string, en = isEn()): number[] | null {
+  return cutWith(text, en ? PIECES_EN : PIECES, en ? EN_FIRST : JA_FIRST, en);
+}
+
+/** The same, with any table of pieces (`en`: English, whose pieces are whole words). */
+export function cutWith(text: string, table: Table, first: Map<string, number[]> = byFirst(table), en = false): number[] | null {
   const n = text.length;
   const best: ({ cost: number; prev: number; piece: number } | null)[] = Array.from({ length: n + 1 }, () => null);
   best[0] = { cost: 0, prev: -1, piece: -1 };
@@ -44,15 +60,20 @@ export function cut(text: string): number[] | null {
     const b = best[to];
     if (!b || cost < b.cost) best[to] = { cost, prev, piece };
   };
+  const mark = en ? MARK_EN : MARK;
   for (let i = 0; i < n; i += 1) {
     const here = best[i];
     if (!here) continue;
     const c = text[i]!;
     if (SPACE.test(c)) relax(i + 1, here.cost, i, -1);
-    else if (MARK.test(c)) relax(i + 1, here.cost + 3, i, -1);
-    for (const p of BY_FIRST.get(c) ?? []) {
-      const t = PIECES[p]![0];
-      if (text.startsWith(t, i)) relax(i + t.length, here.cost + 1, i, p);
+    else if (mark.test(c)) relax(i + 1, here.cost + 3, i, -1);
+    if (en && i > 0 && WORD.test(c) && WORD.test(text[i - 1]!)) continue;
+    for (const p of first.get(c) ?? []) {
+      const t = table[p]![0];
+      if (!text.startsWith(t, i)) continue;
+      const end = i + t.length;
+      if (en && end < n && WORD.test(text[end]!) && WORD.test(t[t.length - 1]!)) continue;
+      relax(end, here.cost + 1, i, p);
     }
   }
   if (!best[n]) return null;
@@ -82,6 +103,11 @@ export function fullNames(text: string, teams: readonly { short: string; name: s
 
 // ------------------------------------------------------------------ the sound
 
+/** the announcer of the game's language: his pieces and the file they are packed in (the language is set before
+ * anything is said, and changing it reloads the page) */
+const voiceOf = (): { pieces: Table; bytes: number; file: string } =>
+  isEn() ? { pieces: PIECES_EN, bytes: VOICE_BYTES_EN, file: 'voice-en.bin' } : { pieces: PIECES, bytes: VOICE_BYTES, file: 'voice.bin' };
+
 const hasWindow = typeof window !== 'undefined' && typeof fetch === 'function';
 let packed: Promise<Uint8Array | null> | null = null;
 
@@ -89,10 +115,11 @@ let packed: Promise<Uint8Array | null> | null = null;
 export function warmVoice(): void {
   if (!hasWindow || packed) return;
   try {
-    packed = fetch(`${import.meta.env.BASE_URL}voice.bin`)
+    const { file, bytes } = voiceOf();
+    packed = fetch(`${import.meta.env.BASE_URL}${file}`)
       .then((r) => (r.ok ? r.arrayBuffer() : null))
       .then((b) => {
-        loaded = !!b && b.byteLength === VOICE_BYTES;
+        loaded = !!b && bytes > 0 && b.byteLength === bytes;
         return loaded ? new Uint8Array(b!) : null;
       })
       .catch(() => null);
@@ -115,7 +142,7 @@ function decode(ctx: BaseAudioContext, p: number): Promise<AudioBuffer | null> {
   warmVoice();
   const job = (packed ?? Promise.resolve(null)).then(async (bin) => {
     if (!bin) return null;
-    const [, at, len] = PIECES[p]!;
+    const [, at, len] = voiceOf().pieces[p]!;
     try {
       const bytes = scramble(bin.slice(at, at + len), at);
       return await ctx.decodeAudioData(bytes.buffer as ArrayBuffer);
@@ -177,12 +204,12 @@ export function hush(): void {
  * free (the booth's lines between plays).
  */
 export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {}): void {
-  // (the announcer speaks Japanese only, for now)
-  if (isEn()) return;
   try {
     const out = voiceOut();
     if (!out) return;
-    const pieces = cut(text);
+    // in English the line is said as the screen shows it (a line given in Japanese is put into English first)
+    const pieces = cut(isEn() ? tr(text) : text);
+    const table = voiceOf().pieces;
     if (!pieces) return;
     const ctx = out.ctx;
     const asked = ctx.currentTime;
@@ -213,7 +240,7 @@ export function speak(text: string, opts: { hot?: boolean; quiet?: boolean } = {
       }
       const start = t;
       (bufs as AudioBuffer[]).forEach((b, i) => {
-        if (i > 0 && GOES_ON.test(PIECES[pieces[i]!]![0]) && !ENDS.test(PIECES[pieces[i - 1]!]![0])) t += JOIN - GAP;
+        if (i > 0 && !isEn() && GOES_ON.test(table[pieces[i]!]![0]) && !ENDS.test(table[pieces[i - 1]!]![0])) t += JOIN - GAP;
         const src = ctx.createBufferSource();
         src.buffer = b;
         src.connect(out.node);
@@ -238,7 +265,7 @@ export function prefetchVoice(texts: readonly string[]): void {
   try {
     const out = voiceOut();
     if (!out) return;
-    for (const t of texts) for (const p of cut(t) ?? []) void decode(out.ctx, p);
+    for (const t of texts) for (const p of cut(isEn() ? tr(t) : t) ?? []) void decode(out.ctx, p);
   } catch {
     /* ignore */
   }

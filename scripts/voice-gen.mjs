@@ -5,6 +5,9 @@
 //   ELEVENLABS_API_KEY=… node scripts/voice-gen.mjs <dir> [extra.txt]
 //   node scripts/pack-voice.mjs <dir>/manifest.tsv
 //
+// With --en, the English announcer (his own voice; pieces-en.ts, voice-readings-en.json, packed by pack-voice --en):
+// a shout is given to the generator with a tag for how it is said ("!!" shouted, "!" excited).
+//
 // The pieces are those of src/core/voice/pieces.ts, then the lines of extra.txt (words not said yet; one a line).
 // A name the generator could read wrong is given to it in kana (scripts/voice-readings.json); a piece whose words or
 // reading changed is made again.
@@ -16,22 +19,25 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-const [dir, extraFile] = process.argv.slice(2);
+const EN = process.argv.includes('--en');
+const [dir, extraFile] = process.argv.slice(2).filter((a) => a !== '--en');
 const KEY = (process.env.ELEVENLABS_API_KEY ?? '').trim();
 if (!dir || !KEY) {
   console.error('usage: ELEVENLABS_API_KEY=… node scripts/voice-gen.mjs <dir> [extra.txt]');
   process.exit(1);
 }
-const VOICE = process.env.VOICE_ID ?? 'J1DALOfipG5iKvQ4qv7N';
+const VOICE = process.env.VOICE_ID ?? (EN ? 'bhqY06WE9Tbaa1bTxttc' : 'J1DALOfipG5iKvQ4qv7N');
 const MODEL = process.env.MODEL ?? 'eleven_v4';
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
-const src = readFileSync(join(root, 'src/core/voice/pieces.ts'), 'utf8');
+const src = readFileSync(join(root, EN ? 'src/core/voice/pieces-en.ts' : 'src/core/voice/pieces.ts'), 'utf8');
 const known = [...src.matchAll(/^ {2}\[(".*?"), \d+, \d+\],$/gm)].map((m) => JSON.parse(m[1]));
 const extra = extraFile ? readFileSync(extraFile, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean) : [];
 const all = [...new Set([...known, ...extra])];
-const READ = JSON.parse(readFileSync(join(root, 'scripts/voice-readings.json'), 'utf8'));
+const READ = JSON.parse(readFileSync(join(root, EN ? 'scripts/voice-readings-en.json' : 'scripts/voice-readings.json'), 'utf8'));
+/** how an English piece is said: a shout shouted, an exclamation excited, the rest (names, numbers, the middle of a line) plainly */
+const tone = (text) => (text.endsWith('!!') ? `[shouting] ${text}` : text.endsWith('!') ? `[excited] ${text}` : text);
 /** what the generator is given for a piece (a piece that begins with a comma is said without it) */
-const spokenOf = (text) => READ[text] ?? text.replace(/^[、。]+/, '');
+const spokenOf = (text) => READ[text] ?? (EN ? tone(text) : text.replace(/^[、。]+/, ''));
 
 const raw = join(dir, 'raw');
 const out = join(dir, 'out');
