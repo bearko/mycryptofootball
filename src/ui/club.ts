@@ -5,6 +5,7 @@
 // and over every hero's head the abilities, trust and stamina they would gain or lose.
 // Playing it (a click, or a second tap on the same card) runs the day: the drill, the numbers, the next date.
 
+import { isEn, tr } from '../core/i18n';
 import { playBgm, sfx, vibrate } from '../core/audio';
 import { h, wait } from '../core/dom';
 import { commit, prefs, save, storeMatch } from '../core/save';
@@ -150,8 +151,8 @@ const prizesOf = (changes: Change[]): [number, Prize][] => changes.flatMap((c): 
 
 /** What the manager says when the colour reaches a level: the plays of the playbook and of the colour it brings. */
 function levelNews(t: Tactic, lv: number): string {
-  const fresh = [...playsOfLevel(lv).map((k) => playInfo(k).name), ...TACTIC_PLAYS[t].filter((p) => p.from === lv).map((p) => p.name)].map((n) => `「${n}」`);
-  return `${TACTIC[t].name}の練度が${lv}に上がりました！${fresh.length ? ` 新しく${fresh.join('')}が使えます。` : ' 作戦のキレが増します。'}${lv === 3 ? ' 試合の手札も1枚増えます。' : ''}`;
+  const fresh = [...playsOfLevel(lv).map((k) => playInfo(k).name), ...TACTIC_PLAYS[t].filter((p) => p.from === lv).map((p) => p.name)].map((n) => (isEn() ? `"${tr(n)}"` : `「${n}」`));
+  return `${TACTIC[t].name}の練度が${lv}に上がりました！${fresh.length ? ` 新しく${fresh.join(isEn() ? ', ' : '')}が使えます。` : ' 作戦のキレが増します。'}${lv === 3 ? ' 試合の手札も1枚増えます。' : ''}`;
 }
 
 export function clubScreen(): [HTMLElement, () => void] {

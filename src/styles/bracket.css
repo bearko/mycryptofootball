@@ -1,6 +1,7 @@
 /* ---------- the tournament's bracket (ui/bracket.ts) ---------- */
 .bk-board { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--display); }
 .bk-round { fill: var(--dim); font-size: 17px; text-anchor: middle; }
+html.en .bk-round { font-size: 12px; }
 .bk-line { fill: none; stroke: rgba(170, 179, 221, 0.45); stroke-width: 4; stroke-linejoin: round; }
 .bk-line.lost { stroke: rgba(170, 179, 221, 0.18); }
 .bk-line.won { stroke: var(--chalk); stroke-width: 7; }

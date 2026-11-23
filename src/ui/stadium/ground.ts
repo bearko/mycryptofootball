@@ -395,8 +395,9 @@ function bakeScoreboard(short: string): Tex {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.font = `13px ${DISPLAY_FONT}`;
-  g.fillText(short, 34, 16);
-  g.fillText('紅白', 88, 16);
+  // squeezed to its plate when the name is long (in English)
+  g.fillText(short, 34, 16, 50);
+  g.fillText('紅白', 88, 16, 50);
   // hand-hung number plates
   for (const cx of [34, 88]) {
     g.fillStyle = '#f4f1e6';

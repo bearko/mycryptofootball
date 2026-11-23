@@ -7,6 +7,7 @@
 // Choosing is two steps: looking at a card (the mouse over it, or a first tap) runs the play through on the turf
 // in chalk and names the heroes it is about; a click, or a second tap on the same card, plays it.
 
+import { nameParts } from '../core/i18n';
 import { crowd, duck, playBgm, sfx, vibrate } from '../core/audio';
 import { debug, newSeed } from '../core/debug';
 import { h } from '../core/dom';
@@ -516,7 +517,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         title: `判断 ${iq}。判断が高いヒーローほど、言うことが当たる`,
       },
       sprite(id),
-      h('span.voice-who', h('b', posLabel(pos)), hero(id).name.split('・').pop()!,
+      h('span.voice-who', h('b', posLabel(pos)), nameParts(hero(id).name).pop()!,
         h('i.voice-iq', { class: `iq${trust}` }, '判断', h('u', '●'.repeat(trust) + '○'.repeat(3 - trust)))),
       h('span.voice-text', read ? hintText(hint, onOffense) : v.text));
     };
@@ -545,7 +546,7 @@ export function matchScreen(): [HTMLElement, () => void] {
         id: k.id,
         el: h('div.keytag', { class: n === 0 ? 'is-lead' : '', style: { '--i': String(n) } },
           h('div.keytag-in', n === 0 ? h('em', '主役') : null,
-            h('b', posLabel(k.pos)), h('span', hero(k.id).name.split('・').pop()!),
+            h('b', posLabel(k.pos)), h('span', nameParts(hero(k.id).name).pop()!),
             h('i', String(Math.round(k.pos === 'K' ? kickFit(kickerOf(home)!.stats) : fit(at(home, k.pos).stats, roleOf(k.pos))))))),
       }));
       keyTags.replaceChildren(...keys3.map((k) => k.el));

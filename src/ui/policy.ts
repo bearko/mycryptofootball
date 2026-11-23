@@ -2,6 +2,7 @@
 // It can be changed at a milestone only (the first day, the day after the practice match);
 // at any other time the same panel opens just to be read.
 
+import { tr } from '../core/i18n';
 import { sfx, vibrate } from '../core/audio';
 import { h } from '../core/dom';
 import { commit, save } from '../core/save';
@@ -179,7 +180,7 @@ export function policyPanel(s: Season, onClose: () => void): void {
     groups.length ? h('div.pol-groups', h('span', 'ポジション', h('br'), 'ごとに'), groups.map((g) => g.btn)) : null,
     h('div.pol-grid', cols.map((c) => c.el)),
     h('div.pol-foot',
-      open ? h('div.pol-presets', h('span', 'まとめて', h('br'), '決める'), [...presets.values()]) : null,
+      open ? h('div.pol-presets', h('span', ...tr('まとめて\n決める').split('\n').flatMap((t, i) => (i ? [h('br'), t] : [t]))), [...presets.values()]) : null,
       open
         ? button('この方針でいく', () => {
           guideEvent(save(), 'policy_done');

@@ -28,6 +28,8 @@ export interface Prefs {
   calls: 'key' | 'all';
   /** 0..1: the announcer's voice in a match (0: not spoken) */
   voice: number;
+  /** the language the game is played in (asked on the very first start: ui/language.ts) */
+  lang?: 'ja' | 'en';
 }
 
 export const defaultPrefs = (): Prefs => ({ bgm: 0.6, se: 0.8, motion: true, haptics: true, text: 1, colorSafe: false, replay: true, calls: 'key', voice: 0.9 });

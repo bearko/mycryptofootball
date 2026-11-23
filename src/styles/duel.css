@@ -77,3 +77,5 @@
 .lu-ace > b { background: var(--orange); }
 .lu-ace.is-def > b { background: var(--cyan); }
 .lu-ace small { color: var(--yellow); }
+
+html.en .ace-opt.is-on::after { content: 'Ace'; }

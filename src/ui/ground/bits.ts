@@ -1,5 +1,6 @@
 // Small parts the practice ground is built from: short names, living sprites, line icons and experience chips.
 
+import { nameParts } from '../../core/i18n';
 import { h } from '../../core/dom';
 import { hero } from '../../game/heroes';
 import type { Stat } from '../../game/model';
@@ -9,7 +10,7 @@ import { modalOpen, sprite } from '../kit';
 
 /** The name a team-mate would shout: "ウィリアム・テル" becomes "テル". */
 export function shortName(id: number): string {
-  const parts = hero(id).name.split('・');
+  const parts = nameParts(hero(id).name);
   return parts[parts.length - 1]!;
 }
 
