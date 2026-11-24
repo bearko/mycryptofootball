@@ -1474,6 +1474,24 @@ export function setAce(s: Season, unit: 'off' | 'def', id: number | null): void 
 
 /** Which of the club's special plays the coming opponent has studied. */
 export const scoutedKeys = (s: Season): string[] => Object.keys(clubSheet(s).scouted ?? {});
+/**
+ * The names of the club's special plays the stronger schools have studied. A play is named by its card: a hero's
+ * own (the key is the hero's number), two heroes' play (`bond:`) or a play of the colour (`tac-`). A play the club
+ * no longer has (its hero has left) is named by its hero, or left out.
+ */
+export function scoutedNames(s: Season): string[] {
+  const sheet = clubSheet(s);
+  return Object.keys(sheet.scouted ?? {}).map((k) => {
+    const card = sheet.specials.find((sp) => sp.key === k);
+    if (card) return card.name;
+    if (!/^\d+$/.test(k)) return null;
+    try {
+      return hero(Number(k)).passive;
+    } catch {
+      return null;
+    }
+  }).filter((n): n is string => !!n);
+}
 
 /** Has the club been knocked out of the spring tournament (or played it to its end)? */
 export const springOver = (s: Season): boolean => s.day >= stageStart('summer');

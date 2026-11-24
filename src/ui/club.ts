@@ -16,7 +16,7 @@ import { isStarter } from '../game/lineup';
 import { STATS, STAT_LABEL, sizeOf, type Stat } from '../game/model';
 import {
   ROUND_NAME, SCHEDULE, campOf, campOpen, clubSize, clubTacticLv, hasTactic, STAGE_NAME, SUMMIT_DAY, BOND_STEPS, obOfClub, shopOpen, bracketNow, metAt, drawDue, isTrip, moneyOf, setTrip, tripOpen, tripPrice, tripSchool, undecided, STA_MAX, STA_TIRED, TEAM_NAME, TEAM_SHORT, TRUST_LEARN, TRUST_MAX, XPS, boosted, cardInfo, cupOf, daysTo, graduating, isFinal, labelOf, schoolAt, schoolId, learned, markMonth, member, nextMatch, plan, policyOpen, roundOf, tacticOf,
-  previewTrain, scoutedKeys, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
+  previewTrain, scoutedNames, tired, train, type CardInfo, type Change, type DayPlan, type Member, type Season,
 } from '../game/season';
 import { SCHOOLS, aces } from '../game/teams';
 import { CAMP_SITE } from '../game/funds';
@@ -538,11 +538,11 @@ export function clubScreen(): [HTMLElement, () => void] {
     const away = isTrip(s, p);
     const oppId = away ? tripSchool(s, p) : schoolId(s, p.m);
     const opp = SCHOOLS[oppId]!;
-    const studied = scoutedKeys(s);
+    const studied = scoutedNames(s);
     const stars = aces(oppId, away ? 2 : p.opp, sizeOf(s.lineup!));
     return h('footer.pg-vs', { style: { '--oc': opp.color } },
       studied.length ? h('div.vs-warn', { role: 'alert' }, icon(ICON.warn), h('b', '研究されている！'),
-        h('span', `「${studied.map((k) => hero(Number(k)).passive).join('」「')}」は、最初から少し読まれる`)) : null,
+        h('span', `「${studied.join('」「')}」は、最初から少し読まれる`)) : null,
       h('div.vs-main',
         h('span.vs-kind', away ? '遠征の練習試合' : labelOf(s, p)),
         h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
