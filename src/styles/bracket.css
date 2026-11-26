@@ -21,8 +21,10 @@ html.en .bk-round { font-size: 12px; }
 .bk-team.is-club .bk-name { fill: var(--ink); }
 .bk-team.is-out { opacity: 0.38; transition: opacity 0.5s 0.6s; }
 .bk-team.is-champ .bk-box { stroke: var(--yellow); stroke-width: 6; }
-.bk-trophy { fill: #5a5f98; stroke: var(--ink); stroke-width: 3; }
-.bk-cup.is-won .bk-trophy { fill: var(--yellow); filter: drop-shadow(0 0 10px rgba(255, 225, 74, 0.9)); }
+.bk-crest { image-rendering: pixelated; filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.55)); }
+/* the cup (the tournament's gold trophy): dim until it is won */
+.bk-trophy { filter: grayscale(0.85) brightness(0.62) drop-shadow(0 4px 0 var(--ink)); transition: filter 0.6s; }
+.bk-cup.is-won .bk-trophy { filter: drop-shadow(0 0 14px rgba(255, 225, 74, 0.9)); }
 .bk-cup.fresh .bk-trophy { animation: bk-pop 0.6s 1.2s var(--spring) backwards; }
 .bk-champ { fill: var(--dim); font-size: 22px; text-anchor: middle; paint-order: stroke fill; stroke: var(--ink); stroke-width: 6px; }
 .bk-cup.is-won .bk-champ { fill: var(--yellow); }

@@ -53,6 +53,8 @@ export interface TeamSheet {
   name: string;
   short: string;
   color: string;
+  /** its crest (an Extension's id; the screens show its art) */
+  crest?: number;
   players: Player[];
   lineup: Lineup;
   specials: SpecialCard[];

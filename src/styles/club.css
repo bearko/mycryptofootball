@@ -303,13 +303,14 @@ html.en .pgc-art.is-scrim b { font-size: 1.45rem; -webkit-text-stroke-width: 0.1
 .pgc.star5 .pgc-art img { filter: drop-shadow(0 0 0.35rem rgba(255, 190, 40, 0.9)) drop-shadow(0.16rem 0.2rem 0 rgba(6, 8, 26, 0.35)); }
 
 /* ---------- match day: the opponent and one button ---------- */
-.pg-vs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.4rem; padding: 0.8rem max(1.2rem, env(safe-area-inset-right)) 0.7rem max(1.2rem, env(safe-area-inset-left)); color: var(--chalk); background: repeating-linear-gradient(-60deg, transparent 0 2.2rem, rgba(255, 255, 255, 0.035) 2.2rem 4.4rem), linear-gradient(180deg, rgba(6, 8, 26, 0.9), var(--ink)); border-top: 0.3rem solid var(--oc); animation: pg-vs-in 0.5s var(--spring) backwards; }
+.pg-vs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; height: var(--hand); display: grid; grid-template-columns: fit-content(26rem) minmax(0, 1fr) auto; align-items: center; gap: 1.4rem; padding: 0.8rem max(1.2rem, env(safe-area-inset-right)) 0.7rem max(1.2rem, env(safe-area-inset-left)); color: var(--chalk); background: repeating-linear-gradient(-60deg, transparent 0 2.2rem, rgba(255, 255, 255, 0.035) 2.2rem 4.4rem), linear-gradient(180deg, rgba(6, 8, 26, 0.9), var(--ink)); border-top: 0.3rem solid var(--oc); animation: pg-vs-in 0.5s var(--spring) backwards; }
 @keyframes pg-vs-in { from { transform: translateY(100%); } }
 .vs-main { display: grid; gap: 0.2rem; justify-items: start; }
 .vs-kind { font-family: var(--display); font-size: var(--fs-xs); line-height: 1.5; color: var(--ink); background: var(--yellow); padding: 0 1rem 0 0.7rem; clip-path: polygon(0 0, 100% 0, calc(100% - 0.5rem) 100%, 0 100%); white-space: nowrap; }
 .vs-name { display: flex; align-items: baseline; gap: 0.7rem; }
 .vs-name i { font-family: var(--display); font-style: normal; font-size: var(--fs-xl); color: var(--orange); transform: skewX(-10deg); animation: throb 0.9s ease-in-out infinite; }
 .vs-name h3 { font-size: var(--fs-xxl); line-height: 1.1; color: var(--oc); white-space: nowrap; text-shadow: 0.2rem 0.2rem 0 rgba(0, 0, 0, 0.6); }
+.vs-name .vs-crest { align-self: center; width: 3.6rem; height: 3.6rem; margin: -0.6rem -0.2rem; animation: bubble 0.4s 0.35s var(--spring) backwards; }
 .vs-style { font-size: var(--fs-s); line-height: 1.3; word-break: auto-phrase; }
 /* eleven a side: the two colours (tactics) and which has the edge */
 .vs-colour { display: flex; align-items: center; gap: 0.4rem; font-size: var(--fs-xs); line-height: 1.2; white-space: nowrap; }
@@ -343,6 +344,17 @@ html.en .pgc-art.is-scrim b { font-size: 1.45rem; -webkit-text-stroke-width: 0.1
 .vs-call[aria-pressed='true'] i { background: var(--ink); color: var(--yellow); }
 .vs-call:focus-visible { outline: 0.2rem solid var(--yellow); outline-offset: 0.15rem; }
 .vs-go .btn.big .btn-face { min-height: 6.4rem; padding: 0 3.4rem; font-size: var(--fs-xl); }
+/* eleven a side: the two calls side by side above the button, so the aces (up to five) keep their room */
+.vs-go:has(.vs-calls) { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+.vs-go:has(.vs-calls) .vs-calls { grid-template-columns: 1fr 1fr; gap: 0.3rem 0.4rem; }
+.vs-go:has(.vs-calls) .vs-calls > span { grid-column: 1 / -1; }
+.vs-go:has(.vs-calls) .vs-call { min-width: 0; min-height: max(44px, 3.2rem); padding: 0 0.6rem; }
+.vs-go:has(.vs-calls) .btn.big .btn-face { min-height: max(44px, 4.4rem); padding: 0 1.8rem; }
+.pg-vs:has(.vs-calls) .vs-aces.is-many { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem 0.8rem; }
+/* (five aces: a line each, the play's name cut short when it is long) */
+.pg-vs:has(.vs-calls) .vs-aces.is-many .ace-face { width: 2.2rem; height: 2.2rem; }
+.pg-vs:has(.vs-calls) .vs-aces.is-many .ace-text { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 0; line-height: 1.15; }
+.pg-vs:has(.vs-calls) .vs-aces.is-many .ace-text b { max-width: 100%; margin-left: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vs-warn { position: absolute; right: max(1rem, env(safe-area-inset-right)); bottom: calc(100% + 0.3rem); max-width: 47%; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.7rem; padding: 0.3rem 1.8rem 0.3rem 1.4rem; font-size: var(--fs-s); line-height: 1.35; color: var(--chalk); background: var(--orange); clip-path: polygon(0.8rem 0, 100% 0, calc(100% - 0.8rem) 100%, 0 100%); animation: pg-warn-in 0.5s 0.5s var(--spring) backwards, pg-warn 1s 1s steps(2) infinite; }
 .vs-warn b { font-family: var(--display); font-weight: 400; color: var(--yellow); white-space: nowrap; }
 .vs-warn .cico { width: 1.7rem; height: 1.7rem; color: var(--yellow); }
@@ -540,7 +552,13 @@ html.en .cal-day.is-today .cal-full { font-size: var(--fs-xs); }
 /* English: the match-day panel keeps its three parts side by side (the school's name is longer than in Japanese,
    and the aces' plays are words that break at their spaces, not letter by letter) */
 html.en .pg-vs { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto; gap: 1rem; }
-html.en .vs-name h3 { font-size: var(--fs-xl); white-space: normal; }
+html.en .pg-vs:has(.vs-calls) { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto; }
+html.en .vs-go:has(.vs-calls) .btn.big .btn-face { font-size: var(--fs-l); padding: 0 1.2rem; }
+html.en .vs-main { min-width: 0; }
+html.en .vs-name h3 { font-size: var(--fs-m); line-height: 1.1; white-space: normal; }
+html.en .vs-style { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+html.en .vs-colour { flex-wrap: wrap; white-space: normal; row-gap: 0.2rem; }
+html.en .vs-name .vs-crest { width: 2.8rem; height: 2.8rem; margin: -0.4rem -0.3rem; }
 html.en .ace-text b { overflow-wrap: break-word; margin-left: 0; }
 html.en .cal-day.is-span .cal-date b { font-size: var(--fs-xs); letter-spacing: 0; }
 html.en .pgc.is-scrim .pgc-name { font-size: 0.85rem; letter-spacing: -0.05em; }

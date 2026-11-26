@@ -12,6 +12,13 @@
 .end-results li.win { border-bottom-color: var(--lime); }
 .end-results b { font-weight: 400; font-size: var(--fs-xl); line-height: 1.1; background: none; }
 .end-results li.is-spring b { font-family: var(--display); font-size: var(--fs-m); line-height: 1.5; }
+.end-crest { width: 1.5rem; height: 1.5rem; vertical-align: -0.35rem; margin-right: 0.15rem; }
+/* the trophy the year brought home, beside the headline */
+.end-headline { display: flex; align-items: center; gap: 1.2rem; }
+.end-trophy { flex: none; width: 7.4rem; height: 7.4rem; margin: -0.9rem 0; object-fit: contain; filter: drop-shadow(0 0 1.4rem rgba(255, 225, 74, 0.55)) drop-shadow(0.3rem 0.4rem 0 var(--ink)); animation: end-trophy-in 0.6s 0.2s var(--spring) backwards; }
+.end-trophy.is-2, .end-trophy.is-3 { filter: drop-shadow(0.3rem 0.4rem 0 var(--ink)); }
+@keyframes end-trophy-in { from { opacity: 0; transform: scale(0.3) rotate(-20deg); } }
+@media (prefers-reduced-motion: reduce) { .end-trophy { animation: none; } }
 .end-team { display: flex; gap: 0.3rem; }
 /* a big club: everybody smaller, in rows, the names left out */
 .end-team.is-many { flex-wrap: wrap; gap: 0.1rem; max-width: 62rem; }

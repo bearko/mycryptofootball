@@ -28,7 +28,7 @@ import { ROLE_LABEL, fit, kickFit, roleOf, sizeOf, type DefPos, type OffPos } fr
 import { clubSheet, finishMatch, labelOf, opponentFor, plan } from '../game/season';
 import { basicInfo, cardBack, cardName, playCard } from './cardView';
 import { burst, center, confetti, countUp, flash, kick, kinetic, motion, pop, shake, sparks } from './fx';
-import { button, closeModal, modal, modalOpen, speech, sprite, ticker } from './kit';
+import { button, closeModal, crest, modal, modalOpen, speech, sprite, ticker } from './kit';
 import { route } from './nav';
 import { changeList, settingsModal } from './shared';
 import { fameReport } from './standing';
@@ -313,7 +313,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       scoreEls[t] = score;
       const threats = t === 1 ? away.specials.filter((sp) => (KIND[sp.kind].side === 'off') === (v.poss === 1)) : [];
       return h('div.bug-team', { class: `${t === 0 ? 'home' : 'away'} ${v.poss === t ? 'has' : ''}`, style: { '--team': st.teams[t].color } },
-        h('span.bug-name', h('i.bug-ball', { 'aria-hidden': 'true' }), st.teams[t].short),
+        h('span.bug-name', h('i.bug-ball', { 'aria-hidden': 'true' }), crest(st.teams[t].crest, 'bug-crest'), st.teams[t].short),
         score,
         h('span.bug-mom', h('em', '流れ'), flames(v.mom[t], prev ? prev.mom[t] : v.mom[t])),
         t === 0 ? duelScore(st) : null,
@@ -1179,7 +1179,7 @@ export function matchScreen(): [HTMLElement, () => void] {
             resolve();
           };
           modal(h('div.period',
-            h('div.period-score', h('span', { style: { color: home.color } }, home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short)),
+            h('div.period-score', h('span', { style: { color: home.color } }, crest(home.crest, 'ps-crest'), home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short, crest(away.crest, 'ps-crest'))),
             half ? h('p', 'ロッカールームで、後半に向けてひとこと。どれかひとつ') : h('p', '次に点を取ったほうの勝ちです！'),
             half ? h('div.talks', TALK_KEYS.map((key, i) => h('button.talk', {
               type: 'button', style: { '--i': String(i) },
@@ -1254,7 +1254,7 @@ export function matchScreen(): [HTMLElement, () => void] {
       h('div.fulltime-top',
         h('div.fulltime-head', h('b', kinetic(win ? '勝利！' : '敗北…')),
           springEnd ? h('span.fulltime-note', win ? '春の大会 優勝！ 本番は秋' : '春の大会はここまで。本番は秋！') : null),
-        h('div.period-score', h('span', { style: { color: home.color } }, home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short))),
+        h('div.period-score', h('span', { style: { color: home.color } }, crest(home.crest, 'ps-crest'), home.short), h('b.led', String(st.score[0])), h('i', '-'), h('b.led', String(st.score[1])), h('span', { style: { color: away.color } }, away.short, crest(away.crest, 'ps-crest')))),
       h('div.fulltime-mid',
         h('table',
           row('進んだヤード', totals[0].yards, totals[1].yards, 0),

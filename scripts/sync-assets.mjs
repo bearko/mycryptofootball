@@ -107,6 +107,18 @@ const items = {
   medal: [1033, 2033, 3033, 4033, 5033].map(ext),
 };
 
+// the schools' crests (src/game/teams.ts School.crest, the club's TEAM_CREST in src/game/season.ts): Legendary Extensions
+const CRESTS = [
+  5001, // the club: MCH Blade
+  5022, 5021, 5019, 5103, 5104, 5120, 5093, 5073, 5528, 5143, 5094, 5117, 5194, // the thirteen schools, in order
+  5115, // the corporate champion
+];
+const crests = Object.fromEntries(CRESTS.map((id) => [id, ext(id)]));
+
+// the trophies (Image/Trophies): a tournament's gold, silver and bronze, and the summit's dragon
+const trophy = (id) => use(`Image/Trophies/trophy_${id}.png`);
+const trophies = { cup: [101, 102, 103].map(trophy), summit: trophy(131) };
+
 // ---------------------------------------------------------------- sound
 const bgm = {
   club: use('Audio/BGM/land.mp3'),
@@ -126,5 +138,5 @@ const se = {
 };
 
 mkdirSync(dirname(outCatalog), { recursive: true });
-writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, items, bgm, se, en }, null, 1)}\n`);
+writeFileSync(outCatalog, `${JSON.stringify({ heroes, chars, drills, items, crests, trophies, bgm, se, en }, null, 1)}\n`);
 console.log(`[sync-assets] ${Object.keys(heroes).length} heroes, ${copied} files → public/mch`);

@@ -7,10 +7,10 @@ import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
 import { hero, talentOf } from '../game/heroes';
 import { tierOf } from '../game/prestige';
-import { ROUND_NAME, SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, nextYear, opponentFor, roundOf, schoolAt, type Season } from '../game/season';
+import { ROUND_NAME, SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, metAt, nextYear, opponentFor, roundOf, type Season } from '../game/season';
 import { fameBar, tierPlate } from './standing';
 import { confetti, kinetic } from './fx';
-import { TALENT_COLOR, backdrop, button, cheerAt, portrait, speech, ticker } from './kit';
+import { TALENT_COLOR, backdrop, button, cheerAt, crest, portrait, speech, ticker, trophyArt } from './kit';
 import { route, show } from './nav';
 import { Stadium } from './stadium';
 import { titleScreen } from './title';
@@ -33,6 +33,10 @@ export function endScreen(): [HTMLElement, () => void] {
   const last = s.results[s.results.length - 1];
   const where = last ? roundOf(SCHEDULE[last.day]!) : '';
   const cup = cupOf(s);
+  // the trophy the year brought home: the summit's, the tournament's gold, or silver for the final and bronze for the
+  // semi-final the club went down in
+  const lostIn = !champion && last && SCHEDULE[last.day]?.stage === 'autumn' && last.opp > 0 && !last.win ? last.opp : 0;
+  const prize: 1 | 2 | 3 | 'summit' | null = cleared ? 'summit' : champion ? 1 : lostIn === 3 ? 2 : lostIn === 2 ? 3 : null;
   /** the standing the year began with (the autumn may have had its own) */
   const began = s.springLeague ?? s.league;
   // the spring tournament in a line: how far the club went
@@ -82,7 +86,8 @@ export function endScreen(): [HTMLElement, () => void] {
     h('div.end-shade', { 'aria-hidden': 'true' }),
     h('div.end-main',
       h('div.end-tags', h('span.label.dark', `${TEAM_NAME} アメフト部`), cleared ? h('b.end-clear', '全クリア') : null),
-      h('h1', kinetic(cleared ? '頂上決戦 制覇！' : champion ? `${cup} 優勝！` : `${where}で敗退`)),
+      h('div.end-headline', prize ? h('img.end-trophy', { class: `is-${prize}`, src: trophyArt(prize), alt: '', draggable: false }) : null,
+        h('h1', kinetic(cleared ? '頂上決戦 制覇！' : champion ? `${cup} 優勝！` : `${where}で敗退`))),
       h('p.end-sub', cleared ? `${s.year}年目の${TEAM_NAME}が、社会人の王者・鳳凰電機を倒した。高校アメフトの、本当の頂点へ。`
         : s.summit === 'lost' ? `${cup}を制し、社会人の王者に挑んだ。頂点まで、あと一歩。`
           : champion ? `${s.year}年目の${TEAM_NAME}が、${cup}の頂点に立った。` : leaving.length ? `あと一歩。3年生の${leaving.length}人は、これで卒業。思いは後輩がつぐ。` : 'あと一歩。みんなは来年も残る。鍛えなおして、もう一度挑もう。'),
@@ -101,7 +106,7 @@ export function endScreen(): [HTMLElement, () => void] {
           return h('li', { class: r.win ? 'win' : 'lose', style: { '--i': String(i + 1) } },
             h('span', `${w.stage === 'autumn' && !w.summit ? '秋の' : ''}${roundOf(w)}`),
             h('b.led', `${r.us}-${r.them}`),
-            h('span', `${r.win ? '○' : '●'} ${schoolAt(s, r.m).name}`));
+            h('span', `${r.win ? '○' : '●'} `, crest(metAt(s, r).crest, 'end-crest'), metAt(s, r).name));
         })),
       team,
       h('div.end-actions',

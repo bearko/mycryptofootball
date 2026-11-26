@@ -13,6 +13,7 @@
 .bug-team.away::before { left: auto; right: 0; }
 .bug-team.away > * { direction: ltr; }
 .bug-name { font-family: var(--display); font-size: var(--fs-l); color: var(--team); display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; line-height: 1.2; text-shadow: 0.12rem 0.12rem 0 var(--ink); }
+.bug-crest { width: 1.9rem; height: 1.9rem; margin: -0.3rem -0.1rem; }
 .bug-ball { width: 1.5rem; height: 0.95rem; border-radius: 50%; background: #9a5326; border: 0.14rem solid var(--ink); box-shadow: inset 0 0.12rem 0 rgba(255, 255, 255, 0.5); opacity: 0.18; transform: rotate(-20deg); }
 .bug-team.has .bug-ball { opacity: 1; animation: ball-bob 0.7s var(--spring) infinite alternate; }
 @keyframes ball-bob { to { transform: rotate(-20deg) translateY(-0.2rem); } }
@@ -239,6 +240,8 @@ html.en .bug-down b { font-size: var(--fs-s); }
 .period-score { display: flex; align-items: center; gap: 1.2rem; font-family: var(--display); font-size: var(--fs-l); }
 .period-score b { font-weight: 400; font-size: 3.8rem; line-height: 1; padding: 0.2rem 0.8rem; border: 0.2rem solid var(--ink); min-width: 2.4ch; }
 .period-score i { font-style: normal; color: var(--dim); }
+.period-score span { display: flex; align-items: center; gap: 0.4rem; }
+.ps-crest { width: 2.6rem; height: 2.6rem; }
 .fulltime-head b { font-family: var(--display); font-weight: 400; line-height: 1.1; color: var(--yellow); -webkit-text-stroke: 0.6rem var(--ink); paint-order: stroke fill; }
 .fulltime.lose .fulltime-head b { color: var(--dim); }
 .fulltime-head { display: flex; flex-direction: column; align-items: center; }

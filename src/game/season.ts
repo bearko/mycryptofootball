@@ -53,6 +53,8 @@ const DRILL_COST = 12;
 export const TEAM_NAME = 'マイクリ学園';
 export const TEAM_SHORT = 'マイクリ';
 export const TEAM_COLOR = '#ffd84a';
+/** the club's crest: an Extension (scripts/sync-assets.mjs, CRESTS) */
+export const TEAM_CREST = 5001;
 
 // ------------------------------------------------------------------ the calendar
 //
@@ -1428,6 +1430,7 @@ export function clubSheet(s: Season): TeamSheet {
     name: TEAM_NAME,
     short: TEAM_SHORT,
     color: TEAM_COLOR,
+    crest: TEAM_CREST,
     // tired heroes play a little worse
     players: s.members.map((m) => {
       const c = condition(m.sta);
