@@ -9,7 +9,7 @@ import { CAMP_KEYS, CAMP_SITE, type CampKey } from '../../game/funds';
 import { DRILL_NAME, answerEvent, campPrice, moneyOf, setCamp, boosted, eventDef, member, type Change, type Season } from '../../game/season';
 import { playCard } from '../cardView';
 import { burst, center, flash, glitter, kinetic, motion, ring, shake, typewriter } from '../fx';
-import { TALENT_COLOR, charPose, cheerAt, closeModal, modal, portrait } from '../kit';
+import { TALENT_COLOR, charPose, cheerAt, closeModal, modal, portrait, sceneArt, sceneUrl } from '../kit';
 import { ICON, icon } from './bits';
 import { practiceCard } from './pcard';
 
@@ -67,7 +67,9 @@ export function eventScene(s: Season, after: (changes: Change[], label: string) 
   }));
   const scene = h('div.ev', { data: { key: e.key } },
     h('div.ev-head', icon(EVENT_ICON[e.key] ?? EVENT_ICON.idea!, 'ev-icon'), h('span.label.hot', 'きょうのできごと'), h('h2', kinetic(def.title))),
-    h('div.ev-body', { class: `cast${Math.min(cast.length, 3)}` },
+    h('div.ev-body.has-scene', { class: `cast${Math.min(cast.length, 3)}` },
+      // the day's picture behind the heroes and the paper
+      h('img.ev-scene', { src: sceneArt(e.key), alt: '', draggable: false }),
       // the whole team: a few of them stand for it (a line of 24 would push the paper into a sliver), and the rest is a count
       h('div.ev-cast', cast.slice(0, CAST_MAX).map((id, i) => portrait(id, { cls: i % 2 ? 'is-turned' : '', color: i % 2 ? '#37e3ff' : '#ffe14a', delay: i * 0.23 })),
         cast.length > CAST_MAX ? h('span.ev-more', `ほか${cast.length - CAST_MAX}人`) : null),
@@ -107,7 +109,7 @@ export function campScene(s: Season, after: (k: CampKey) => void): void {
     const site = CAMP_SITE[k];
     const short = moneyOf(s) < campPrice(s, k);
     const slab: HTMLButtonElement = h('button.ev-choice', {
-      type: 'button', class: `${i % 2 ? 'is-b' : ''} ${short ? 'is-off' : ''}`, style: { '--i': String(i) },
+      type: 'button', class: `${i % 2 ? 'is-b' : ''} ${short ? 'is-off' : ''}`, style: { '--i': String(i), '--pic': `url("${sceneUrl(`camp-${k}`)}")` },
       'aria-label': `${site.name}：${campNotes(s, k).map((n) => n.text).join('、')}${short ? '（部費が足りません）' : ''}`,
       onclick: (ev: MouseEvent) => {
         if (picked) return;

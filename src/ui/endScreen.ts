@@ -10,7 +10,7 @@ import { tierOf } from '../game/prestige';
 import { ROUND_NAME, SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, metAt, nextYear, opponentFor, roundOf, type Season } from '../game/season';
 import { fameBar, tierPlate } from './standing';
 import { confetti, kinetic } from './fx';
-import { TALENT_COLOR, backdrop, button, cheerAt, crest, portrait, speech, ticker, trophyArt } from './kit';
+import { TALENT_COLOR, button, cheerAt, crest, portrait, sceneArt, speech, ticker, trophyArt } from './kit';
 import { route, show } from './nav';
 import { Stadium } from './stadium';
 import { titleScreen } from './title';
@@ -82,7 +82,7 @@ export function endScreen(): [HTMLElement, () => void] {
     return el;
   }));
   const root = h('div.screen.end', { class: `${champion ? 'champion' : 'out'} ${cleared ? 'is-cleared' : ''}` },
-    sheet ? canvas : backdrop(['NEXT YEAR ◆ もう一度 ◆', 'あと一歩 ◆ NEVER GIVE UP ◆'], ['#2a2452', '#0b0d1f', '#6a6fa8']),
+    sheet ? canvas : h('div.end-scene', h('img', { src: sceneArt('year-end'), alt: '', draggable: false })),
     h('div.end-shade', { 'aria-hidden': 'true' }),
     h('div.end-main',
       h('div.end-tags', h('span.label.dark', `${TEAM_NAME} アメフト部`), cleared ? h('b.end-clear', '全クリア') : null),

@@ -456,8 +456,32 @@ const BOARD_PLAY: number[][] = [
   [0.42, 0.46, 0.34, 0.6], [0.28, 0.58, 0.4, 0.62],
 ];
 
+// ------------------------------------------------------------------ the props as pixel art (public/art/props)
+
+/** The props drawn as pixel art (made with PixelLab in the heroes' style); the rest are drawn in code. */
+const PROP_ART: Partial<Record<Prop['kind'], { src: string; h: number; dx?: number }>> = {
+  // h: how tall it stands in yards (the art keeps its proportions); dx: where its middle is from the prop's x
+  sled: { src: 'art/props/sled.png', h: 2.3, dx: 1 },
+  dummy: { src: 'art/props/dummy.png', h: 2.5 },
+  cone: { src: 'art/props/cone.png', h: 0.72 },
+  cart: { src: 'art/props/cart.png', h: 1.6 },
+  bench: { src: 'art/props/bench.png', h: 2.2 },
+};
+const propImgs = new Map<string, HTMLImageElement>();
+const propImg = (src: string): HTMLImageElement => {
+  let img = propImgs.get(src);
+  if (!img) {
+    img = new Image();
+    img.src = src;
+    propImgs.set(src, img);
+  }
+  return img;
+};
+
 export class Ground {
   light: Light;
+  /** the props' art in the light of the day (baked once it has loaded) */
+  private propTex = new Map<string, Tex>();
   props: Prop[] = [];
   /** the blackboard: how much of the play is drawn (0..1) */
   board = 0;
@@ -797,6 +821,49 @@ export class Ground {
     ctx.globalAlpha = 1;
   }
 
+  /** A prop's art in the light of the day, or null while it has not loaded (then the prop is drawn in code). */
+  private artOf(kind: Prop['kind']): Tex | null {
+    const art = PROP_ART[kind];
+    if (!art) return null;
+    const have = this.propTex.get(kind);
+    if (have) return have;
+    const img = propImg(art.src);
+    if (!img.complete || !img.naturalWidth) return null;
+    const t = makeCanvas(img.naturalWidth, img.naturalHeight);
+    const g = t.getContext('2d')!;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    // the light of the day over it, as over everything else on the ground
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = 0.22;
+    g.fillStyle = css(this.light.sun);
+    g.fillRect(0, 0, t.width, t.height);
+    this.propTex.set(kind, t);
+    return t;
+  }
+
+  /** A prop as pixel art standing on the ground: the sled slides, a dummy tips over, a highlighted one glows. */
+  private drawArt(P: Painter, p: Prop, tex: Tex, hi: number): void {
+    const { ctx, cam } = P;
+    const art = PROP_ART[p.kind]!;
+    const x = p.x + (p.kind === 'sled' ? p.v : 0) + (art.dx ?? 0);
+    if (!cam.project(x, 0, p.z) || cam.sd < 1.2) return;
+    const hh = art.h * cam.ss;
+    const ww = hh * (tex.width / tex.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(cam.sx), Math.round(cam.sy));
+    if (p.kind === 'dummy' && p.v) ctx.rotate(p.v * (p.a >= 0 ? 1 : -1));
+    ctx.drawImage(tex, -ww / 2, -hh, ww, hh);
+    if (hi > 0.01) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.32 * hi;
+      ctx.drawImage(tex, -ww / 2, -hh, ww, hh);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
   drawProp(P: Painter, p: Prop, clock: number): void {
     const { ctx, cam, px } = P;
     const l = this.light;
@@ -805,6 +872,11 @@ export class Ground {
     const lit = (c: RGB): string => css(mix(c, l.sun, 0.22));
     const shade = (c: RGB): string => css(mix(scale(c, 0.62), [40, 30, 80], 0.2));
     const hi = p.hi * (0.5 + 0.5 * Math.sin(clock * 6));
+    const tex = this.artOf(p.kind);
+    if (tex) {
+      this.drawArt(P, p, tex, hi);
+      return;
+    }
     if (p.kind === 'sled') {
       const x = p.x + p.v;
       const steel: RGB = [150, 156, 170];
