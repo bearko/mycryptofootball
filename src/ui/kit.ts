@@ -23,6 +23,10 @@ export function crest(id: number | undefined, cls = ''): HTMLElement | null {
   const src = crestArt(id);
   return src ? h('img.crest.px', { class: cls, src, alt: '', draggable: false }) : null;
 }
+/** A scene's picture (public/art/scenes: pixel art made with PixelLab): the club's events, the camp sites, the year's end. */
+export const sceneArt = (key: string): string => `art/scenes/${key}.png`;
+/** The same, as a full address (for a CSS url() given in a style, which would otherwise be read from the stylesheet's folder). */
+export const sceneUrl = (key: string): string => new URL(sceneArt(key), document.baseURI).href;
 /** A trophy's art: a tournament's (1 gold, 2 silver, 3 bronze) or the summit's. */
 export const trophyArt = (place: 1 | 2 | 3 | 'summit'): string => (place === 'summit' ? TROPHIES.summit : TROPHIES.cup[place - 1] ?? '');
 
