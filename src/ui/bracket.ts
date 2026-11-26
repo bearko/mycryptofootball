@@ -9,10 +9,10 @@ import { sfx } from '../core/audio';
 import { h } from '../core/dom';
 import { CLUB, clubReach, freshGames, markSeen, pairOf, type Bracket } from '../game/bracket';
 import { SCHOOLS } from '../game/teams';
-import { TEAM_COLOR, TEAM_SHORT, cupOf, type Season } from '../game/season';
+import { TEAM_COLOR, TEAM_CREST, TEAM_SHORT, cupOf, type Season } from '../game/season';
 import { tierOf } from '../game/prestige';
 import { burst, confetti, motion } from './fx';
-import { button, closeModal, modal } from './kit';
+import { button, closeModal, crestArt, modal, trophyArt } from './kit';
 
 const NS = 'http://www.w3.org/2000/svg';
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, ...kids: (Node | string | null)[]): SVGElementTagNameMap[K] {
@@ -26,6 +26,8 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
 const ENTRY_Y = [70, 200, 330, 460];
 const ENTRY_W = 230;
 const ENTRY_H = 58;
+/** the crest on a plate */
+const CREST = 50;
 /** each game's point: where its two lines meet */
 const GAME: readonly [number, number][] = [
   [305, 135], [305, 395], [695, 135], [695, 395], // the first round
@@ -39,16 +41,21 @@ const nodeAt = (n: number): [number, number] => (n < 8 ? entryAt(n) : GAME[n - 8
 
 const nameOf = (id: number): string => (id === CLUB ? TEAM_SHORT : SCHOOLS[id]!.short);
 const fullOf = (id: number): string => (id === CLUB ? 'マイクリ学園' : SCHOOLS[id]!.name);
-/** the name on a plate: the full name when it fits (in English, the full name made smaller to fit) */
-const plateName = (id: number): string => (isEn() ? tr(fullOf(id)) : fullOf(id).length > 7 ? nameOf(id) : fullOf(id));
-// (the plate's display letters are about 0.76 of their size wide, and the plate has room for about 190 of the
-// board's units: at 25 a name of 10 letters fills it)
+/** the name on a plate: the full name when it fits, else the short one (in English the same, at 12 letters) */
+const plateName = (id: number): string => {
+  if (!isEn()) return fullOf(id).length > 7 ? nameOf(id) : fullOf(id);
+  const full = tr(fullOf(id));
+  return full.length > 12 ? tr(nameOf(id)) : full;
+};
+// (beside the crest the plate has room for about 160 of the board's units: at 25 a Japanese name of 7 or 8 letters
+// fills it, and an English one of 10, its letters being about 0.62 of their size wide)
 // All the plates of a board take the size the longest name needs, so they read as one list.
 const plateFont = (ids: readonly number[]): string => {
   const n = Math.max(...ids.map((id) => plateName(id).length));
-  return isEn() && n > 10 ? `font-size: ${Math.max(12, Math.floor(250 / n))}px` : '';
+  return isEn() && n > 10 ? `font-size: ${Math.floor(258 / n)}px` : '';
 };
 const colorOf = (id: number): string => (id === CLUB ? TEAM_COLOR : SCHOOLS[id]!.color);
+const crestOf = (id: number): string => crestArt(id === CLUB ? TEAM_CREST : SCHOOLS[id]!.crest);
 
 /** the team that went through a place (an entry, or an earlier game's winner) */
 const teamAt = (b: Bracket, n: number): number | null => (n < 8 ? b.field[n]! : b.won[n - 8] ?? null);
@@ -126,14 +133,16 @@ export function bracketBoard(b: Bracket, opts: BracketOpts = {}): SVGSVGElement 
     },
     svg('rect', { width: ENTRY_W, height: ENTRY_H, class: 'bk-box' }),
     svg('rect', { x: left ? 0 : ENTRY_W - 14, width: 14, height: ENTRY_H, class: 'bk-chip' }),
-    svg('text', { x: left ? 26 : ENTRY_W - 26, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}`, style: font }, plateName(id)));
+    // the school's crest by its colour, its name after it
+    svg('image', { href: crestOf(id), x: left ? 18 : ENTRY_W - 18 - CREST, y: (ENTRY_H - CREST) / 2, width: CREST, height: CREST, class: 'bk-crest' }),
+    svg('text', { x: left ? 26 + CREST : ENTRY_W - 26 - CREST, y: ENTRY_H / 2 + 1, class: `bk-name ${left ? '' : 'is-right'}`, style: font }, plateName(id)));
     root.append(g);
   });
 
   // the cup in the middle, and the winner once there is one
   const champ = decided(6) ? b.won[6]! : null;
   root.append(svg('g', { class: `bk-cup ${champ != null ? 'is-won' : ''} ${champ != null && fresh.has(6) ? 'fresh' : ''}`, transform: 'translate(500 150)' },
-    svg('path', { d: 'M-26 -40 H26 V-18 C26 4 12 14 0 14 C-12 14 -26 4 -26 -18 Z M-8 14 H8 V30 H18 V40 H-18 V30 H-8 Z', class: 'bk-trophy' }),
+    svg('image', { href: trophyArt(1), x: -56, y: -70, width: 112, height: 112, class: 'bk-trophy' }),
     svg('text', { y: 74, class: 'bk-champ' }, champ != null ? fullOf(champ) : '優勝は？')));
   return root;
 }

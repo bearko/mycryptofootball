@@ -28,7 +28,7 @@ import type { PracticeCard } from '../game/season';
 import { makeGround, postText, postsOf } from './ground/ground';
 import { cardEffect, cardWhen, drillKind, practiceCard } from './ground/pcard';
 import { campScene, cutIn, eventScene, type Prize } from './ground/scenes';
-import { button, gauge, gradeChip, modalOpen, speech, sprite, statIcon } from './kit';
+import { button, crest, gauge, gradeChip, modalOpen, speech, sprite, statIcon } from './kit';
 import { lineupScreen } from './lineupScreen';
 import { matchScreen } from './matchScreen';
 import { show } from './nav';
@@ -545,7 +545,7 @@ export function clubScreen(): [HTMLElement, () => void] {
         h('span', `「${studied.join('」「')}」は、最初から少し読まれる`)) : null,
       h('div.vs-main',
         h('span.vs-kind', away ? '遠征の練習試合' : labelOf(s, p)),
-        h('div.vs-name', h('i', 'VS'), h('h3', opp.name)),
+        h('div.vs-name', h('i', 'VS'), crest(opp.crest, 'vs-crest'), h('h3', opp.name)),
         h('p.vs-style', opp.style),
         sizeOf(s.lineup!) === 11 && opp.tactic ? colourLine(opp.tactic) : null,
         tripOpen(s) ? tripSwitch()

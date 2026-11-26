@@ -11,6 +11,20 @@ import { GRADES, TRUST_BOOST, TRUST_LEARN, TRUST_MAX } from '../game/season';
 import { burst, center, kick, ring, tween, typewriter, type Typing } from './fx';
 
 const CHARS = catalog.chars as Record<string, string>;
+const CRESTS = ((catalog as { crests?: unknown }).crests ?? {}) as Record<string, { name: string; img: string }>;
+const TROPHIES = ((catalog as { trophies?: unknown }).trophies ?? { cup: [], summit: '' }) as { cup: string[]; summit: string };
+
+// ------------------------------------------------------------------ crests and trophies
+
+/** The art of a team's crest (an Extension's id: School.crest, TEAM_CREST), or '' when there is none. */
+export const crestArt = (id?: number): string => (id != null ? CRESTS[String(id)]?.img ?? '' : '');
+/** A team's crest as a picture (nothing when it has none). */
+export function crest(id: number | undefined, cls = ''): HTMLElement | null {
+  const src = crestArt(id);
+  return src ? h('img.crest.px', { class: cls, src, alt: '', draggable: false }) : null;
+}
+/** A trophy's art: a tournament's (1 gold, 2 silver, 3 bronze) or the summit's. */
+export const trophyArt = (place: 1 | 2 | 3 | 'summit'): string => (place === 'summit' ? TROPHIES.summit : TROPHIES.cup[place - 1] ?? '');
 
 // ------------------------------------------------------------------ buttons
 

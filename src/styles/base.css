@@ -443,3 +443,6 @@ img { -webkit-user-drag: none; }
 @media (prefers-reduced-motion: reduce) {
   .update-note { animation: none; }
 }
+
+/* a team's crest (an Extension's art: kit.ts crest) */
+.crest { flex: none; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0.12rem 0.16rem 0 rgba(0, 0, 0, 0.55)); }
