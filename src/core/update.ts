@@ -47,13 +47,13 @@ async function latest(): Promise<string | null> {
 let checking = false;
 
 /** Asks for the build that is out, and moves to it when it is not this one. */
-async function check(beforeReload: () => void): Promise<void> {
-  if (checking) return;
+async function check(beforeReload: () => void, mayReload: () => boolean): Promise<void> {
+  if (checking || !mayReload()) return;
   checking = true;
   try {
     const out = await latest();
     // (once per new build: if the reload brought the same old page back, the next visit tries again — never a loop)
-    if (!out || out === BUILD || session.get(TRIED) === out || document.hidden) return;
+    if (!out || out === BUILD || session.get(TRIED) === out || document.hidden || !mayReload()) return;
     session.set(TRIED, out);
     beforeReload();
     session.set(RESUME, '1');
@@ -65,15 +65,18 @@ async function check(beforeReload: () => void): Promise<void> {
   }
 }
 
-/** Watches for a new version while the game is installed or left open (production only). */
-export function watchUpdates(beforeReload: () => void): void {
+/**
+ * Watches for a new version while the game is installed or left open (production only). `mayReload` says no while
+ * the page must not be reloaded (an RTA run is being timed: the platform's timing lives in the page).
+ */
+export function watchUpdates(beforeReload: () => void, mayReload: () => boolean = () => true): void {
   if (!import.meta.env.PROD || typeof document === 'undefined') return;
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void check(beforeReload);
+    if (!document.hidden) void check(beforeReload, mayReload);
   });
   // a page brought back from the browser's back/forward memory
   window.addEventListener('pageshow', (e) => {
-    if (e.persisted) void check(beforeReload);
+    if (e.persisted) void check(beforeReload, mayReload);
   });
 }
 

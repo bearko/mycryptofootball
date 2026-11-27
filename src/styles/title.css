@@ -26,3 +26,7 @@
 .lang-pick:hover, .lang-pick:focus-visible { transform: translateY(-0.3rem) scale(1.04); }
 .lang-pick + .lang-pick { background: var(--chalk); }
 .lang-note { margin: 0; color: rgba(255, 255, 255, 0.72); font-size: var(--fs-s); }
+
+/* the RTA's rules (the title's 「RTA」) */
+.rta-rule ul { margin: 0.6rem 0 0; padding-left: 1.4rem; display: grid; gap: 0.35rem; }
+.rta-rule .rta-warn { margin-top: 0.8rem; color: var(--orange); }

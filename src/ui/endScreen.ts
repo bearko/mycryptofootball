@@ -5,6 +5,7 @@ import { crowd, playBgm, sfx } from '../core/audio';
 import { newSeed } from '../core/debug';
 import { h } from '../core/dom';
 import { commit, save, storeMatch } from '../core/save';
+import { yearScore } from './platform';
 import { hero, talentOf } from '../game/heroes';
 import { tierOf } from '../game/prestige';
 import { ROUND_NAME, SCHEDULE, TEAM_COLOR, TEAM_NAME, GRADES, clubSheet, cupOf, graduating, learned, metAt, nextYear, opponentFor, roundOf, type Season } from '../game/season';
@@ -30,6 +31,8 @@ export function endScreen(): [HTMLElement, () => void] {
   /** the summit won: the game is beaten */
   const cleared = s.summit === 'won';
   playBgm(champion ? 'final' : 'club');
+  // the year's total score goes to bearko.games with a notice
+  yearScore(save());
   const last = s.results[s.results.length - 1];
   const where = last ? roundOf(SCHEDULE[last.day]!) : '';
   const cup = cupOf(s);

@@ -10,11 +10,12 @@ import type { TeamSheet } from '../game/match';
 import { tierOf } from '../game/prestige';
 import { opponentSheet } from '../game/teams';
 import { TEAM_COLOR, TEAM_NAME, TEAM_SHORT, newSeason } from '../game/season';
+import { RTA_REGULATION } from '../game/feats';
 import { kinetic, typewriter } from './fx';
 import { button, closeModal, modal, ticker } from './kit';
 import { route } from './nav';
 import { installWay, onInstallChange } from '../core/install';
-import { openChat, platformOn } from './platform';
+import { abortRta, openChat, platformOn, rtaOpen, startRta } from './platform';
 import { helpModal, installModal, offerInstallOnce, settingsModal } from './shared';
 import { Stadium } from './stadium';
 
@@ -33,6 +34,7 @@ export function titleScreen(): [HTMLElement, () => void] {
   stadium.attract();
 
   const start = (): void => {
+    abortRta();
     s.season = newSeason(newSeed());
     s.season.guide = true;
     // the manager teaches the first week (game/tutorial.ts)
@@ -53,6 +55,36 @@ export function titleScreen(): [HTMLElement, () => void] {
         start();
       }))), { title: '最初からはじめますか？' });
   };
+  // the RTA (bearko.games times it: from the founding briefing to the district title). A new club, no lessons
+  const startRun = async (): Promise<void> => {
+    closeModal();
+    const season = newSeason(newSeed());
+    s.season = season;
+    storeMatch(null);
+    commit();
+    // the timing starts as the briefing opens (without the platform the club is simply a new one)
+    if (await startRta()) season.rta = { reg: RTA_REGULATION, sent: [] };
+    commit();
+    route();
+  };
+  const rtaModal = (): void => {
+    modal(h('div.rta-rule',
+      h('p', '新しい部をつくり、地区大会で優勝するまでの時間を計ります。'),
+      h('ul',
+        h('li', '入部説明会から計測が始まり、最初の勝利・同好会・地区大会の優勝で区切ります'),
+        h('li', 'マネージャーの説明は出ません'),
+        h('li', 'ページを読み直したり、タイトルに戻って新しい部をつくると、計測はそこで終わります')),
+      s.season ? h('p.rta-warn', `いまの部（${s.season.year}年目・${tierOf(s.season.tier).name}）の記録は消えます。`) : null,
+      h('div.modal-actions', button('やめる', closeModal, { cls: 'alt', sound: 'back' }), button('RTA をはじめる', () => void startRun(), { cls: 'go' }))),
+    { title: 'RTA で始める' });
+  };
+  const rtaButton = button('RTA', rtaModal, { cls: 'alt' });
+  rtaButton.hidden = true;
+  // shown once the platform says the RTA is open
+  void rtaOpen().then((on) => {
+    rtaButton.hidden = !on;
+  });
+
   // a club goes on from year to year: there is always something to continue once it has been founded
   const going = !!s.season;
   const lead = h('p.title-sub');
@@ -60,6 +92,7 @@ export function titleScreen(): [HTMLElement, () => void] {
     going ? button('つづきから', route, { cls: 'big go' }) : null,
     button(going ? '最初から' : 'はじめる', fresh, { cls: going ? 'big alt' : 'big go' }),
     button('あそびかた', helpModal, { cls: 'alt' }),
+    rtaButton,
     button('設定', settingsModal, { cls: 'alt' }),
     // the chat of bearko.games (only when its SDK is there)
     platformOn() ? button('チャット', openChat, { cls: 'alt' }) : null,

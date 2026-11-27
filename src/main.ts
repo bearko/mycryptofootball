@@ -31,7 +31,7 @@ import { wireHover } from './ui/kit';
 import { matchScreen } from './ui/matchScreen';
 import { route, setRouter, show } from './ui/nav';
 import { lineupScreen } from './ui/lineupScreen';
-import { startPlatform } from './ui/platform';
+import { rtaRunning, startPlatform } from './ui/platform';
 import { recruitScreen } from './ui/recruit';
 import { applyPrefs } from './ui/shared';
 import { titleScreen } from './ui/title';
@@ -165,7 +165,8 @@ function jump(to: string): void {
 }
 
 // an installed copy picks up a new version by itself when it comes back on screen (core/update.ts)
-watchUpdates(commit);
+// (never under an RTA run: the platform's timing lives in the page)
+watchUpdates(commit, () => !rtaRunning());
 
 /** A small word that the game was just brought up to date (goes by itself, nothing to press). */
 function updatedNote(): void {
