@@ -1736,7 +1736,13 @@
  "抜いたッ！！": "BREAKS FREE!!",
  "捕ったッ！！": "CAUGHT IT!!",
  "止めたッ！！": "STOPPED!!",
- "はじいたッ！！": "DENIED!!",
+ "はじいたッ！！": "BROKEN UP!!",
  "奪ったッ！！": "TAKEN AWAY!!",
- "新しいバージョンになりました": "Updated to the latest version"
+ "新しいバージョンになりました": "Updated to the latest version",
+ "新しい部をつくり、地区大会で優勝するまでの時間を計ります。": "Found a new club and race the clock to the district title.",
+ "入部説明会から計測が始まり、最初の勝利・同好会・地区大会の優勝で区切ります": "The clock starts at the briefing. Splits: the first win, becoming a club, the district title",
+ "マネージャーの説明は出ません": "The manager's lessons are off",
+ "ページを読み直したり、タイトルに戻って新しい部をつくると、計測はそこで終わります": "Reloading the page or founding a new club from the title ends the run",
+ "RTA をはじめる": "Start the RTA",
+ "RTA で始める": "Start an RTA"
 }

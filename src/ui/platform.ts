@@ -9,6 +9,7 @@
 import { version } from '../../package.json';
 import { onCommit, type SaveData } from '../core/save';
 import { lessonsOver } from '../game/tutorial';
+import { RTA_REGULATION, achieved, daysPlayed, scoreOf, splitsReached } from '../game/feats';
 
 /** the title's id on the platform (its host is football.bearko.games) */
 const GAME = 'football';
@@ -19,7 +20,13 @@ interface Sdk {
   tutorialStep(step: number, id: string): unknown;
   unlockTrophy(id: string): Promise<unknown>;
   submitScore(metrics: Record<string, unknown>, opts?: { quiet?: boolean }): Promise<unknown>;
-  rta: { start(opts: Record<string, unknown>): Promise<unknown>; checkpoint(id: string, opts?: { igtMs?: number }): Promise<unknown>; abort(): void };
+  rta: {
+    start(opts: Record<string, unknown>): Promise<unknown>;
+    checkpoint(id: string, opts?: { igtMs?: number }): Promise<unknown>;
+    abort(): void;
+    current(): { runId: string; regulation: string } | null;
+    getRegulations(): Promise<{ ok: boolean; regulations?: { id: string }[] }>;
+  };
   chat: { open(): void; setVisible(on: boolean): void };
 }
 
@@ -56,6 +63,7 @@ export function startPlatform(): void {
     if (!ready) window.addEventListener('load', begin, { once: true });
     // the first year is followed from what is saved: every time the game is saved, the steps reached are reported
     onCommit(trackGuide);
+    onCommit(trackFeats);
   } catch (err) {
     console.warn('[platform] start', err);
   }
@@ -144,18 +152,112 @@ export function guideEvent(d: SaveData, id: GuideStep): void {
 }
 
 // ---------------------------------------------------------------- achievements, total score, RTA
-// (the doors only: what to send is settled with the platform first — see docs/PLATFORM.md)
+// What the club has done is read from the saved season (game/feats.ts) every time the game is saved. The platform
+// keeps the first of each, so what is sent while the title is not yet set up there is simply sent again later.
 
-export function unlockTrophy(name: string): void {
-  guard('unlockTrophy', (api) => api.unlockTrophy(`${GAME}.${name}`));
+const unlocked = new Set<string>();
+let scored = '';
+let scoreAt = 0;
+let scoreTimer: ReturnType<typeof setTimeout> | undefined;
+/** the platform takes a quiet score at most once a minute */
+const SCORE_GAP = 61_000;
+
+function sendScore(d: SaveData, loud: boolean): void {
+  const s = d.season;
+  if (!s) return;
+  const metrics = scoreOf(s);
+  const key = JSON.stringify(metrics);
+  if (key === scored && !loud) return;
+  const wait = loud ? 0 : scoreAt + SCORE_GAP - Date.now();
+  clearTimeout(scoreTimer);
+  if (wait > 0) {
+    scoreTimer = setTimeout(() => sendScore(d, false), wait);
+    return;
+  }
+  scored = key;
+  scoreAt = Date.now();
+  guard('submitScore', (api) => api.submitScore(metrics, { quiet: !loud }));
 }
 
-export function submitScore(metrics: Record<string, unknown>, quiet = false): void {
-  guard('submitScore', (api) => api.submitScore(metrics, { quiet }));
+/** Sends what the saved club has reached: its achievements, its total score and, in an RTA, the splits. */
+export function trackFeats(d: SaveData): void {
+  try {
+    const s = d.season;
+    if (!ready || !s || !s.members.length) return;
+    for (const a of achieved(s)) {
+      if (unlocked.has(a)) continue;
+      unlocked.add(a);
+      guard('unlockTrophy', (api) => api.unlockTrophy(`${GAME}.${a}`));
+    }
+    sendScore(d, false);
+    trackRta(d);
+  } catch (err) {
+    console.warn('[platform] trackFeats', err);
+  }
 }
 
-export const rta = {
-  start: (regulation: string): void => void guard('rta.start', (api) => api.rta.start({ regulation })),
-  checkpoint: (id: string, igtMs?: number): void => void guard('rta.checkpoint', (api) => api.rta.checkpoint(id, { igtMs })),
-  abort: (): void => void guard('rta.abort', (api) => api.rta.abort()),
-};
+/** The year's end: the total score with a notice. */
+export function yearScore(d: SaveData): void {
+  try {
+    if (ready && d.season?.members.length) sendScore(d, true);
+  } catch (err) {
+    console.warn('[platform] yearScore', err);
+  }
+}
+
+// ---- the RTA: from the founding briefing to the district title, timed by the platform (its timer, its notices)
+
+let regulationOn: boolean | null = null;
+/** Is the RTA open on the platform? (asked once; until then and without the SDK: no) */
+export async function rtaOpen(): Promise<boolean> {
+  if (regulationOn !== null) return regulationOn;
+  const api = ready ? found() : undefined;
+  if (!api) return false;
+  try {
+    const r = await api.rta.getRegulations();
+    regulationOn = !!r.ok && !!r.regulations?.some((x) => x.id === RTA_REGULATION);
+  } catch (err) {
+    console.warn('[platform] rta.getRegulations', err);
+    regulationOn = false;
+  }
+  return regulationOn;
+}
+
+/** Is a run being timed now? (the page must not reload under it: core/update.ts waits) */
+export const rtaRunning = (): boolean => !!guard('rta.current', (api) => api.rta.current());
+
+/** Starts the timing of a new club's run. */
+export function startRta(): Promise<boolean> {
+  const api = ready ? found() : undefined;
+  if (!api) return Promise.resolve(false);
+  const fail = (err: unknown): boolean => {
+    console.warn('[platform] rta.start', err);
+    return false;
+  };
+  try {
+    return api.rta.start({ regulation: RTA_REGULATION }).then((r) => !!(r as { ok?: boolean })?.ok, fail);
+  } catch (err) {
+    return Promise.resolve(fail(err));
+  }
+}
+
+/** Stops a run (a new club is founded, the run's club is gone). */
+export function abortRta(): void {
+  guard('rta.abort', (api) => api.rta.abort());
+}
+
+function trackRta(d: SaveData): void {
+  const s = d.season!;
+  if (!s.rta) return;
+  const run = guard('rta.current', (api) => api.rta.current());
+  // the page was reloaded or the run ended: the platform's timing is gone, and so is the run
+  if (!run || run.regulation !== s.rta.reg) {
+    s.rta = undefined;
+    return;
+  }
+  for (const split of splitsReached(s)) {
+    if (s.rta.sent.includes(split)) continue;
+    s.rta.sent.push(split);
+    guard('rta.checkpoint', (api) => api.rta.checkpoint(split, { igtMs: daysPlayed(s) }));
+  }
+}

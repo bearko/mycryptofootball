@@ -16,22 +16,33 @@ function fresh(guide = true): SaveData {
   return { v: 1, season, match: null, mute: false, fast: false, prefs: {} as SaveData['prefs'], seasons: 0, titles: 0, helpSeen: false };
 }
 
-async function load(sdk: 'ok' | 'none' | 'broken'): Promise<{ p: typeof import('../src/ui/platform'); sent: Sent[]; inits: Record<string, unknown>[] }> {
+interface Load { p: typeof import('../src/ui/platform'); sent: Sent[]; inits: Record<string, unknown>[]; trophies: string[]; scores: [Record<string, unknown>, boolean][]; splits: [string, number][] }
+async function load(sdk: 'ok' | 'none' | 'broken'): Promise<Load> {
   vi.resetModules();
   const sent: Sent[] = [];
+  const trophies: string[] = [];
+  const scores: [Record<string, unknown>, boolean][] = [];
+  const splits: [string, number][] = [];
+  let run: string | null = null;
   const inits: Record<string, unknown>[] = [];
   const api = {
     init: (o: Record<string, unknown>) => { inits.push(o); return Promise.resolve({ ok: true }); },
     tutorialStep: (step: number, id: string) => { if (sdk === 'broken') throw new Error('down'); sent.push([step, id]); return Promise.resolve({ ok: true }); },
-    unlockTrophy: () => Promise.reject(new Error('not registered')),
-    submitScore: () => Promise.resolve({ ok: false }),
-    rta: { start: () => Promise.resolve({}), checkpoint: () => Promise.resolve({}), abort: () => undefined },
+    unlockTrophy: (id: string) => { if (sdk === 'broken') throw new Error('down'); trophies.push(id); return Promise.reject(new Error('not registered')); },
+    submitScore: (m: Record<string, unknown>, o?: { quiet?: boolean }) => { if (sdk === 'broken') throw new Error('down'); scores.push([m, !!o?.quiet]); return Promise.resolve({ ok: false }); },
+    rta: {
+      start: () => { if (sdk === 'broken') throw new Error('down'); run = 'football-district'; return Promise.resolve({ ok: true }); },
+      checkpoint: (id: string, o?: { igtMs?: number }) => { splits.push([id, o?.igtMs ?? -1]); return Promise.resolve({ ok: true }); },
+      abort: () => { run = null; },
+      current: () => { if (sdk === 'broken') throw new Error('down'); return run ? { runId: 'r1', regulation: run } : null; },
+      getRegulations: () => Promise.resolve({ ok: true, regulations: [{ id: 'football-district' }] }),
+    },
     chat: { open: () => undefined, setVisible: () => undefined },
   };
   g.window = { addEventListener: () => undefined, ...(sdk === 'none' ? {} : { BearkoGames: api }) };
   const p = await import('../src/ui/platform');
   p.startPlatform();
-  return { p, sent, inits };
+  return { p, sent, inits, trophies, scores, splits };
 }
 
 describe('the door to the shared platform', () => {
@@ -118,6 +129,49 @@ describe('the door to the shared platform', () => {
     expect(sent).toEqual([]);
   });
 
+  it('sends what the club has reached, each achievement once, and its total score', async () => {
+    const { p, trophies, scores } = await load('ok');
+    const d = fresh(false);
+    const s = d.season!;
+    signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
+    p.trackFeats(d);
+    expect(trophies).toEqual([]);
+    expect(scores.length).toBe(1);
+    expect(scores[0]![0]).toMatchObject({ tier: 0, years: 1, wins: 0, titles: [0, 0, 0, 0], nation: false, summit: false });
+    expect(scores[0]![1]).toBe(true);
+    s.career = { wins: 3, titles: [1, 0, 0, 0], best: 1, feats: ['onside'] };
+    p.trackFeats(d);
+    p.trackFeats(d);
+    expect(trophies).toEqual(['football.first_win', 'football.club', 'football.onside', 'football.district']);
+    // a quiet score waits a minute after the last one; the year's end goes at once, with a notice
+    expect(scores.length).toBe(1);
+    p.yearScore(d);
+    expect(scores.length).toBe(2);
+    expect(scores[1]).toEqual([{ tier: 1, years: 1, wins: 3, titles: [1, 0, 0, 0], nation: false, summit: false }, false]);
+  });
+
+  it('times an RTA run: the splits in order, each once, with the days played', async () => {
+    const { p, splits } = await load('ok');
+    expect(await p.rtaOpen()).toBe(true);
+    const d = fresh(false);
+    const s = d.season!;
+    signRecruits(s, s.candidates.slice(0, ROSTER_SIZE));
+    expect(await p.startRta()).toBe(true);
+    s.rta = { reg: 'football-district', sent: [] };
+    expect(p.rtaRunning()).toBe(true);
+    s.career = { wins: 1, titles: [0, 0, 0, 0], best: 0 };
+    p.trackFeats(d);
+    s.career = { wins: 4, titles: [1, 0, 0, 0], best: 1 };
+    p.trackFeats(d);
+    p.trackFeats(d);
+    expect(splits.map(([id]) => id)).toEqual(['first_win', 'club', 'district']);
+    expect(splits.every(([, days]) => days >= 1)).toBe(true);
+    // the run is gone (the page was reloaded): the club is no longer in one
+    p.abortRta();
+    p.trackFeats(d);
+    expect(s.rta).toBeUndefined();
+  });
+
   it('the game goes on when the SDK is missing or its calls fail', async () => {
     for (const sdk of ['none', 'broken'] as const) {
       const { p } = await load(sdk);
@@ -125,11 +179,12 @@ describe('the door to the shared platform', () => {
       expect(() => {
         p.trackGuide(d);
         p.guideEvent(d, 'captain');
-        p.unlockTrophy('x');
-        p.submitScore({ a: 1 });
-        p.rta.start('r');
-        p.rta.checkpoint('c', 1);
-        p.rta.abort();
+        p.trackFeats(d);
+        p.yearScore(d);
+        void p.startRta();
+        void p.rtaOpen();
+        p.rtaRunning();
+        p.abortRta();
         p.openChat();
       }).not.toThrow();
       expect(p.platformOn()).toBe(sdk === 'broken');

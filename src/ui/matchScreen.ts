@@ -36,6 +36,7 @@ import { Stadium } from './stadium';
 import { ROUTE_LABEL } from './stadium/choreo';
 import { lessonDue } from '../game/tutorial';
 import { guideEvent } from './platform';
+import { noteFeat } from '../game/feats';
 import { clearGoal, teach } from './tutor';
 import { factsOf, heroCard } from './heroCard';
 import { showBracket } from './bracket';
@@ -1074,6 +1075,9 @@ export function matchScreen(): [HTMLElement, () => void] {
     const sack = !kick && !tried && res.outcome === 'sack';
     const big = scored || (!!res.turnover && !kick) || (kick?.type === 'fg') || !!onside || sack;
     if (res.td && mineOff && s.results.length === 0) guideEvent(save(), 'first_td');
+    // things done in a match that count for the achievements of bearko.games (game/feats.ts; sent as the game is saved)
+    if (res.td && mineOff && res.offPick.special && !st.script) noteFeat(s, 'special_td');
+    if (onside && kick.good && mineOff && !st.script) noteFeat(s, 'onside');
     if (scored) {
       stadium.celebrate('td', scorer);
       if (scorer === 0) confetti([home.color, '#fffbe8', '#ff5a2e', '#37e3ff'], 1.6);

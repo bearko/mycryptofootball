@@ -24,6 +24,7 @@ import { TACTIC, TACTIC_LV_MAX, suggestTactic, tacticCards, tacticLevel, type Ta
 import { FAME_WEIGHT, TOP_TIER, applyResult, tierOf, type FameChange } from './prestige';
 import { FIRST_DRAW, PRO_SCHOOL, SCHOOLS, autumnDraw, drawYear, opponentSheet, type School } from './teams';
 import { bookRound, clubOpponent, makeBracket, BRACKET_SCHOOLS, type Bracket } from './bracket';
+import { CUP_LEVELS, careerOf, type Career } from './feats';
 import {
   ALLOWANCE, CAMP_SITE, FAC_MAX, LV_MUL, REST_LV, START_MONEY, TITLE_DONATION, TRIP_WIN, TRIP_XP, donationOf, newFacilities, nextPrice, tripCost, campCost,
   type CampKey, type FacKey, type Facilities,
@@ -576,6 +577,10 @@ export interface Season {
   aces?: Partial<Aces>;
   /** the summit against the corporate champion, once played: won (the game is beaten) or lost */
   summit?: 'won' | 'lost';
+  /** the club's record over all its years (game/feats.ts: the achievements, the total score, the RTA) */
+  career?: Career;
+  /** an RTA run (from the title's 「RTA で始める」): its regulation and the splits already sent */
+  rta?: { reg: string; sent: string[] };
   /** OB points the graduates have left (game/alumni.ts), and what the last graduation brought (shown in spring) */
   ob?: number;
   obGain?: number;
@@ -1507,6 +1512,8 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   const p = plan(s);
   if (p.t !== 'match') throw new Error('not a match day');
   const win = st.score[0] > st.score[1];
+  // (the club's record: started, for a season saved before it was kept, from the results before this one)
+  const career = careerOf(s);
   s.results.push({ day: s.day, m: p.m, opp: p.round, us: st.score[0], them: st.score[1], win, ...(isTrip(s, p) ? { school: tripSchool(s, p) } : {}) });
   // who did what goes into the season's numbers
   bookMatch((s.box ??= {}), st.box?.[0]);
@@ -1554,6 +1561,17 @@ export function finishMatch(s: Season, st: MatchState): { changes: Change[]; win
   const fame = applyResult({ tier: s.tier, fame: s.fame }, p.round, win, FAME_WEIGHT[p.stage]);
   s.tier = fame.after.tier;
   s.fame = fame.after.fame;
+  // the club's record over the years
+  if (win) {
+    career.wins += 1;
+    if (clubSize(s) === 11) career.eleven = true;
+    if (p.cup && p.round === 3) {
+      const level = Math.max(0, CUP_LEVELS.indexOf(cupOf(s) as (typeof CUP_LEVELS)[number]));
+      career.titles[level] = (career.titles[level] ?? 0) + 1;
+    }
+    if (p.summit) career.summits = (career.summits ?? 0) + 1;
+  }
+  career.best = Math.max(career.best, s.tier);
   let ended = false;
   // knocked out: in spring the club goes on to the summer, in autumn the year is over
   const out = p.cup && !win && p.stage === 'spring';
